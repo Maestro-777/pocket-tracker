@@ -130,7 +130,7 @@
       let symbol = "", id = null, digits = null, active = true, label = "";
       if (Array.isArray(row)) {
         id = row[0]; symbol = row[1]; label = row[2] || symbol;
-        if (Number.isInteger(Number(row[4]))) digits = Number(row[4]);
+        digits = null;
         if (row.length > 14) active = Boolean(row[14]);
       } else if (typeof row === "object") {
         symbol = row.symbol || row.asset || row.code || row.s || "";
@@ -209,6 +209,7 @@
         rec.balanceKnown = true;
       }
       rec.balance = info.balance;
+      if (rec.demoEndpoint && rec.serverDemo === true) sendRaw(rec, "updateOpenedDeals");
       reportStatus(true);
       post("BALANCE_STATE", { isDemo: info.isDemo, balance: info.balance });
       return;
@@ -235,6 +236,7 @@
       return;
     }
     if (name === "successopenOrder") {
+      if (payload && payload.requestId != null) rec.ownRequestIds.delete(String(payload.requestId));
       post("ORDER_ACK", { accepted: true, order: payload && {
         id: payload.id ?? null, requestId: payload.requestId ?? null,
         asset: payload.asset || "", amount: Number(payload.amount || 0)
@@ -242,6 +244,7 @@
       return;
     }
     if (name === "failopenOrder") {
+      if (payload && payload.requestId != null) rec.ownRequestIds.delete(String(payload.requestId));
       post("ORDER_ACK", { accepted: false, order: payload && {
         requestId: payload.requestId ?? null, error: String(payload.error || payload.message || "Order rejected")
       }});
@@ -250,6 +253,7 @@
     if (name === "successcloseOrder") {
       const deals = safeDeals(payload);
       post("CLOSED_DEALS", { deals: deals });
+      if (rec.demoEndpoint && rec.serverDemo === true) sendRaw(rec, "updateOpenedDeals");
       return;
     }
     if (name === "NotAuthorized" || name === "auth/error") {
@@ -281,7 +285,17 @@
       } catch (_) {}
     };
     if (data instanceof ArrayBuffer) processBuffer(data);
-    else if (typeof Blob !== "undefined" && data instanceof Blob) data.arrayBuffer().then(processBuffer).catch(function(){});
+    else if (typeof Blob !== "undefined" && data instanceof Blob) {
+      const pending = rec.pendingBinaryEvent;
+      rec.pendingBinaryEvent = null;
+      data.arrayBuffer().then(function(buffer) {
+        if (!pending) return;
+        try {
+          const text = new TextDecoder("utf-8").decode(buffer);
+          handleEvent(rec, pending, JSON.parse(text));
+        } catch (_) {}
+      }).catch(function(){});
+    }
   }
   function parseOutgoing(rec, frame) {
     if (typeof frame !== "string" || frame.indexOf("42") !== 0) return;
@@ -318,7 +332,8 @@
     if (!sendRaw(rec, "subfor", asset)) return post("COMMAND_RESULT", { command: "SUBSCRIBE", ok: false, message: "Не удалось подписаться на поток котировок." });
     sendRaw(rec, "changeSymbol", { asset: asset, period: period });
     const now = Math.floor(Date.now() / 1000);
-    const offset = Math.max(30 * 86400, period * 90);
+    const days = Math.min(30, Math.max(1, Number(args.lookbackDays) || 30));
+    const offset = Math.max(days * 86400, period * 90);
     sendRaw(rec, "loadHistoryPeriod", { asset: asset, index: now, time: now, offset: offset, period: period });
     rec.subscribedAsset = asset;
     desiredAsset = asset;
@@ -339,6 +354,7 @@
     if (!Number.isFinite(amount) || amount < 1 || amount > 50000) return post("COMMAND_RESULT", { command: "OPEN_ORDER", ok: false, message: "Сумма сделки должна быть от 1 до 50000." });
     const requestId = ++requestCounter;
     rec.ownRequestIds.add(String(requestId));
+    if (rec.ownRequestIds.size > 100) rec.ownRequestIds.delete(rec.ownRequestIds.values().next().value);
     const payload = {
       asset: asset, amount: amount, action: direction.toLowerCase(),
       isDemo: 1, requestId: requestId, optionType: 100, time: expiry
