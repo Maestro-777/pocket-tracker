@@ -526,6 +526,13 @@ class PocketBridge:
                 pass
         self.broker = None
         self.subscribed_asset = None
+        await self.send_browser(
+            "accountState", account="unknown", authenticated=False, demo_verified=False,
+        )
+        await self.send_browser(
+            "executionState", auto_trading=False, can_trade=False,
+            amount=self.auto_trade_amount,
+        )
 
     async def ping_broker(self) -> None:
         while self.broker is not None:
