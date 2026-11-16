@@ -148,7 +148,7 @@ chrome.runtime.onMessage.addListener((m,sender,respond)=>{
   }
   if(m.type==="SET_ASSET"){
    if(!/^[A-Za-z0-9_#]{3,32}$/.test(m.asset||""))return {ok:false,message:"Некорректный символ."};
-   state.asset=m.asset;if(state.demoVerified){state.candles=[];state.current=null;state.lastSignalId=null;event("unsubfor",m.previousAsset||"");event("changeSymbol",{asset:state.asset,period:5});event("subfor",state.asset);}
+   state.asset=m.asset;if(state.demoVerified){state.candles=[];state.current=null;state.lastSignalId=null;event("changeSymbol",{asset:state.asset,period:5});event("subfor",state.asset);}
    return {ok:true,message:"Инструмент изменён."};
   }
   return {ok:false,message:"Неизвестная команда."};
