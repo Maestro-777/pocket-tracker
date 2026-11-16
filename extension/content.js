@@ -7,7 +7,7 @@
     putRsiMin: 77, putRsiMax: 83, callRsiMin: 18, callRsiMax: 23,
     maxDistancePoints: 1, lookbackDays: 30
   };
-  const MAX_CANDLES = 150000;
+  const MAX_CANDLES = 530000;
   const state = {
     hookReady: false, connected: false, demoEndpointSeen: false, demoVerified: false,
     accountMode: "unknown", endpoint: "", socketCount: 0,
@@ -69,6 +69,7 @@
   }
   function publicState() {
     const mode = domAccountMode();
+    if (mode === "real" || state.accountMode === "real") state.autoTrading = false;
     const demoVerified = state.demoVerified && state.accountMode !== "real" && mode !== "real";
     return {
       hookReady: state.hookReady, connected: state.connected,
@@ -168,17 +169,29 @@
     return { time: bucket, open: o, high: h, low: l, close: c };
   }
   function mergeCandleArrays(oldRows, newRows) {
-    const map = new Map();
-    for (const c of oldRows) map.set(c.time, c);
-    for (const c of newRows) {
-      const prev = map.get(c.time);
-      if (!prev) map.set(c.time, c);
-      else map.set(c.time, {
-        time: c.time, open: prev.open,
-        high: Math.max(prev.high, c.high), low: Math.min(prev.low, c.low), close: c.close
-      });
+    if (!newRows.length) return oldRows;
+    newRows.sort(function(a,b){return a.time-b.time;});
+    if (!oldRows.length) return newRows.slice(-MAX_CANDLES);
+    const oldLast = oldRows[oldRows.length - 1].time;
+    if (newRows[0].time > oldLast) {
+      oldRows.push.apply(oldRows, newRows);
+      if (oldRows.length > MAX_CANDLES) oldRows.splice(0, oldRows.length - MAX_CANDLES);
+      return oldRows;
     }
-    const merged = Array.from(map.values()).sort(function(a,b){return a.time-b.time;});
+    const merged = [];
+    let i=0, j=0;
+    while (i<oldRows.length && j<newRows.length) {
+      const a=oldRows[i], b=newRows[j];
+      if (a.time < b.time) { merged.push(a); i++; }
+      else if (b.time < a.time) { merged.push(b); j++; }
+      else {
+        merged.push({time:a.time,open:a.open,high:Math.max(a.high,b.high),
+          low:Math.min(a.low,b.low),close:b.close});
+        i++; j++;
+      }
+    }
+    while(i<oldRows.length) merged.push(oldRows[i++]);
+    while(j<newRows.length) merged.push(newRows[j++]);
     if (merged.length > MAX_CANDLES) merged.splice(0, merged.length - MAX_CANDLES);
     return merged;
   }
@@ -266,10 +279,11 @@
   function updateIndicators() {
     const rows = state.candles;
     const period = state.config.bbPeriod;
-    if (rows.length < Math.max(period, state.config.rsiPeriod + 1)) {
+    const needed = Math.max(period, state.config.rsiPeriod + 1);
+    if (rows.length < needed) {
       state.rsi = null; state.bbUpper = null; state.bbLower = null; return;
     }
-    const closes = rows.map(function(c){return c.close;});
+    const closes = rows.slice(-needed).map(function(c){return c.close;});
     const windowRows = closes.slice(-period);
     const mean = windowRows.reduce(function(sum,v){return sum+v;},0)/period;
     const variance = windowRows.reduce(function(sum,v){return sum+(v-mean)*(v-mean);},0)/period;
@@ -319,7 +333,12 @@
   function onTick(tick) {
     const asset = safeSymbol(tick.asset);
     if (!asset || !sameAsset(asset, activeAsset())) return;
-    if (!state.demoVerified || domAccountMode() === "real") return;
+    if (domAccountMode() === "real") {
+      if (state.autoTrading) log("REAL-счёт обнаружен в интерфейсе. Автоторговля остановлена.");
+      state.autoTrading = false; state.demoVerified = false;
+      return;
+    }
+    if (!state.demoVerified) return;
     const time = normalizeSeconds(tick.time), price = Number(tick.price);
     if (!time || !Number.isFinite(price) || price <= 0) return;
     const bucket = Math.floor(time / 5) * 5;
@@ -439,7 +458,13 @@
       const open = deals.filter(function(d){return d.closeTimestamp == null || d.closeTimestamp === 0 || d.closeTimestamp === "";});
       state.activeDealCount = open.length;
       state.activeOrder = open.length > 0;
-      if (!open.length && !state.executionUncertain) state.orderPending = false;
+      if (open.length > 0) {
+        state.orderPending = false;
+        state.executionUncertain = false;
+        if (state.lastOrder) state.lastOrder.status = "Найдена среди открытых сделок";
+      } else if (!state.orderPending && !state.executionUncertain) {
+        state.activeOrder = false;
+      }
     } else if (data.type === "CLOSED_DEALS") {
       const deals = Array.isArray(data.deals) ? data.deals : [];
       for (const d of deals) {
