@@ -201,6 +201,9 @@ class PocketBridge:
         self.latest_tick_time: int | None = None
         self.current_bar: dict[str, Any] | None = None
         self.history_requested = False
+        self.history_cursor: int | None = None
+        self.history_request_kind: str | None = None
+        self.history_timeout_task: asyncio.Task | None = None
         self.closed = False
 
     async def send_browser(self, kind: str, **payload: Any) -> None:
@@ -253,8 +256,20 @@ class PocketBridge:
             self.current_bar = None
             self.latest_tick_time = None
             self.history_requested = False
+            self.history_cursor = None
+            await self.cancel_history_request()
             if self.authenticated:
                 await self.subscribe_broker()
+        elif action == "loadMore":
+            if not self.authenticated or self.broker is None:
+                await self.status("Сначала подключись к Pocket Option.", "warning")
+                return
+            if self.history_cursor is None:
+                await self.status("Сначала дождись загрузки первой порции истории.", "warning")
+                return
+            if self.history_request_kind is not None:
+                return
+            await self.request_history("older")
         elif action == "disconnect":
             await self.close_broker()
             await self.status("Подключение закрыто.", "ready")
@@ -328,6 +343,7 @@ class PocketBridge:
 
     async def close_broker(self) -> None:
         self.authenticated = False
+        await self.cancel_history_request()
         if self.ping_task and self.ping_task is not asyncio.current_task():
             self.ping_task.cancel()
             try:
@@ -424,6 +440,62 @@ class PocketBridge:
                 self.authenticated = False
                 await self.status("Соединение с Pocket Option закрыто сервером.", "error")
 
+    async def cancel_history_request(self) -> None:
+        self.history_request_kind = None
+        task = self.history_timeout_task
+        self.history_timeout_task = None
+        if task and task is not asyncio.current_task():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    async def history_request_timeout(self, kind: str) -> None:
+        try:
+            await asyncio.sleep(15)
+            if self.history_request_kind == kind:
+                self.history_request_kind = None
+                self.history_timeout_task = None
+                await self.send_browser("historyLoading", loading=False, kind=kind)
+                await self.status("Сервер не прислал запрошенную историю. Попробуй ещё раз.", "warning")
+        except asyncio.CancelledError:
+            raise
+
+    async def request_history(self, kind: str, before_time: int | None = None) -> None:
+        if not self.authenticated or self.broker is None:
+            return
+        if self.history_request_kind is not None:
+            return
+        if kind == "older":
+            if before_time is None:
+                before_time = self.history_cursor
+            if before_time is None:
+                return
+            end_time = max(1, int(before_time) - self.period)
+        else:
+            # Until the first live tick arrives, use server-native OTC time.
+            end_time = self.latest_tick_time or int(time.time()) + 7200
+
+        self.history_request_kind = kind
+        await self.send_browser("historyLoading", loading=True, kind=kind)
+        await self.send_broker_event("loadHistoryPeriod", {
+            "asset": self.asset,
+            "index": int(time.time() * 100),
+            "offset": HISTORY_COUNT,
+            "period": self.period,
+            "time": end_time,
+        })
+        self.history_timeout_task = asyncio.create_task(self.history_request_timeout(kind))
+        if kind == "older":
+            await self.status("Запрашиваю предыдущие 500 свечей…", "connected")
+        else:
+            self.history_requested = True
+            await self.status(
+                f"Запрошены первые {HISTORY_COUNT} свечей {self.asset} · {self.period}s.",
+                "connected",
+            )
+
     async def handle_broker_event(self, name: str, data: Any) -> None:
         if name == "successauth":
             self.authenticated = True
@@ -433,6 +505,11 @@ class PocketBridge:
             await self.send_broker_event("price-alert/load")
             await self.status("Авторизация подтверждена. Подписываюсь на котировки…", "connected")
         elif name == "loadHistoryPeriodFast":
+            kind = self.history_request_kind
+            if kind is None:
+                log.debug("Ignoring unsolicited history response")
+                return
+            await self.cancel_history_request()
             raw_bars = data.get("data", []) if isinstance(data, dict) else []
             bars = [bar for item in raw_bars if (bar := normalize_candle(item)) is not None]
             if not bars and raw_bars:
@@ -441,10 +518,36 @@ class PocketBridge:
                 bars.sort(key=lambda bar: bar["time"])
                 deduped = {bar["time"]: bar for bar in bars}
                 clean = [deduped[key] for key in sorted(deduped)]
-                await self.send_browser("history", asset=self.asset, period=self.period, candles=clean)
-                await self.status(f"История загружена: {len(clean)} свечей.", "connected")
+                previous_cursor = self.history_cursor
+                new_cursor = min(bar["time"] for bar in clean)
+                has_more = True
+                if kind == "older":
+                    has_more = previous_cursor is not None and new_cursor < previous_cursor
+                    if has_more:
+                        self.history_cursor = new_cursor
+                else:
+                    self.history_cursor = new_cursor
+                event_type = "historyOlder" if kind == "older" else "history"
+                await self.send_browser(
+                    event_type, asset=self.asset, period=self.period,
+                    candles=clean, has_more=has_more,
+                )
+                await self.send_browser("historyLoading", loading=False, kind=kind)
+                await self.status(
+                    f"Добавлено {len(clean)} свечей истории." if kind == "older"
+                    else f"История загружена: {len(clean)} свечей.",
+                    "connected",
+                )
+                if kind == "older" and not has_more:
+                    await self.send_browser("historyEnd")
             else:
-                await self.status("Соединение есть, но история пока не пришла от сервера.", "warning")
+                await self.send_browser("historyLoading", loading=False, kind=kind)
+                await self.send_browser("historyEnd")
+                await self.status(
+                    "Более ранняя история не найдена." if kind == "older"
+                    else "Соединение есть, но история пока не пришла от сервера.",
+                    "warning",
+                )
         elif name == "updateStream":
             for asset, stamp, price in collect_ticks(data):
                 await self.handle_tick(asset, stamp, price)
@@ -465,22 +568,7 @@ class PocketBridge:
             "changeSymbol", {"asset": self.asset, "period": self.period}
         )
         await self.send_broker_event("subfor", self.asset)
-        # Pocket Option history uses server-native time. OTC feeds commonly
-        # expose timestamps shifted by +02:00; latest live tick supersedes this
-        # fallback as soon as it arrives.
-        end_time = self.latest_tick_time or int(time.time()) + 7200
-        await self.send_broker_event("loadHistoryPeriod", {
-            "asset": self.asset,
-            "index": int(time.time() * 100),
-            "offset": HISTORY_COUNT,
-            "period": self.period,
-            "time": end_time,
-        })
-        self.history_requested = True
-        await self.status(
-            f"Запрошены {HISTORY_COUNT} свечей {self.asset} · {self.period}s.",
-            "connected",
-        )
+        await self.request_history("initial")
 
     async def handle_tick(self, asset: str, stamp: int, price: float) -> None:
         self.latest_tick_time = stamp
