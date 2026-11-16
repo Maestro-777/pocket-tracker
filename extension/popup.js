@@ -163,5 +163,12 @@ $("putButton").addEventListener("click", async function() {
   }
   catch (error) { $("statusText").textContent = error.message || String(error); }
 });
+$("checkOrderStatus").addEventListener("click", async function() {
+  try {
+    const result = await command("PT_CLEAR_UNCERTAIN");
+    if (result && result.ok === false) throw new Error(result.message || "Не удалось проверить статус ордера.");
+    await refresh();
+  } catch (error) { $("statusText").textContent = error.message || String(error); }
+});
 chrome.runtime.onMessage.addListener(function(message) { if (message && message.type === "PT_STATE_CHANGED") refresh(); });
 refresh(); setInterval(refresh,1100);
