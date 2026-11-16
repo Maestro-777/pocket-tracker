@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PocketOption Signal</title>
+  <link rel="stylesheet" href="panel.css" />
+</head>
+<body>
+  <header class="hdr">
+    <div class="hdr-brand">
+      <div class="ttl">PocketOption Signal</div>
+      <div class="sub">pocketoption-signal.online · v3.6.0</div>
+    </div>
+    <div class="st" id="status">СТОП</div>
+  </header>
+
+  <main class="main">
+    <section class="sec">
+      <div class="row">
+        <label class="lbl" for="indicator">Индикатор</label>
+        <select id="indicator" class="ctl">
+          <option value="RSI">RSI</option>
+          <option value="EMA">EMA Cross</option>
+          <option value="SMA">SMA Cross</option>
+          <option value="BB">Bollinger Bands</option>
+          <option value="MACD">MACD</option>
+          <option value="STOCH">Stochastic</option>
+          <option value="CCI">CCI</option>
+          <option value="TREND">Trend</option>
+          <option value="PSAR">Parabolic SAR</option>
+          <option value="SENTIMENT">Sentiment</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label class="lbl" for="mm">Мани-менеджмент</label>
+        <select id="mm" class="ctl">
+          <option value="fixed">Фиксированная ставка</option>
+          <option value="martingale">Мартингейл</option>
+          <option value="anti_mart">Анти-Мартингейл</option>
+          <option value="fibonacci">Фибоначчи</option>
+          <option value="dalembert">Д'Аламбер</option>
+          <option value="oscar">Oscar's Grind</option>
+          <option value="parlay">Парлай</option>
+        </select>
+      </div>
+
+      <div class="grid2">
+        <div class="row">
+          <label class="lbl" for="baseBet">Ставка ($)</label>
+          <input id="baseBet" class="ctl" type="number" min="1" step="0.5" value="1" />
+        </div>
+        <div class="row">
+          <label class="lbl" for="expiration">Экспирация (мин)</label>
+          <select id="expiration" class="ctl">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="5">5</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="btns">
+        <button id="start" class="btn btnP">▶ Старт</button>
+        <button id="stop" class="btn btnS" disabled>⬛ Стоп</button>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="lbl">Журнал событий</div>
+      <div id="log" class="log"></div>
+    </section>
+  </main>
+
+  <script src="panel.js"></script>
+</body>
+</html>
