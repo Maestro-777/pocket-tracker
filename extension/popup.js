@@ -125,24 +125,41 @@ $("subscribe").addEventListener("click", async function() {
     const asset = $("assetInput").value.trim() || "AUTO";
     await command("PT_SET_CONFIG", { patch:{asset:asset} });
     const result = await command("PT_SUBSCRIBE");
+    if (result && result.ok === false) throw new Error(result.message || "Не удалось подписаться.");
     if (result && result.message) $("statusText").textContent = result.message;
     lastConfigKey = ""; await refresh();
   } catch (error) { $("statusText").textContent = error.message || String(error); }
 });
 $("signalToggle").addEventListener("change", async function(event) {
-  try { await command("PT_SET_SIGNAL", { enabled:event.target.checked }); await refresh(); }
+  try {
+    const result = await command("PT_SET_SIGNAL", { enabled:event.target.checked });
+    if (result && result.ok === false) throw new Error(result.message || "Не удалось включить поиск сигналов.");
+    await refresh();
+  }
   catch (error) { event.target.checked = false; $("statusText").textContent = error.message || String(error); }
 });
 $("autoToggle").addEventListener("change", async function(event) {
-  try { await command("PT_SET_AUTO", { enabled:event.target.checked }); await refresh(); }
+  try {
+    const result = await command("PT_SET_AUTO", { enabled:event.target.checked });
+    if (result && result.ok === false) throw new Error(result.message || "Не удалось включить автоторговлю.");
+    await refresh();
+  }
   catch (error) { event.target.checked = false; $("statusText").textContent = error.message || String(error); }
 });
 $("callButton").addEventListener("click", async function() {
-  try { await command("PT_MANUAL_TRADE", { direction:"CALL" }); await refresh(); }
+  try {
+    const result = await command("PT_MANUAL_TRADE", { direction:"CALL" });
+    if (result && result.ok === false) throw new Error(result.message || "CALL не отправлен.");
+    await refresh();
+  }
   catch (error) { $("statusText").textContent = error.message || String(error); }
 });
 $("putButton").addEventListener("click", async function() {
-  try { await command("PT_MANUAL_TRADE", { direction:"PUT" }); await refresh(); }
+  try {
+    const result = await command("PT_MANUAL_TRADE", { direction:"PUT" });
+    if (result && result.ok === false) throw new Error(result.message || "PUT не отправлен.");
+    await refresh();
+  }
   catch (error) { $("statusText").textContent = error.message || String(error); }
 });
 chrome.runtime.onMessage.addListener(function(message) { if (message && message.type === "PT_STATE_CHANGED") refresh(); });
