@@ -245,18 +245,27 @@
     }
     if (name === "updateOpenedDeals") {
       const deals = safeDeals(payload);
-      rec.activeDealCount = deals.filter(function(d) { return d.closeTimestamp == null || d.closeTimestamp === 0 || d.closeTimestamp === ""; }).length;
-      if (rec.activeDealCount > 0) {
+      const reportedOpenCount = deals.filter(function(d) { return d.closeTimestamp == null || d.closeTimestamp === 0 || d.closeTimestamp === ""; }).length;
+      if (reportedOpenCount > 0) {
+        rec.activeDealCount = reportedOpenCount;
         rec.pendingOrderId = null;
         rec.pendingOrderAt = 0;
-      } else if (rec.pendingOrderId != null && rec.pendingOrderAt &&
-          Date.now() - rec.pendingOrderAt >= 30000) {
-        rec.ownRequestIds.delete(String(rec.pendingOrderId));
-        rec.pendingOrderId = null;
-        rec.pendingOrderAt = 0;
-        post("ORDER_STATUS_RESOLVED", { reason: "empty_open_deals_snapshot" });
-      } else if (rec.statusRequestPending && rec.pendingOrderId == null) {
-        post("ORDER_STATUS_RESOLVED", { reason: "broker_reports_no_open_deals" });
+        rec.lastOrderAckAt = 0;
+      } else if (rec.lastOrderAckAt && Date.now() - rec.lastOrderAckAt < 20000) {
+        // Do not trust an immediately stale empty snapshot after a positive broker ACK.
+        rec.activeDealCount = 1;
+      } else {
+        rec.activeDealCount = 0;
+        rec.lastOrderAckAt = 0;
+        if (rec.pendingOrderId != null && rec.pendingOrderAt &&
+            Date.now() - rec.pendingOrderAt >= 30000) {
+          rec.ownRequestIds.delete(String(rec.pendingOrderId));
+          rec.pendingOrderId = null;
+          rec.pendingOrderAt = 0;
+          post("ORDER_STATUS_RESOLVED", { reason: "empty_open_deals_snapshot" });
+        } else if (rec.statusRequestPending && rec.pendingOrderId == null) {
+          post("ORDER_STATUS_RESOLVED", { reason: "broker_reports_no_open_deals" });
+        }
       }
       rec.statusRequestPending = false;
       post("OPEN_DEALS", { deals: deals });
@@ -270,6 +279,10 @@
         rec.pendingOrderId = null;
         rec.pendingOrderAt = 0;
         rec.activeDealCount = Math.max(1, rec.activeDealCount);
+        rec.lastOrderAckAt = Date.now();
+        setTimeout(function() {
+          if (rec.ws.readyState === NativeWebSocket.OPEN && rec.lastOrderAckAt) sendRaw(rec, "updateOpenedDeals");
+        }, 20000);
         post("ORDER_ACK", { accepted: true, order: {
           id: payload.id ?? null, requestId: payload.requestId,
           asset: payload.asset || "", amount: Number(payload.amount || 0)
@@ -292,6 +305,7 @@
       return;
     }
     if (name === "successcloseOrder") {
+      rec.lastOrderAckAt = 0;
       const deals = safeDeals(payload);
       post("CLOSED_DEALS", { deals: deals });
       if (rec.demoEndpoint && rec.serverDemo === true) sendRaw(rec, "updateOpenedDeals");
@@ -443,7 +457,7 @@
             ws: ws, host: host, demoEndpoint: isDemoHost(host),
             serverDemo: null, balanceKnown: false, authenticated: false,
             lastDataAt: 0, pendingBinaryEvent: null, subscribedAsset: null,
-            ownRequestIds: new Set(), pendingOrderId: null, pendingOrderAt: 0, activeDealCount: 0, statusRequestPending: false
+            ownRequestIds: new Set(), pendingOrderId: null, pendingOrderAt: 0, activeDealCount: 0, lastOrderAckAt: 0, statusRequestPending: false
           };
           sockets.set(ws, rec);
           try { ws.binaryType = "arraybuffer"; } catch (_) {}
