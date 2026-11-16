@@ -3,7 +3,7 @@
 (() => {
   const host = location.hostname.toLowerCase();
   const isTracker = host === "127.0.0.1" || host === "localhost";
-  const isBroker = /^(?:[a-z0-9-]+\\.)*pocketoption\\.com$/i.test(host);
+  const isBroker = /^(?:[a-z0-9-]+[.])*pocketoption[.]com$/i.test(host);
   if (!isTracker && !isBroker) return;
 
   let panel;
