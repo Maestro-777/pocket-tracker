@@ -65,6 +65,7 @@
   let hasMoreHistory = true;
   let initialHistoryLoaded = false;
   let autoLoadArmed = false;
+  let followLive = true;
 
   let favoriteIds = loadStoredArray("pocket-tracker.indicator-favorites")
     .filter(id => indicatorCatalog.some(item => item.id === id));
@@ -243,7 +244,7 @@
     }
     if (message.type === "history") {
       if (message.asset !== activeAsset || Number(message.period) !== activePeriod) return;
-      const cutoff = Math.floor(Date.now() / 1000) - 7 * 86400;
+      const cutoff = Math.floor(Date.now() / 1000) - 3 * 86400;
       const received = Array.isArray(message.candles) ? message.candles : [];
       candles = new Map(received.filter(bar => Number(bar.time) >= cutoff).map(bar => [Number(bar.time), normalizeBar(bar)]));
       sortedBarsCache = null;
@@ -256,9 +257,10 @@
       hasMoreHistory = message.has_more !== false;
       paintCandles(true);
       $("candle-count").textContent = candles.size.toLocaleString("ru-RU");
-      $("data-state").textContent = "LIVE";
-      $("data-state").classList.add("live");
+      $("data-state").textContent = "HISTORY";
+      $("data-state").classList.remove("live");
       emptyNode.classList.add("hidden");
+      followLive = true;
       setHistoryLoading(historyLoading, "bulk");
       return;
     }
@@ -288,11 +290,26 @@
     if (message.type === "candle") {
       if (message.asset !== activeAsset) return;
       const bar = normalizeBar(message.candle);
-      if (!bar || !Number.isFinite(bar.time)) return;
+      if (!bar || !Number.isFinite(bar.time) || !Number.isFinite(bar.close)) return;
       liveCandle = bar;
-      candles.set(bar.time, candles.has(bar.time) ? mergeBars(candles.get(bar.time), bar) : bar);
-      sortedBarsCache = null;
-      candleSeries.update(toChartCandle(bar));
+      const previous = candles.get(bar.time);
+      const merged = previous ? mergeBars(previous, bar) : bar;
+      candles.set(bar.time, merged);
+      if (sortedBarsCache) {
+        const lastIndex = sortedBarsCache.length - 1;
+        const last = sortedBarsCache[lastIndex];
+        if (!last || bar.time > last.time) sortedBarsCache.push(merged);
+        else if (bar.time === last.time) sortedBarsCache[lastIndex] = merged;
+        else sortedBarsCache = null;
+      }
+      const rows = sortedBarsCache || sortedBars();
+      const lastRow = rows[rows.length - 1];
+      if (!lastRow || bar.time >= lastRow.time) {
+        candleSeries.update(toChartCandle(merged));
+      } else {
+        candleSeries.setData(rows.map(toChartCandle));
+      }
+      if (followLive) chart.timeScale().scrollToRealTime();
       scheduleIndicatorCalculation();
       $("candle-count").textContent = candles.size.toLocaleString("ru-RU");
       $("data-state").textContent = "LIVE";
@@ -341,7 +358,7 @@
   function appendOlderHistory(rows) {
     const visibleRange = chart.timeScale().getVisibleLogicalRange();
     const previousSize = candles.size;
-    const cutoff = Math.floor(Date.now() / 1000) - 7 * 86400;
+    const cutoff = Math.floor(Date.now() / 1000) - 3 * 86400;
     for (const row of rows) {
       const bar = normalizeBar(row);
       if (!Number.isFinite(bar.time) || !Number.isFinite(bar.close) || bar.time < cutoff) continue;
@@ -406,7 +423,10 @@
     const rows = sortedBars();
     candleSeries.setData(rows.map(toChartCandle));
     scheduleIndicatorCalculation();
-    if (fit) chart.timeScale().fitContent();
+    if (fit) {
+      chart.timeScale().fitContent();
+      followLive = true;
+    }
     if (rows.length) {
       emptyNode.classList.add("hidden");
       $("data-state").textContent = "LIVE";
@@ -452,6 +472,7 @@
     historyLoading = false;
     hasMoreHistory = true;
     autoLoadArmed = false;
+    followLive = true;
     $("last-price").textContent = "—";
     $("price-time").textContent = "ожидание потока";
     $("candle-count").textContent = "0";
@@ -730,7 +751,7 @@
     indicatorRefreshTimer = setTimeout(() => {
       indicatorRefreshTimer = null;
       runIndicatorCalculation();
-    }, 650);
+    }, 1400);
   }
 
   function runIndicatorCalculation() {
@@ -945,6 +966,10 @@
 
   chart.timeScale().subscribeVisibleLogicalRangeChange(range=>{
     syncTimeRanges(chart,range);
+    if (range && initialHistoryLoaded) {
+      const rows = sortedBars();
+      followLive = range.to >= rows.length - 3;
+    }
     if (!autoLoadArmed || !range || !initialHistoryLoaded || historyLoading || !hasMoreHistory) return;
     if (range.from<=2) {
       autoLoadArmed = false;
@@ -972,7 +997,7 @@
     $("tool-hint").textContent = "Все пользовательские рисунки удалены";
   });
   function shiftVisibleBars(direction) {
-    if (direction < 0) autoLoadArmed = true;
+    if (direction < 0) { autoLoadArmed = true; followLive = false; }
     const scale = chart.timeScale();
     const range = scale.getVisibleLogicalRange();
     if (!range) return;
@@ -995,7 +1020,7 @@
   $("nav-right").addEventListener("click",()=>shiftVisibleBars(1));
   $("nav-zoom-in").addEventListener("click",()=>zoomVisible(0.75));
   $("nav-zoom-out").addEventListener("click",()=>zoomVisible(1.33));
-  $("nav-latest").addEventListener("click",()=>chart.timeScale().scrollToRealTime());
+  $("nav-latest").addEventListener("click",()=>{followLive=true;chart.timeScale().scrollToRealTime();});
 
   $("open-indicators").addEventListener("click",openIndicatorLibrary);
   $("close-indicators").addEventListener("click",()=>$("indicator-modal").hidden=true);
