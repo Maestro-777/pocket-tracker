@@ -119,6 +119,8 @@
     state.current = null;
     state.candleCount = 0;
     state.historyRows = 0;
+    state.quote = null;
+    state.lastTickAt = 0;
     state.rsi = null;
     state.bbUpper = null;
     state.bbLower = null;
