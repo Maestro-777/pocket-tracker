@@ -8,7 +8,7 @@
   const allowedEvents = new Set(["successauth","loadHistoryPeriodFast","updateStream","updateAssets"]);
   const stats = { installed:true, socketsCreated:0, socketsOpened:0, socketsClosed:0, socketErrors:0,
     incomingFrames:0, outgoingFrames:0, incomingEvents:[], outgoingEvents:[], lastDirection:"",
-    lastEvent:"", lastAt:0, socketHost:"", socketPath:"", readyState:"none" };
+    lastEvent:"", lastAt:0, socketHost:"", socketPath:"", readyState:"none", sockets:[] };
   function safeUrl(value) {
     try { const u = new URL(String(value), location.href); return { host:u.hostname, path:u.pathname.slice(0,120) }; }
     catch (_) { return {host:"",path:""}; }
@@ -16,7 +16,7 @@
   function emit(type, payload) {
     try { window.postMessage({source:"pt-pocketoption-page-hook",type,payload},location.origin); } catch (_) {}
   }
-  function diagnostic(extra={}) { emit("diagnostic",{...stats,...extra,at:Date.now()}); }
+  function diagnostic(extra={}) { emit("diagnostic",{...stats,sockets:stats.sockets.map(s=>({...s})),...extra,at:Date.now()}); }
   function remember(list,name) { if (!name) return; list.push(name); if(list.length>8) list.shift(); }
   function parseSocketFrame(raw,incoming) {
     if (typeof raw !== "string") return;
@@ -41,14 +41,16 @@
   function WrappedWebSocket(...args) {
     const socket=new NativeWebSocket(...args);
     stats.socketsCreated++;
-    const safe=safeUrl(args[0]); stats.socketHost=safe.host; stats.socketPath=safe.path;
-    stats.readyState="connecting"; diagnostic();
-    socket.addEventListener("open",()=>{stats.socketsOpened++;stats.readyState="open";diagnostic();});
-    socket.addEventListener("close",()=>{stats.socketsClosed++;stats.readyState="closed";diagnostic();});
-    socket.addEventListener("error",()=>{stats.socketErrors++;stats.readyState="error";diagnostic();});
-    socket.addEventListener("message",event=>parseSocketFrame(event.data,true));
+    const safe=safeUrl(args[0]);
+    const info={id:stats.socketsCreated,host:safe.host,path:safe.path,state:"connecting",in:0,out:0,lastIn:"",lastOut:""};
+    stats.sockets.push(info); if(stats.sockets.length>12) stats.sockets.shift();
+    stats.socketHost=safe.host; stats.socketPath=safe.path; stats.readyState="connecting"; diagnostic();
+    socket.addEventListener("open",()=>{stats.socketsOpened++;info.state="open";stats.readyState="open";diagnostic();});
+    socket.addEventListener("close",()=>{stats.socketsClosed++;info.state="closed";stats.readyState="closed";diagnostic();});
+    socket.addEventListener("error",()=>{stats.socketErrors++;info.state="error";diagnostic();});
+    socket.addEventListener("message",event=>{const before=stats.incomingFrames;parseSocketFrame(event.data,true);if(stats.incomingFrames>before){info.in++;info.lastIn=stats.lastEvent;diagnostic();}});
     const originalSend=socket.send;
-    socket.send=function(data){parseSocketFrame(data,false);return originalSend.call(this,data);};
+    socket.send=function(data){const before=stats.outgoingFrames;parseSocketFrame(data,false);if(stats.outgoingFrames>before){info.out++;info.lastOut=stats.lastEvent;diagnostic();}return originalSend.call(this,data);};
     return socket;
   }
   WrappedWebSocket.prototype=NativeWebSocket.prototype;
