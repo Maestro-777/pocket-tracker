@@ -29,7 +29,7 @@ async function getMonitor() {
 }
 function showAccount(accountState, executionState) {
   const type = accountState?.account || "unknown";
-  const verified = accountState?.demo_verified === true && executionState?.can_trade === true;
+  const verified = accountState?.demo_verified === true && executionState?.can_trade === true && current.tracker.length > 0;
   $("account-state").textContent = type === "demo"
     ? (verified ? "DEMO · сервер подтвердил тип счёта" : "DEMO указан, но серверное подтверждение отсутствует")
     : type === "real" ? "REAL · торговля заблокирована" : "Тип счёта не подтверждён";
