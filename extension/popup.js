@@ -128,8 +128,7 @@ $("auto-toggle").addEventListener("click", async () => {
   $("trade-result").textContent = enabled ? "Включаю автоторговлю…" : "Останавливаю автоторговлю…";
   try {
     await chrome.runtime.sendMessage({ type:"PT_SET_AUTO_TRADING", enabled, amount });
-    current.autoTrading = enabled;
-    $("auto-toggle").textContent = enabled ? "Остановить автоторговлю" : "Включить автоторговлю";
+    $("trade-result").textContent = "Команда передана · ожидаю подтверждения локального моста.";
   } catch (error) {
     $("trade-result").textContent = "Не удалось изменить режим: " + error.message;
   }
