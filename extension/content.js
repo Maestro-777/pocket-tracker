@@ -17,7 +17,7 @@
     autoTrading: false, amount: 1, orderPending: false, activeOrder: false,
     activeDealCount: 0, executionUncertain: false, lastOrder: null,
     journal: [], status: "Ожидание торговой вкладки Pocket Option.",
-    config: Object.assign({}, DEFAULTS), subscribedAsset: "", lastSignalId: ""
+    config: Object.assign({}, DEFAULTS), subscribedAsset: "", lastSignalId: "", historyCycle: 0
   };
   let statusTimer = null;
 
@@ -131,12 +131,19 @@
   function subscribeCurrentAsset() {
     const asset = safeSymbol(activeAsset());
     if (!state.demoVerified || !asset) return;
-    if (state.subscribedAsset === asset) return;
+    if (sameAsset(state.subscribedAsset, asset)) return;
     resetMarketData();
     state.asset = asset;
     state.subscribedAsset = asset;
+    const cycle = ++state.historyCycle;
     emitCommand("SUBSCRIBE", { asset: asset, period: 5, lookbackDays: state.config.lookbackDays });
-    note("Подписка запрошена: " + asset + " · 5 секунд. Ожидаю историю и поток котировок.");
+    note("Подписка запрошена: " + asset + " · 5 секунд. Запрашиваю историю до 30 дней.");
+    setTimeout(function() {
+      if (cycle !== state.historyCycle || !state.demoVerified ||
+          !sameAsset(activeAsset(), asset) || state.candleCount > 0) return;
+      log("Полная история пока не получена. Повторяю запрос с меньшей глубиной.");
+      emitCommand("SUBSCRIBE", { asset: asset, period: 5, lookbackSeconds: 9000 });
+    }, 9000);
   }
   function inferPointSize(asset) {
     const row = state.assets.find(function(x) { return x.symbol === asset; });
@@ -313,6 +320,7 @@
     state.rsi = avgLoss === 0 ? (avgGain === 0 ? 50 : 100) : 100 - 100/(1+avgGain/avgLoss);
   }
   function checkSignal(closedCandle) {
+    if (!state.signalEnabled) return;
     updateIndicators();
     if (state.rsi === null || state.bbUpper === null || state.bbLower === null) return;
     const asset = activeAsset();
@@ -336,7 +344,12 @@
       createdAt:Date.now()
     };
     log("Сигнал " + direction + " · " + asset + " · RSI " + rsi.toFixed(1));
-    if (state.autoTrading && state.signalEnabled) sendOrder(direction, "auto");
+    if (state.autoTrading && state.signalEnabled) {
+      sendOrder(direction, "auto").catch(function(error) {
+        state.autoTrading = false;
+        log("Автоторговля остановлена: " + (error && error.message ? error.message : String(error)));
+      });
+    }
   }
   function onTick(tick) {
     const asset = safeSymbol(tick.asset);
@@ -349,9 +362,12 @@
     if (!state.demoVerified) return;
     const time = normalizeSeconds(tick.time), price = Number(tick.price);
     if (!time || !Number.isFinite(price) || price <= 0) return;
+    const tickMs = time * 1000;
+    const ageMs = Date.now() - tickMs;
+    if (ageMs > 30000 || ageMs < -60000) return;
     const bucket = Math.floor(time / 5) * 5;
     state.quote = price;
-    state.lastTickAt = Date.now();
+    state.lastTickAt = tickMs;
     if (!state.current) {
       const existing = state.candles.find(function(c){return c.time===bucket;});
       if (existing) {
