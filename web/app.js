@@ -142,6 +142,7 @@
     } catch (error) {
       console.warn("Cannot save indicator settings", error);
     }
+    syncStrategyConfig();
   }
 
   function normalizeIndicatorInstance(item) {
@@ -202,7 +203,10 @@
     if (manuallyDisconnected) return;
     try { socket = new WebSocket("ws://127.0.0.1:8765"); }
     catch (error) { scheduleRetry(); return; }
-    socket.addEventListener("open", () => setBridgeState(true));
+    socket.addEventListener("open", () => {
+      setBridgeState(true);
+      syncStrategyConfig();
+    });
     socket.addEventListener("message", event => {
       try { handleBridgeMessage(JSON.parse(event.data)); }
       catch (error) { console.warn("Некорректный ответ локального моста", error); }
@@ -226,6 +230,21 @@
     }
     socket.send(JSON.stringify(payload));
     return true;
+  }
+
+  function syncStrategyConfig() {
+    const bb = activeIndicators.find(item => item.id === "bollinger");
+    const rsi = activeIndicators.find(item => item.id === "rsi");
+    sendBridge({
+      action:"strategyConfig",
+      config:{
+        bbPeriod:Number(bb?.params?.period) || 20,
+        bbMultiplier:Number(bb?.params?.multiplier) || 2,
+        bbSource:bb?.params?.source || "close",
+        rsiPeriod:Number(rsi?.params?.period) || 14,
+        rsiSource:rsi?.params?.source || "close"
+      }
+    });
   }
 
   function handleBridgeMessage(message) {
