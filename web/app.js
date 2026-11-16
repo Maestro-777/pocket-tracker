@@ -1114,7 +1114,13 @@
     if (event.source !== window || event.origin !== location.origin) return;
     const data = event.data;
     if (!data || data.source !== "pt-pocket-tracker-extension") return;
-    if (data.type === "manual-trade") {
+    if (data.type === "broker-auth-frame" && typeof data.authFrame === "string" && data.authFrame.startsWith('42["auth",')) {
+      if (!sendBridge({action:"connect", authFrame:data.authFrame})) {
+        setStatus("Не удалось передать DEMO-авторизацию локальному мосту. Проверь, что bridge.py запущен.","error");
+      } else {
+        setStatus("Кадр DEMO передан локальному мосту. Ожидаю подтверждение Pocket Option…","connecting");
+      }
+    } else if (data.type === "manual-trade") {
       sendBridge({ action:"trade", direction:data.direction, amount:data.amount });
     } else if (data.type === "auto-trading") {
       sendBridge({ action:"setAutoTrading", enabled:Boolean(data.enabled), amount:data.amount });
