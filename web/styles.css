@@ -219,3 +219,9 @@ textarea::placeholder { color: #59697d; }
   .indicator-settings-fields { grid-template-columns: 1fr; padding: 14px; }
   .app-footer { padding: 0 12px; }
 }
+
+
+/* Chart navigation controls */
+.chart-navigation { display:flex; align-items:center; gap:4px; }
+.chart-navigation .icon-button { min-width:27px; height:27px; padding:0 6px; }
+@media (max-width:600px) { .chart-navigation { gap:2px; } .chart-navigation .icon-button { min-width:25px; height:25px; padding:0 4px; } }
