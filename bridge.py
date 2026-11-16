@@ -347,6 +347,8 @@ class PocketBridge:
                 self.subscribed_asset = None
             self.asset = asset
             self.period = period
+            if period != 5:
+                self.auto_trading = False
             self.current_bar = None
             self.latest_tick_time = None
             self.pending_live_price = None
@@ -356,6 +358,7 @@ class PocketBridge:
             await self.reset_history()
             if self.authenticated:
                 await self.subscribe_broker()
+            await self.send_browser("executionState", auto_trading=self.auto_trading, can_trade=self.can_trade(), amount=self.auto_trade_amount)
         elif action == "setAutoTrading":
             enabled = bool(command.get("enabled"))
             try:
@@ -733,6 +736,7 @@ class PocketBridge:
             await self.send_broker_event("favorite/load")
             await self.send_broker_event("price-alert/load")
             await self.send_broker_event("updateBalance")
+            await self.send_broker_event("updateOpenedDeals")
             await self.send_browser("accountState", account="unknown", authenticated=True, demo_verified=False)
             await self.status("Авторизация подтверждена. Проверяю тип счёта и подписываюсь на котировки…", "connected")
         elif name == "loadHistoryPeriodFast":
@@ -880,6 +884,10 @@ class PocketBridge:
                             pass
             if symbols:
                 await self.send_browser("assets", symbols=sorted(set(symbols)))
+                await self.send_browser(
+                    "executionState", auto_trading=self.auto_trading,
+                    can_trade=self.can_trade(), amount=self.auto_trade_amount,
+                )
 
     async def subscribe_broker(self) -> None:
         if not self.authenticated or self.broker is None:
@@ -919,6 +927,7 @@ class PocketBridge:
             and self.account_verified_demo
             and self.auth_payload and self.auth_payload.get("isDemo") == 1
             and self.asset in self.asset_ids
+            and self.period == 5
             and not self.execution_uncertain
         )
 
@@ -1017,6 +1026,10 @@ class PocketBridge:
                     "orderResult", success=False, uncertain=True,
                     message="Нет подтверждения брокера; повторная отправка заблокирована до проверки.",
                     request_id=request_id,
+                )
+                await self.send_browser(
+                    "executionState", auto_trading=False,
+                    can_trade=self.can_trade(), amount=self.auto_trade_amount,
                 )
                 return
             if pending["success"]:
