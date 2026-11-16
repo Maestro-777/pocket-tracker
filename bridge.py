@@ -457,7 +457,7 @@ class PocketBridge:
             if self.history_request_kind == kind:
                 self.history_request_kind = None
                 self.history_timeout_task = None
-                await self.send_browser("historyLoading", loading=False, kind=kind)
+                await self.send_browser("historyLoading", loading=False, request_kind=kind)
                 await self.status("Сервер не прислал запрошенную историю. Попробуй ещё раз.", "warning")
         except asyncio.CancelledError:
             raise
@@ -478,7 +478,7 @@ class PocketBridge:
             end_time = self.latest_tick_time or int(time.time()) + 7200
 
         self.history_request_kind = kind
-        await self.send_browser("historyLoading", loading=True, kind=kind)
+        await self.send_browser("historyLoading", loading=True, request_kind=kind)
         await self.send_broker_event("loadHistoryPeriod", {
             "asset": self.asset,
             "index": int(time.time() * 100),
@@ -532,7 +532,7 @@ class PocketBridge:
                     event_type, asset=self.asset, period=self.period,
                     candles=clean, has_more=has_more,
                 )
-                await self.send_browser("historyLoading", loading=False, kind=kind)
+                await self.send_browser("historyLoading", loading=False, request_kind=kind)
                 await self.status(
                     f"Добавлено {len(clean)} свечей истории." if kind == "older"
                     else f"История загружена: {len(clean)} свечей.",
@@ -541,7 +541,7 @@ class PocketBridge:
                 if kind == "older" and not has_more:
                     await self.send_browser("historyEnd")
             else:
-                await self.send_browser("historyLoading", loading=False, kind=kind)
+                await self.send_browser("historyLoading", loading=False, request_kind=kind)
                 await self.send_browser("historyEnd")
                 await self.status(
                     "Более ранняя история не найдена." if kind == "older"
