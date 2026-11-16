@@ -25,7 +25,10 @@ async function updateMonitor(patch) {
 }
 chrome.runtime.onMessage.addListener((message) => {
   if (!message) return;
-  if (message.type === "PT_FORWARD_SIGNAL" && validSignal(message.signal)) sendToBroker({ type: "PT_SIGNAL", signal: message.signal });
+  if (message.type === "PT_FORWARD_SIGNAL" && validSignal(message.signal)) {
+    sendToBroker({ type: "PT_SIGNAL", signal: message.signal });
+    updateMonitor({ lastSignal: message.signal, lastSignalAt: Date.now() }).catch(() => {});
+  }
   if (message.type === "PT_MANUAL_TRADE") {
     const amount = Number(message.amount);
     if (["CALL","PUT"].includes(message.direction) && Number.isFinite(amount) && amount >= 1 && amount <= 50000) {
