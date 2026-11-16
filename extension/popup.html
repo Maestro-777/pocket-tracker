@@ -1,16 +1,25 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pocket Tracker</title><link rel="stylesheet" href="popup.css"></head>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pocket Tracker</title><link rel="stylesheet" href="popup.css"></head>
 <body><main class="app">
-<header><div class="mark">PT</div><div><h1>Pocket Tracker</h1><p>Прямое подключение к Pocket Option</p></div><span class="version">v1.2.1</span></header>
+<header><div class="mark">PT</div><div><h1>Pocket Tracker</h1><p>Поиск сигналов и торговля DEMO</p></div><span class="version">v1.3.0</span></header>
 <section class="status-card"><div class="section-title">СОСТОЯНИЕ ПОДКЛЮЧЕНИЯ</div>
 <div class="status-row"><span class="dot" id="tracker-dot"></span><div><b>Pocket Tracker</b><small id="tracker-status">Проверяем…</small></div></div>
 <div class="status-row"><span class="dot" id="broker-dot"></span><div><b>Pocket Option</b><small id="broker-status">Проверяем…</small></div></div>
-<div class="status-row"><span class="dot warn" id="bridge-dot"></span><div><b>Рыночные данные</b><small id="bridge-status">Мониторинг временно отключён для восстановления графика</small></div></div></section>
-<section class="strategy"><div class="section-title">ТОРГОВЫЕ УСЛОВИЯ</div>
+<div class="status-row"><span class="dot warn" id="bridge-dot"></span><div><b>Торговый мост</b><small id="bridge-status">Ожидание соединения</small></div></div></section>
+<section class="strategy"><div class="section-title">ПОИСК СИГНАЛОВ</div>
 <div class="rule"><span class="tag down">PUT</span><span>Верхняя BB + RSI 77–83</span></div>
 <div class="rule"><span class="tag up">CALL</span><span>Нижняя BB + RSI 18–23</span></div>
-<div class="meta">Таймфрейм 5 секунд <i></i> Экспирация 15 секунд</div></section>
-<section class="account"><div class="section-title">СЧЁТ И БЕЗОПАСНОСТЬ</div><div id="account-state">Тип счёта не определён</div><small id="execution-state">Любое исполнение заблокировано до проверки протокола DEMO.</small></section>
-<section class="stats"><div class="section-title">СТАТИСТИКА СДЕЛОК</div><div class="stats-grid"><div><b id="trades">0</b><small>Сделок</small></div><div><b id="wins">0</b><small>Побед</small></div><div><b id="losses">0</b><small>Поражений</small></div><div><b id="winrate">—</b><small>Win rate</small></div></div><p class="hint">Сделки появятся здесь только после подтверждения брокером. Сигналы и тесты не считаются сделками.</p></section>
+<div class="meta">Свеча 5 секунд · экспирация 15 секунд · анализ после закрытия</div></section>
+<section class="account"><div class="section-title">СЧЁТ И БЕЗОПАСНОСТЬ</div><div id="account-state">Тип счёта не подтверждён</div><small id="execution-state">Исполнение заблокировано до подтверждения DEMO сервером.</small></section>
+<section class="trading">
+<div class="section-title">РУЧНОЕ ОТКРЫТИЕ СДЕЛКИ</div>
+<label for="trade-amount">Сумма сделки</label>
+<input id="trade-amount" type="number" min="1" max="50000" step="0.1" value="1">
+<div class="trade-buttons"><button id="call-trade" class="call" disabled>CALL / BUY ↑</button><button id="put-trade" class="put" disabled>PUT / SELL ↓</button></div>
+<button id="auto-toggle" class="auto" disabled>Включить автоторговлю</button>
+<p id="trade-result" class="hint">Открой Pocket Tracker, подключи DEMO и дождись подтверждения типа счёта.</p>
+</section>
+<section class="stats"><div class="section-title">СТАТИСТИКА СДЕЛОК</div><div class="stats-grid"><div><b id="trades">0</b><small>Сделок</small></div><div><b id="wins">0</b><small>Побед</small></div><div><b id="losses">0</b><small>Поражений</small></div><div><b id="winrate">—</b><small>Win rate</small></div></div><p class="hint">В статистику попадут только сделки, подтверждённые брокером.</p></section>
 <button id="refresh" class="primary">Обновить состояние</button><button id="test" class="secondary">Тест уведомления</button><p id="test-result" class="hint">Тест проверяет только доставку сообщения.</p>
-<footer>Режим совместимости · перехват WebSocket отключён · ордера не отправляются</footer></main><script src="popup.js"></script></body></html>
+<footer>Торговля ограничена DEMO · неизвестный и REAL-счёт блокируются</footer></main><script src="popup.js"></script></body></html>
