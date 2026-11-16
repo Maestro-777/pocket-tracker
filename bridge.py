@@ -1097,6 +1097,7 @@ class PocketBridge:
             except asyncio.TimeoutError:
                 self.execution_uncertain = True
                 self.auto_trading = False
+                await self.send_broker_event("updateOpenedDeals")
                 await self.status("Нет подтверждения открытия от Pocket Option. Проверь историю сделок перед повторной отправкой.", "error")
                 await self.send_browser(
                     "orderResult", success=False, uncertain=True,
@@ -1123,9 +1124,13 @@ class PocketBridge:
                     data=pending["data"], request_id=request_id,
                 )
         except Exception as exc:
+            self.execution_uncertain = True
+            self.auto_trading = False
+            await self.send_broker_event("updateOpenedDeals")
             await self.status(f"Ошибка отправки ордера: {type(exc).__name__}.", "error")
             await self.send_browser(
-                "orderResult", success=False, message="Ошибка отправки ордера.",
+                "orderResult", success=False, uncertain=True,
+                message="Не удалось подтвердить состояние ордера; повторная отправка заблокирована до синхронизации.",
                 request_id=request_id,
             )
         finally:
