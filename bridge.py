@@ -43,10 +43,10 @@ ALLOWED_PERIODS = {5, 15, 30, 60, 300, 900, 1800, 3600}
 DEFAULT_ASSET = "EURUSD_otc"
 # Pocket Option's history channel accepts an offset in bars. Keep each page
 # large enough to reduce round trips, but small enough for a WebSocket frame.
-HISTORY_COUNT = 9000
-AUTO_HISTORY_DAYS = 7
-MAX_AUTO_HISTORY_PAGES = 1200
-HISTORY_PAGE_DELAY = 0.08
+HISTORY_PAGE_SIZE = 6000
+AUTO_HISTORY_DAYS = 3
+MAX_AUTO_HISTORY_PAGES = 20
+HISTORY_PAGE_DELAY = 0.15
 
 logging.basicConfig(
     level=logging.INFO,
@@ -228,7 +228,9 @@ class PocketBridge:
         self.history_candles: dict[int, dict[str, Any]] = {}
         self.history_auto_pages = 0
         self.history_auto_loading = False
-        self.history_has_more = True
+        self.history_has_more = False
+        self.history_target_time: int | None = None
+        self.history_page_task: asyncio.Task | None = None
         self.closed = False
 
     async def send_browser(self, kind: str, **payload: Any) -> None:
@@ -368,6 +370,7 @@ class PocketBridge:
         await self.cancel_history_request()
         self.history_cursor = None
         self.history_reference_time = None
+        self.history_target_time = None
         self.history_candles.clear()
         self.history_auto_pages = 0
         self.history_auto_loading = False
@@ -503,23 +506,28 @@ class PocketBridge:
             return
         if self.history_request_kind is not None:
             return
-        if kind == "older" or kind == "bulk":
+        if kind in {"older", "bulk"}:
             if before_time is None:
                 before_time = self.history_cursor
             if before_time is None:
                 return
             end_time = max(1, int(before_time) - self.period)
         else:
-            # Until the first live tick arrives, use server-native OTC time.
+            # Anchor to the selected instrument's latest tick only.
             end_time = self.latest_tick_time or int(time.time())
             self.history_reference_time = end_time
+            self.history_target_time = end_time - AUTO_HISTORY_DAYS * 86400
+
+        target = self.history_target_time or (end_time - AUTO_HISTORY_DAYS * 86400)
+        remaining_bars = max(1, int((end_time - target) / self.period) + 2)
+        page_size = min(HISTORY_PAGE_SIZE, remaining_bars)
 
         self.history_request_kind = kind
         await self.send_browser("historyLoading", loading=True, request_kind=kind)
         await self.send_broker_event("loadHistoryPeriod", {
             "asset": self.asset,
-            "index": int(time.time() * 100),
-            "offset": HISTORY_COUNT,
+            "index": int(time.time() * 1000),
+            "offset": page_size,
             "period": self.period,
             "time": end_time,
         })
@@ -527,11 +535,11 @@ class PocketBridge:
         if kind == "older":
             await self.status(f"Запрашиваю ещё {HISTORY_COUNT} старых свечей…", "connected")
         elif kind == "bulk":
-            await self.status("Загружаю историю за последний месяц…", "connected")
+            await self.status(f"Догружаю историю {self.asset} · {self.period}s за последние 3 дня…", "connected")
         else:
             self.history_requested = True
             await self.status(
-                f"Запрашиваю до {HISTORY_COUNT} свечей {self.asset} · {self.period}s.",
+                f"Запрашиваю историю {self.asset} · {self.period}s за последние 3 дня (порциями).",
                 "connected",
             )
 
