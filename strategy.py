@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Sequence
 from typing import Any
 
@@ -94,7 +95,7 @@ class ClosedCandleStrategy:
             "bollingerLower": lower,
             "rsi": rsi,
             "distancePoints": distance_points,
-            "createdAt": candle_time * 1000,
+            "createdAt": int(time.time() * 1000),
         }
 
     @staticmethod
