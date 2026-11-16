@@ -172,17 +172,18 @@ def collect_ticks(value: Any, asset_hint: str | None = None) -> list[tuple[str, 
             hint = key if isinstance(key, str) and re.fullmatch(r"[A-Za-z0-9_#]{3,32}", key) else asset_hint
             found.extend(collect_ticks(child, hint))
     elif isinstance(value, (list, tuple)):
-        # Common flat form: [asset, timestamp, price].
-        if len(value) >= 3 and isinstance(value[0], str):
-            stamp = as_seconds(value[1])
-            try:
-                price = float(value[2])
-            except (TypeError, ValueError):
-                price = float("nan")
-            if stamp is not None and math.isfinite(price):
-                found.append((value[0], stamp, price))
-                return found
-            # Nested form: [asset, [[timestamp, price], ...]].
+        # Common forms: [asset, timestamp, price] and
+        # [asset, [[timestamp, price], ...]].
+        if len(value) >= 2 and isinstance(value[0], str):
+            if len(value) >= 3:
+                stamp = as_seconds(value[1])
+                try:
+                    price = float(value[2])
+                except (TypeError, ValueError):
+                    price = float("nan")
+                if stamp is not None and math.isfinite(price):
+                    found.append((value[0], stamp, price))
+                    return found
             hint = value[0]
             for child in value[1:]:
                 found.extend(collect_ticks(child, hint))
