@@ -44,7 +44,7 @@ DEFAULT_ASSET = "EURUSD_otc"
 # Pocket Option's history channel accepts an offset in bars. Keep each page
 # large enough to reduce round trips, but small enough for a WebSocket frame.
 HISTORY_COUNT = 9000
-AUTO_HISTORY_DAYS = 30
+AUTO_HISTORY_DAYS = 31
 MAX_AUTO_HISTORY_PAGES = 1200
 HISTORY_PAGE_DELAY = 0.08
 
