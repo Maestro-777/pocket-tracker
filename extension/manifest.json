@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pocket Tracker — Signal Monitor",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Прямой монитор рыночных данных Pocket Option. Торговля пока заблокирована.",
   "permissions": ["tabs", "scripting", "storage"],
   "host_permissions": [
@@ -15,10 +15,13 @@
   "content_scripts": [
     {
       "matches": ["https://pocketoption.com/*", "https://*.pocketoption.com/*"],
-      "js": ["page-hook.js"],
-      "run_at": "document_start",
-      "world": "MAIN"
-    },
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
+/*SAFE_DISABLED_PAGE_HOOK*/
+/*
     {
       "matches": [
         "https://pocketoption.com/*",
