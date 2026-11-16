@@ -399,7 +399,7 @@ class PocketBridge:
                 return
             if enabled and not self.can_auto_trade():
                 await self.status("Автоторговля не включена: требуется подтверждённый DEMO-счёт и доступный торговый инструмент.", "warning")
-                await self.send_browser("executionState", auto_trading=False, can_trade=False)
+                await self.send_browser("executionState", auto_trading=False, can_trade=False, can_auto_trade=False)
                 return
             self.auto_trade_amount = amount
             self.auto_trading = enabled
@@ -893,7 +893,7 @@ class PocketBridge:
             await self.send_browser("dealClosed", deal=data)
             await self.send_browser(
                 "executionState", auto_trading=self.auto_trading,
-                can_trade=self.can_trade(), amount=self.auto_trade_amount,
+                can_trade=self.can_trade(), can_auto_trade=self.can_auto_trade(), amount=self.auto_trade_amount,
             )
         elif name == "updateOpenedDeals":
             if isinstance(data, list):
