@@ -118,7 +118,8 @@
     indicatorWorker.onerror = (event) => {
       console.error("Indicator worker failed", event.message);
       indicatorWorkerBusy = false;
-      setStatus("Ошибка расчёта индикатора: " + (event.message || "worker"), "warning");
+      indicatorNeedsRefresh = false;
+      setStatus("Не удалось запустить расчёт индикаторов. Перезагрузи страницу; подробности в консоли.", "warning");
     };
   } catch (error) {
     console.error("Cannot create indicator worker", error);
@@ -737,6 +738,10 @@
     const message = event.data;
     indicatorWorkerBusy = false;
     if (message.type === "result" && message.jobId === latestIndicatorJobId) {
+      if (message.errors && message.errors.length) {
+        console.warn("Some indicators failed", message.errors);
+        setStatus("Не рассчитаны индикаторы: " + message.errors.map(item=>item.id).join(", "), "warning");
+      }
       renderIndicatorResults(message.results || []);
     } else if (message.type === "error") {
       console.error("Indicator calculation error:",message.error);
@@ -803,7 +808,10 @@
   function clearRenderedIndicators() {
     for (const series of overlaySeries) chart.removeSeries(series);
     overlaySeries = [];
-    for (const pane of oscillatorPanes) pane.chart.remove();
+    for (const pane of oscillatorPanes) {
+      if (pane.resizeObserver) pane.resizeObserver.disconnect();
+      pane.chart.remove();
+    }
     oscillatorPanes = [];
     paneHost.innerHTML = "";
     paneHost.classList.remove("has-panes");
@@ -896,8 +904,11 @@
     if (visibleRange) {
       try { paneChart.timeScale().setVisibleLogicalRange(visibleRange); } catch (_) {}
     }
-    oscillatorPanes.push({chart:paneChart,container});
-    new ResizeObserver(()=>paneChart.applyOptions({width:target.clientWidth,height:target.clientHeight})).observe(target);
+    const resizeObserver = new ResizeObserver(()=>paneChart.applyOptions({
+      width:Math.max(1,target.clientWidth),height:Math.max(1,target.clientHeight)
+    }));
+    resizeObserver.observe(target);
+    oscillatorPanes.push({chart:paneChart,container,resizeObserver});
   }
 
   function syncTimeRanges(source,range) {
