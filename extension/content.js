@@ -16,7 +16,7 @@
     panel = document.createElement("section");
     panel.id = "pocket-tracker-signal-bridge";
     panel.style.cssText = "position:fixed;right:18px;top:90px;z-index:2147483647;width:310px;padding:14px;border:1px solid #34465d;border-radius:14px;background:#101824;color:#e8eef6;box-shadow:0 12px 36px #0008;font:13px/1.45 system-ui,sans-serif;display:none";
-    panel.innerHTML = '<div style="display:flex;justify-content:space-between"><strong>Pocket Tracker</strong><button data-close style="background:#263548;color:#fff;border:0;border-radius:8px;padding:4px 9px">Свернуть</button></div><div data-state style="margin-top:9px;color:#9fb0c5">Ожидание данных Pocket Option</div><div data-details style="margin-top:8px"></div><div style="font-size:11px;color:#f0c477;margin-top:10px">Прямой мониторинг · торговля заблокирована</div>';
+    panel.innerHTML = '<div style="display:flex;justify-content:space-between"><strong>Pocket Tracker</strong><button data-close style="background:#263548;color:#fff;border:0;border-radius:8px;padding:4px 9px">Свернуть</button></div><div data-state style="margin-top:9px;color:#9fb0c5">Ожидание данных Pocket Option</div><div data-details style="margin-top:8px"></div><div style="font-size:11px;color:#f0c477;margin-top:10px">Режим совместимости · перехват WebSocket отключён</div>';
     panel.querySelector("[data-close]").addEventListener("click", () => panel.style.display = "none");
     document.documentElement.appendChild(panel);
     return panel;
@@ -36,7 +36,7 @@
       " · событие: " + (d.lastEvent || "нет") + " · Рыночные события: " + marketState.candleCount +
       " · инструмент: " + (marketState.lastAsset || "ожидание") +
       " · последние данные: " + (marketState.lastMarketAt ? new Date(marketState.lastMarketAt).toLocaleTimeString() : "нет") +
-      " · исполнение: " + (safe ? "DEMO допущен к следующему этапу" : "заблокировано");
+      " · мониторинг: отключён для совместимости · исполнение: заблокировано";
     root.style.display = "block";
   }
 
@@ -98,7 +98,7 @@
         sendState();
       }
     });
-    ensurePanel().querySelector("[data-state]").textContent = "Хук установлен · проверяю WebSocket";
+    ensurePanel().querySelector("[data-state]").textContent = "Мониторинг WebSocket отключён · график Pocket Option работает без вмешательства";
     panel.style.display = "block";
   }
 
