@@ -1042,7 +1042,9 @@ class PocketBridge:
         pending = {"event": asyncio.Event(), "success": False, "data": None}
         self.pending_orders[request_id] = pending
         payload = {
-            "asset": self.asset_ids[self.asset],
+            # The current Pocket Option client schema uses the asset symbol
+            # (Asset StrEnum value) in openOrder, not the numeric stream ID.
+            "asset": self.asset,
             "amount": amount,
             "action": direction.lower(),
             "isDemo": 1,
