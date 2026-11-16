@@ -1,2 +1,0 @@
-websockets>=12,<16
-certifi>=2025.1.31
