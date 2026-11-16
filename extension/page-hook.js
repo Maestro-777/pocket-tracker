@@ -160,19 +160,10 @@
     }
     post("ASSET_LIST", { assets: assets });
   }
+  // updateCharts can contain several saved/hidden charts. It is not a reliable
+  // indicator of the currently selected chart; the outgoing changeSymbol event is.
   function extractAssetFromCharts(payload) {
-    const rows = Array.isArray(payload) ? payload : [payload];
-    for (const row of rows) {
-      if (!row || typeof row !== "object") continue;
-      let settings = row.settings;
-      if (typeof settings === "string") {
-        try { settings = JSON.parse(settings); } catch (_) { settings = null; }
-      }
-      const symbol = (settings && (settings.symbol || settings.asset)) || row.symbol || row.asset;
-      if (typeof symbol === "string" && symbol) {
-        post("CHART_ASSET", { asset: symbol, period: Number(settings && (settings.chartPeriod || settings.fastTimeframe)) || null });
-      }
-    }
+    return;
   }
   function emitHistory(name, payload) {
     let data = Array.isArray(payload) && payload[0] && typeof payload[0] === "object" && !Array.isArray(payload[0])
@@ -385,14 +376,21 @@
     if (!/^[A-Za-z0-9_#]{3,32}$/.test(asset)) return post("COMMAND_RESULT", { command: "SUBSCRIBE", ok: false, message: "Некорректный символ инструмента." });
     const previous = rec.subscribedAsset;
     if (previous && previous !== asset) sendRaw(rec, "unsubfor", previous);
-    if (!sendRaw(rec, "subfor", asset)) return post("COMMAND_RESULT", { command: "SUBSCRIBE", ok: false, message: "Не удалось подписаться на поток котировок." });
-    sendRaw(rec, "changeSymbol", { asset: asset, period: period });
+    // Follow the terminal sequence used by the reference extensions:
+    // select symbol, subscribe the stream, then request a bounded history window.
+    if (!sendRaw(rec, "changeSymbol", { asset: asset, period: period })) {
+      return post("COMMAND_RESULT", { command: "SUBSCRIBE", ok: false, message: "Не удалось переключить инструмент на брокерском соединении." });
+    }
+    if (!sendRaw(rec, "subfor", asset)) {
+      return post("COMMAND_RESULT", { command: "SUBSCRIBE", ok: false, message: "Не удалось подписаться на поток котировок." });
+    }
     const now = Math.floor(Date.now() / 1000);
     const requestedSeconds = Number(args.lookbackSeconds);
-    const days = Math.min(30, Math.max(1, Number(args.lookbackDays) || 30));
+    // Pocket Option's fast-history endpoints can stall on huge offsets.
+    // Start with the same safe 5s window used by the reference implementation.
     const offset = Number.isFinite(requestedSeconds) && requestedSeconds > 0
       ? Math.min(30 * 86400, Math.max(300, requestedSeconds))
-      : Math.max(days * 86400, period * 90);
+      : Math.max(period * 90, period <= 30 ? 9000 : 45000);
     sendRaw(rec, "loadHistoryPeriod", { asset: asset, index: now, time: now, offset: offset, period: period });
     rec.subscribedAsset = asset;
     desiredAsset = asset;
