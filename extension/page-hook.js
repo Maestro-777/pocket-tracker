@@ -268,7 +268,7 @@
         }
       }
       rec.statusRequestPending = false;
-      post("OPEN_DEALS", { deals: deals });
+      post("OPEN_DEALS", { deals: deals, activeDealCount: rec.activeDealCount });
       return;
     }
     if (name === "successopenOrder") {
