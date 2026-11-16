@@ -255,7 +255,10 @@
         rec.pendingOrderId = null;
         rec.pendingOrderAt = 0;
         post("ORDER_STATUS_RESOLVED", { reason: "empty_open_deals_snapshot" });
+      } else if (rec.statusRequestPending && rec.pendingOrderId == null) {
+        post("ORDER_STATUS_RESOLVED", { reason: "broker_reports_no_open_deals" });
       }
+      rec.statusRequestPending = false;
       post("OPEN_DEALS", { deals: deals });
       return;
     }
@@ -421,7 +424,10 @@
     if (data.command === "REQUEST_STATUS") {
       reportStatus(true);
       const rec = latestDemoSocket();
-      if (rec) sendRaw(rec, "updateOpenedDeals");
+      if (rec) {
+        rec.statusRequestPending = true;
+        sendRaw(rec, "updateOpenedDeals");
+      }
     }
   }
 
@@ -437,7 +443,7 @@
             ws: ws, host: host, demoEndpoint: isDemoHost(host),
             serverDemo: null, balanceKnown: false, authenticated: false,
             lastDataAt: 0, pendingBinaryEvent: null, subscribedAsset: null,
-            ownRequestIds: new Set(), pendingOrderId: null, pendingOrderAt: 0, activeDealCount: 0
+            ownRequestIds: new Set(), pendingOrderId: null, pendingOrderAt: 0, activeDealCount: 0, statusRequestPending: false
           };
           sockets.set(ws, rec);
           try { ws.binaryType = "arraybuffer"; } catch (_) {}
