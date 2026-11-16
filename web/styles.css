@@ -60,8 +60,13 @@ button { color: inherit; }
 .load-history-button { min-height: 28px; padding: 0 10px; border: 1px solid #315b82; border-radius: 6px; background: #142b42; color: #9bcaff; cursor: pointer; font-size: 9px; font-weight: 600; white-space: nowrap; }
 .load-history-button:hover:not(:disabled) { background: #1a3a59; border-color: #4c82b4; color: #d7ebff; }
 .load-history-button:disabled { opacity: .42; cursor: not-allowed; }
-.chart-wrap { position: relative; flex: 1; min-height: 440px; }
-#chart { position: absolute; inset: 0; }
+.chart-wrap { position: relative; flex: 1; min-height: 440px; display: flex; flex-direction: column; overflow: hidden; }
+#chart { position: relative; flex: 1 1 auto; min-height: 300px; width: 100%; }
+.indicator-panes { display: none; flex: 0 1 auto; flex-direction: column; gap: 5px; max-height: 300px; overflow-y: auto; border-top: 1px solid #1c2a3a; }
+.indicator-panes.has-panes { display: flex; }
+.indicator-pane { height: 126px; min-height: 126px; background: #0f1824; border-bottom: 1px solid #1d2c3d; position: relative; }
+.indicator-pane-heading { position: absolute; z-index: 2; top: 5px; left: 12px; color: #91a4ba; font-size: 9px; pointer-events: none; }
+.indicator-pane-chart { width: 100%; height: 126px; }
 .chart-empty { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: #8190a4; background: rgba(16,24,36,.84); pointer-events: none; }
 .chart-empty.hidden { display: none; }
 .chart-empty strong { color: #d1dbea; font-size: 13px; font-weight: 600; }
@@ -120,6 +125,57 @@ textarea::placeholder { color: #59697d; }
 .info-row b { color: #c6d3e2; font-size: 9px; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
 .disclaimer { color: #718198; padding: 3px 3px 0; font-size: 9px; line-height: 1.6; }
 .disclaimer b { color: #9aabc0; font-weight: 600; }
+
+/* Indicator library and settings */
+.indicator-open-button { width: 100%; margin-bottom: 10px; }
+.active-indicators-list { display: flex; flex-direction: column; gap: 6px; }
+.empty-indicators { color: #728399; font-size: 9px; line-height: 1.5; padding: 8px 2px 2px; }
+.active-indicator-row { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 8px; border: 1px solid #223146; border-radius: 7px; background: #0d1622; }
+.active-indicator-color { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; }
+.active-indicator-name { flex: 1; min-width: 0; color: #c8d6e6; font-size: 9px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.active-indicator-control { border: 0; color: #91a5bb; background: transparent; cursor: pointer; padding: 3px; font-size: 12px; }
+.active-indicator-control:hover { color: #d8eaff; }
+.active-indicator-control.remove:hover { color: #f08b96; }
+.modal-backdrop { position: fixed; z-index: 100; inset: 0; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(3,7,12,.78); backdrop-filter: blur(7px); }
+.modal-backdrop[hidden] { display: none !important; }
+.modal { width: min(760px, 100%); max-height: min(86vh, 820px); display: flex; flex-direction: column; overflow: hidden; background: #111b29; border: 1px solid #2c3d52; border-radius: 14px; box-shadow: 0 24px 80px rgba(0,0,0,.5); }
+.settings-modal { width: min(460px, 100%); }
+.modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 18px 20px 14px; border-bottom: 1px solid #243246; }
+.modal-header h2 { margin: 0; font-size: 15px; }
+.modal-header p { margin: 6px 0 0; color: #8293a8; font-size: 10px; line-height: 1.5; }
+.modal-close { flex: 0 0 30px; width: 30px; height: 30px; border: 1px solid #304158; border-radius: 7px; background: #192638; color: #a8bad0; cursor: pointer; font-size: 20px; line-height: 1; }
+.modal-close:hover { color: white; border-color: #57779c; }
+.indicator-modal-toolbar { display: flex; gap: 9px; padding: 14px 20px 10px; }
+.indicator-search { flex: 1; min-width: 0; background: #0b1420; color: #e6edf6; border: 1px solid #304159; border-radius: 7px; outline: 0; padding: 9px 11px; font-size: 10px; }
+.indicator-search:focus { border-color: #4b8ac4; }
+.indicator-search::placeholder { color: #65768c; }
+.category-select { min-width: 145px; padding: 0 9px; border: 1px solid #304159; border-radius: 7px; background: #0b1420; font-size: 10px; }
+.modal-tabs { display: flex; gap: 5px; padding: 0 20px 12px; border-bottom: 1px solid #243246; }
+.modal-tab { border: 1px solid transparent; border-radius: 6px; background: transparent; color: #8fa1b7; padding: 7px 10px; font-size: 10px; cursor: pointer; }
+.modal-tab.active { color: #b9dcff; background: #17304a; border-color: #315b82; }
+.indicator-catalog { padding: 14px 20px 20px; overflow-y: auto; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+.indicator-card { min-width: 0; padding: 11px; border-radius: 8px; border: 1px solid #293a50; background: #0d1622; display: flex; flex-direction: column; gap: 8px; }
+.indicator-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 9px; }
+.indicator-card-title { color: #e0e9f4; font-size: 10px; font-weight: 700; }
+.indicator-card-description { color: #8495aa; font-size: 9px; line-height: 1.5; min-height: 27px; }
+.indicator-card-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.indicator-category-pill { color: #8db9e3; background: #142a40; border: 1px solid #294761; border-radius: 4px; font-size: 8px; padding: 3px 5px; }
+.indicator-card-actions { display: flex; align-items: center; gap: 6px; }
+.indicator-card-actions button { border: 1px solid #304159; border-radius: 5px; background: #172536; color: #a9bdd2; cursor: pointer; font-size: 9px; padding: 5px 8px; }
+.indicator-card-actions .add-indicator { flex: 1; color: #c9e4ff; border-color: #315d86; background: #173550; }
+.indicator-card-actions button:hover { filter: brightness(1.2); }
+.indicator-card-actions .favorite-indicator { font-size: 13px; padding: 3px 7px; color: #74889f; }
+.indicator-card-actions .favorite-indicator.active { color: #f1c46a; border-color: #7a6135; background: #332916; }
+.no-indicators { grid-column: 1 / -1; color: #8b9bb0; font-size: 10px; text-align: center; padding: 30px 10px; }
+.indicator-settings-fields { padding: 16px 20px; overflow-y: auto; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 13px; }
+.setting-field { display: flex; flex-direction: column; gap: 6px; color: #a9bbd0; font-size: 9px; }
+.setting-field input, .setting-field select { width: 100%; border: 1px solid #304159; border-radius: 6px; background: #0b1420; color: #e4edf7; padding: 8px; font-size: 10px; }
+.setting-field input[type="color"] { padding: 3px; height: 34px; }
+.setting-field.full { grid-column: 1 / -1; }
+.setting-check-row { display: flex; align-items: center; gap: 8px; color: #b5c4d5; font-size: 10px; }
+.setting-check-row input { width: auto; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 13px 20px 17px; border-top: 1px solid #243246; }
+
 .app-footer { min-height: 34px; border-top: 1px solid #1a2635; display: flex; justify-content: space-between; align-items: center; padding: 0 25px; color: #65758a; font-size: 9px; }
 @media (max-width: 1120px) {
   .workspace { grid-template-columns: minmax(0, 1fr) 285px; padding: 14px; gap: 12px; }
@@ -148,10 +204,18 @@ textarea::placeholder { color: #59697d; }
   .tf-button { flex: 1; padding: 7px 4px; }
   .chart-card { min-height: 500px; }
   .chart-wrap { min-height: 390px; }
+  #chart { min-height: 260px; }
+  .indicator-panes { max-height: 220px; }
+  .indicator-pane, .indicator-pane-chart { height: 108px; min-height: 108px; }
   .chart-footer { align-items: flex-start; flex-direction: column; }
   .chart-hint { text-align: left; }
   .tool-caption { display: none; }
   .tool-button { padding: 6px; }
   .side-column { display: flex; }
+  .indicator-modal-toolbar { flex-direction: column; padding: 12px; }
+  .indicator-catalog { grid-template-columns: 1fr; padding: 12px; }
+  .modal-header { padding: 14px; }
+  .modal-tabs { padding: 0 12px 10px; }
+  .indicator-settings-fields { grid-template-columns: 1fr; padding: 14px; }
   .app-footer { padding: 0 12px; }
 }
