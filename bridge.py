@@ -827,7 +827,7 @@ class PocketBridge:
                 "time": start, "open": price, "high": price,
                 "low": price, "close": price,
             }
-        elif start == self.current_bar["time"]:
+        if start == self.current_bar["time"]:
             self.current_bar["high"] = max(self.current_bar["high"], price)
             self.current_bar["low"] = min(self.current_bar["low"], price)
             self.current_bar["close"] = price
