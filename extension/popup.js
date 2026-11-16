@@ -1,8 +1,7 @@
 "use strict";
 const $=id=>document.getElementById(id);
 const send=message=>chrome.runtime.sendMessage(message);
-function log(text){$("log").textContent=new Date().toLocaleTimeString()+" · "+text+"
-"+$("log").textContent;}
+function log(text){$("log").textContent=new Date().toLocaleTimeString()+" · "+text+"\\n"+$("log").textContent;}
 async function refresh(){
  const s=await send({type:"GET_STATE"});
  if(!s)return;
