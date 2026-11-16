@@ -2,7 +2,7 @@
 const TRACKER_URLS = ["http://127.0.0.1/*", "http://localhost/*"];
 const BROKER_URLS = ["https://pocketoption.com/*", "https://*.pocketoption.com/*"];
 const $ = id => document.getElementById(id);
-let current = { tracker: [], broker: [], canTrade: false, autoTrading: false };
+let current = { tracker: [], broker: [], canTrade: false, canAutoTrade: false, autoTrading: false };
 
 function setStatus(name, state, message) {
   $(name + "-dot").className = "dot " + state;
@@ -30,18 +30,22 @@ async function getMonitor() {
 function showAccount(accountState, executionState) {
   const type = accountState?.account || "unknown";
   const verified = accountState?.demo_verified === true && executionState?.can_trade === true && current.tracker.length > 0;
+  const autoReady = verified && executionState?.can_auto_trade === true;
   $("account-state").textContent = type === "demo"
     ? (verified ? "DEMO · сервер подтвердил тип счёта" : "DEMO указан, но серверное подтверждение отсутствует")
     : type === "real" ? "REAL · торговля заблокирована" : "Тип счёта не подтверждён";
   $("account-state").className = verified ? "safe" : "blocked";
-  $("execution-state").textContent = verified
-    ? "Доступны ручные сделки и автоторговля только на DEMO."
-    : "Fail-closed: ручные и автоматические ордера заблокированы.";
+  $("execution-state").textContent = !verified
+    ? "Fail-closed: ручные и автоматические ордера заблокированы."
+    : autoReady
+      ? "Ручные сделки доступны · автоторговля работает на таймфрейме 5 секунд."
+      : "Ручные сделки доступны · для автоторговли выбери таймфрейм 5 секунд.";
   current.canTrade = verified;
+  current.canAutoTrade = autoReady;
   current.autoTrading = executionState?.auto_trading === true;
   $("call-trade").disabled = !verified;
   $("put-trade").disabled = !verified;
-  $("auto-toggle").disabled = !verified;
+  $("auto-toggle").disabled = !autoReady;
   $("auto-toggle").textContent = current.autoTrading ? "Остановить автоторговлю" : "Включить автоторговлю";
   $("auto-toggle").classList.toggle("active", current.autoTrading);
 }
@@ -114,7 +118,7 @@ $("call-trade").addEventListener("click", () => manualTrade("CALL"));
 $("put-trade").addEventListener("click", () => manualTrade("PUT"));
 $("auto-toggle").addEventListener("click", async () => {
   const amount = amountValue();
-  if (amount == null || !current.canTrade || !current.tracker.length) return;
+  if (amount == null || !current.canAutoTrade || !current.tracker.length) return;
   const enabled = !current.autoTrading;
   $("trade-result").textContent = enabled ? "Включаю автоторговлю…" : "Останавливаю автоторговлю…";
   try {
