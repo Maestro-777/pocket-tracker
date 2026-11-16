@@ -118,7 +118,10 @@ def normalize_candle(item: Any) -> dict[str, Any] | None:
             low = float(item.get("low"))
             raw_volume = item.get("volume")
             if raw_volume is not None:
-                volume = float(raw_volume)
+                try:
+                    volume = float(raw_volume)
+                except (TypeError, ValueError):
+                    volume = None
         elif isinstance(item, (list, tuple)) and len(item) >= 5:
             # Observed Pocket Option tuple: time, open, close, high, low[, volume].
             stamp = as_seconds(item[0])
@@ -127,7 +130,10 @@ def normalize_candle(item: Any) -> dict[str, Any] | None:
             high = float(item[3])
             low = float(item[4])
             if len(item) > 5 and item[5] is not None:
-                volume = float(item[5])
+                try:
+                    volume = float(item[5])
+                except (TypeError, ValueError):
+                    volume = None
         else:
             return None
         if stamp is None:
