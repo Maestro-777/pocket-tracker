@@ -542,7 +542,18 @@
     if (!asset) throw new Error("Не удалось определить торговый инструмент.");
     state.orderPending = true;
     state.lastOrder = { asset:asset, direction:direction, amount:amount, expiry:15, status:"Отправляется", source:source };
+    const pendingOrderRef = state.lastOrder;
     emitCommand("OPEN_ORDER", { asset:asset, direction:direction, amount:amount, expiry:15 });
+    setTimeout(function() {
+      if (state.orderPending && state.lastOrder === pendingOrderRef && pendingOrderRef.status === "Отправляется") {
+        state.orderPending = false;
+        state.executionUncertain = true;
+        state.autoTrading = false;
+        pendingOrderRef.status = "Нет ответа от моста";
+        log("Нет ответа от брокерского моста. Повтор заблокирован; запрашиваю статус открытых сделок.");
+        emitCommand("REQUEST_STATUS", {});
+      }
+    }, 8000);
     try { chrome.runtime.sendMessage({ type:"PT_STATE_CHANGED" }); } catch (_) {}
   }
   async function handleCommand(message) {
