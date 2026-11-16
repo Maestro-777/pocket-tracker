@@ -1,0 +1,492 @@
+#!/usr/bin/env python3
+"""Local, read-only Pocket Option chart bridge.
+
+The browser talks only to 127.0.0.1. This process opens the broker WebSocket
+using the session frame supplied by the user. Credentials are kept in memory
+only and are never written to disk or printed to logs.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import re
+import time
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from threading import Thread
+from typing import Any
+
+import websockets
+from websockets.exceptions import ConnectionClosed
+
+ROOT = Path(__file__).resolve().parent
+WEB_DIR = ROOT / "web"
+HTTP_HOST = "127.0.0.1"
+HTTP_PORT = 8000
+WS_HOST = "127.0.0.1"
+WS_PORT = 8765
+
+DEMO_SERVERS = [
+    "wss://demo-api-eu.po.market/socket.io/?EIO=4&transport=websocket",
+    "wss://try-demo-eu.po.market/socket.io/?EIO=4&transport=websocket",
+]
+REAL_SERVERS = [
+    "wss://api-eu.po.market/socket.io/?EIO=4&transport=websocket",
+    "wss://api-eu2.po.market/socket.io/?EIO=4&transport=websocket",
+    "wss://api-us-north.po.market/socket.io/?EIO=4&transport=websocket",
+    "wss://api-us2.po.market/socket.io/?EIO=4&transport=websocket",
+]
+ALLOWED_PERIODS = {15, 30, 60, 300, 900, 1800, 3600}
+DEFAULT_ASSET = "EURUSD_otc"
+HISTORY_COUNT = 500
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+log = logging.getLogger("pocket-tracker")
+
+
+def parse_auth_frame(raw: str) -> dict[str, Any]:
+    """Parse the full 42["auth", {...}] frame copied from DevTools."""
+    value = raw.strip()
+    if value.startswith("42"):
+        value = value[2:].strip()
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Не удалось прочитать кадр. Нужен полный кадр 42[\"auth\", {...}].") from exc
+
+    if isinstance(parsed, list) and len(parsed) >= 2 and parsed[0] == "auth":
+        payload = parsed[1]
+    elif isinstance(parsed, dict):
+        payload = parsed
+    else:
+        raise ValueError("В кадре не найден объект авторизации Pocket Option.")
+
+    if not isinstance(payload, dict):
+        raise ValueError("Некорректные данные авторизации.")
+    session = payload.get("session")
+    uid = payload.get("uid")
+    if not isinstance(session, str) or not session.strip():
+        raise ValueError("В кадре отсутствует session.")
+    try:
+        uid = int(uid)
+    except (TypeError, ValueError):
+        raise ValueError("В кадре отсутствует корректный uid.")
+
+    is_demo = 1 if str(payload.get("isDemo", 1)).lower() in {"1", "true"} else 0
+    return {
+        "session": session,
+        "uid": uid,
+        "isDemo": is_demo,
+        "platform": int(payload.get("platform", 2) or 2),
+        "isFastHistory": True,
+        "isOptimized": True,
+    }
+
+
+def as_seconds(value: Any) -> int | None:
+    try:
+        number = float(value)
+        if number > 10_000_000_000:
+            number /= 1000
+        if number <= 0:
+            return None
+        return int(number)
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_candle(item: Any) -> dict[str, Any] | None:
+    """Normalize known Pocket Option history shapes into Lightweight Charts OHLC."""
+    try:
+        if isinstance(item, dict):
+            stamp = as_seconds(item.get("time", item.get("timestamp", item.get("at"))))
+            opening = float(item.get("open"))
+            closing = float(item.get("close"))
+            high = float(item.get("high"))
+            low = float(item.get("low"))
+        elif isinstance(item, (list, tuple)) and len(item) >= 5:
+            # Observed Pocket Option tuple: time, open, close, high, low.
+            stamp = as_seconds(item[0])
+            opening = float(item[1])
+            closing = float(item[2])
+            high = float(item[3])
+            low = float(item[4])
+        else:
+            return None
+        if stamp is None:
+            return None
+        return {
+            "time": stamp,
+            "open": opening,
+            "high": max(high, opening, closing),
+            "low": min(low, opening, closing),
+            "close": closing,
+        }
+    except (TypeError, ValueError):
+        return None
+
+
+def collect_ticks(value: Any) -> list[tuple[str, int, float]]:
+    found: list[tuple[str, int, float]] = []
+    if isinstance(value, (list, tuple)):
+        if (
+            len(value) >= 3
+            and isinstance(value[0], str)
+            and isinstance(value[1], (int, float))
+            and isinstance(value[2], (int, float))
+        ):
+            stamp = as_seconds(value[1])
+            if stamp is not None:
+                found.append((value[0], stamp, float(value[2])))
+            return found
+        for child in value:
+            found.extend(collect_ticks(child))
+    elif isinstance(value, dict):
+        for child in value.values():
+            found.extend(collect_ticks(child))
+    return found
+
+
+def ticks_to_candles(ticks: Any, period: int) -> list[dict[str, Any]]:
+    """Convert historical [timestamp, price] ticks to OHLC bars."""
+    grouped: dict[int, dict[str, Any]] = {}
+    if not isinstance(ticks, list):
+        return []
+    for tick in ticks:
+        try:
+            if isinstance(tick, dict):
+                stamp = as_seconds(tick.get("time", tick.get("timestamp")))
+                price = float(tick.get("price", tick.get("close")))
+            elif isinstance(tick, (list, tuple)) and len(tick) >= 2:
+                stamp = as_seconds(tick[0])
+                price = float(tick[1])
+            else:
+                continue
+            if stamp is None:
+                continue
+            start = stamp // period * period
+            bar = grouped.get(start)
+            if bar is None:
+                grouped[start] = {
+                    "time": start, "open": price, "high": price,
+                    "low": price, "close": price,
+                }
+            else:
+                bar["high"] = max(bar["high"], price)
+                bar["low"] = min(bar["low"], price)
+                bar["close"] = price
+        except (TypeError, ValueError):
+            continue
+    return [grouped[key] for key in sorted(grouped)]
+
+
+class PocketBridge:
+    def __init__(self, browser: Any):
+        self.browser = browser
+        self.broker: Any = None
+        self.reader_task: asyncio.Task | None = None
+        self.auth_payload: dict[str, Any] | None = None
+        self.authenticated = False
+        self.auth_event = asyncio.Event()
+        self.auth_error: str | None = None
+        self.asset = DEFAULT_ASSET
+        self.period = 300
+        self.latest_tick_time: int | None = None
+        self.current_bar: dict[str, Any] | None = None
+        self.history_requested = False
+        self.closed = False
+
+    async def send_browser(self, kind: str, **payload: Any) -> None:
+        if self.closed:
+            return
+        try:
+            await self.browser.send(json.dumps(
+                {"type": kind, **payload}, ensure_ascii=False, separators=(",", ":")
+            ))
+        except Exception:
+            self.closed = True
+
+    async def status(self, message: str, state: str = "info") -> None:
+        await self.send_browser("status", state=state, message=message)
+
+    async def run(self) -> None:
+        await self.status("Локальный мост готов. Вставь кадр авторизации Pocket Option.", "ready")
+        try:
+            async for raw in self.browser:
+                try:
+                    command = json.loads(raw)
+                    await self.handle_command(command)
+                except (json.JSONDecodeError, TypeError):
+                    await self.status("Получена некорректная команда интерфейса.", "error")
+        except ConnectionClosed:
+            pass
+        finally:
+            self.closed = True
+            await self.close_broker()
+
+    async def handle_command(self, command: dict[str, Any]) -> None:
+        action = command.get("action")
+        if action == "connect":
+            try:
+                auth = parse_auth_frame(str(command.get("authFrame", "")))
+                await self.connect_broker(auth)
+            except Exception as exc:
+                await self.status(str(exc), "error")
+        elif action == "subscribe":
+            asset = str(command.get("asset", DEFAULT_ASSET)).strip()
+            period = int(command.get("period", 300))
+            if not re.fullmatch(r"[A-Za-z0-9_#]{3,32}", asset):
+                await self.status("Некорректный код инструмента.", "error")
+                return
+            if period not in ALLOWED_PERIODS:
+                await self.status("Этот таймфрейм пока не поддерживается мостом.", "error")
+                return
+            self.asset = asset
+            self.period = period
+            self.current_bar = None
+            self.history_requested = False
+            if self.authenticated:
+                await self.subscribe_broker()
+        elif action == "disconnect":
+            await self.close_broker()
+            await self.status("Подключение закрыто.", "ready")
+
+    async def connect_broker(self, auth: dict[str, Any]) -> None:
+        await self.close_broker()
+        self.auth_payload = auth
+        self.authenticated = False
+        self.auth_error = None
+        self.auth_event = asyncio.Event()
+        servers = DEMO_SERVERS if auth["isDemo"] else REAL_SERVERS
+        await self.status(
+            "Подключаюсь к Pocket Option (" + ("DEMO" if auth["isDemo"] else "REAL") + ")…",
+            "connecting",
+        )
+
+        last_error = "Не удалось подключиться."
+        for url in servers:
+            try:
+                # The broker's WebSocket handshake is origin-sensitive. This local
+                # bridge sets the platform origin; the browser never handles SSID.
+                self.broker = await websockets.connect(
+                    url,
+                    origin="https://pocketoption.com",
+                    ping_interval=None,
+                    close_timeout=5,
+                    open_timeout=10,
+                    max_size=2_000_000,
+                )
+                self.reader_task = asyncio.create_task(self.read_broker())
+                try:
+                    await asyncio.wait_for(self.auth_event.wait(), timeout=18)
+                except asyncio.TimeoutError:
+                    last_error = "Сервер не подтвердил авторизацию за отведённое время."
+                if self.authenticated:
+                    await self.status(
+                        "Соединение установлено. Загружаю " + self.asset + "…",
+                        "connected",
+                    )
+                    await self.subscribe_broker()
+                    return
+                if self.auth_error:
+                    last_error = self.auth_error
+                await self.close_broker()
+            except Exception as exc:
+                last_error = f"Не удалось открыть WebSocket ({type(exc).__name__})."
+                await self.close_broker()
+
+        await self.status(
+            last_error + " Проверь сессию и доступность серверов Pocket Option.",
+            "error",
+        )
+
+    async def close_broker(self) -> None:
+        self.authenticated = False
+        if self.reader_task and self.reader_task is not asyncio.current_task():
+            self.reader_task.cancel()
+            try:
+                await self.reader_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        self.reader_task = None
+        if self.broker is not None:
+            try:
+                await self.broker.close()
+            except Exception:
+                pass
+        self.broker = None
+
+    async def send_broker_event(self, event: str, data: Any = None) -> None:
+        if self.broker is None:
+            return
+        if data is None:
+            frame = "42" + json.dumps([event], separators=(",", ":"))
+        else:
+            frame = "42" + json.dumps([event, data], separators=(",", ":"))
+        await self.broker.send(frame)
+
+    async def read_broker(self) -> None:
+        try:
+            async for message in self.broker:
+                if isinstance(message, bytes):
+                    continue
+                if message.startswith('0{"sid":'):
+                    await self.broker.send("40")
+                elif message.startswith('40{"sid":'):
+                    await self.send_broker_event("auth", self.auth_payload)
+                elif message == "2":
+                    await self.broker.send("3")
+                elif message == "41":
+                    self.auth_error = "Pocket Option отклонил сессию (namespace disconnect)."
+                    self.auth_event.set()
+                    await self.status(self.auth_error, "error")
+                    return
+                elif message.startswith("451-"):
+                    try:
+                        event_data = json.loads(message.split("-", 1)[1])
+                        event_name = event_data[0]
+                        binary_payload = await asyncio.wait_for(self.broker.recv(), timeout=6)
+                        if isinstance(binary_payload, bytes):
+                            payload = json.loads(binary_payload.decode("utf-8"))
+                            await self.handle_broker_event(event_name, payload)
+                    except Exception as exc:
+                        log.debug("Binary event could not be decoded: %s", type(exc).__name__)
+                elif message.startswith("42"):
+                    try:
+                        event_data = json.loads(message[2:])
+                        if isinstance(event_data, list) and event_data:
+                            await self.handle_broker_event(
+                                str(event_data[0]),
+                                event_data[1] if len(event_data) > 1 else None,
+                            )
+                    except Exception:
+                        pass
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            if not self.closed:
+                await self.status(
+                    "Соединение с Pocket Option прервано (" + type(exc).__name__ + ").",
+                    "error",
+                )
+        finally:
+            if not self.authenticated:
+                self.auth_event.set()
+
+    async def handle_broker_event(self, name: str, data: Any) -> None:
+        if name == "successauth":
+            self.authenticated = True
+            self.auth_event.set()
+            await self.send_broker_event("indicator/load")
+            await self.send_broker_event("favorite/load")
+            await self.send_broker_event("price-alert/load")
+            await self.status("Авторизация подтверждена. Подписываюсь на котировки…", "connected")
+        elif name == "loadHistoryPeriodFast":
+            raw_bars = data.get("data", []) if isinstance(data, dict) else []
+            bars = [bar for item in raw_bars if (bar := normalize_candle(item)) is not None]
+            if not bars and raw_bars:
+                bars = ticks_to_candles(raw_bars, self.period)
+            if bars:
+                bars.sort(key=lambda bar: bar["time"])
+                deduped = {bar["time"]: bar for bar in bars}
+                clean = [deduped[key] for key in sorted(deduped)]
+                await self.send_browser("history", asset=self.asset, period=self.period, candles=clean)
+                await self.status(f"История загружена: {len(clean)} свечей.", "connected")
+            else:
+                await self.status("Соединение есть, но история пока не пришла от сервера.", "warning")
+        elif name == "updateStream":
+            for asset, stamp, price in collect_ticks(data):
+                await self.handle_tick(asset, stamp, price)
+        elif name == "updateAssets" and isinstance(data, list):
+            symbols = []
+            for row in data:
+                if isinstance(row, list) and len(row) > 1 and isinstance(row[1], str):
+                    available = row[14] if len(row) > 14 else True
+                    if available:
+                        symbols.append(row[1])
+            if symbols:
+                await self.send_browser("assets", symbols=sorted(set(symbols)))
+
+    async def subscribe_broker(self) -> None:
+        if not self.authenticated or self.broker is None:
+            return
+        await self.send_broker_event(
+            "changeSymbol", {"asset": self.asset, "period": self.period}
+        )
+        await self.send_broker_event("subfor", self.asset)
+        # Pocket Option history uses server-native time. OTC feeds commonly
+        # expose timestamps shifted by +02:00; latest live tick supersedes this
+        # fallback as soon as it arrives.
+        end_time = self.latest_tick_time or int(time.time()) + 7200
+        await self.send_broker_event("loadHistoryPeriod", {
+            "asset": self.asset,
+            "index": int(time.time() * 100),
+            "offset": HISTORY_COUNT,
+            "period": self.period,
+            "time": end_time,
+        })
+        self.history_requested = True
+        await self.status(
+            f"Запрошены {HISTORY_COUNT} свечей {self.asset} · {self.period}s.",
+            "connected",
+        )
+
+    async def handle_tick(self, asset: str, stamp: int, price: float) -> None:
+        self.latest_tick_time = stamp
+        if asset != self.asset:
+            return
+        start = stamp // self.period * self.period
+        if self.current_bar is None or start > self.current_bar["time"]:
+            self.current_bar = {
+                "time": start, "open": price, "high": price,
+                "low": price, "close": price,
+            }
+        elif start == self.current_bar["time"]:
+            self.current_bar["high"] = max(self.current_bar["high"], price)
+            self.current_bar["low"] = min(self.current_bar["low"], price)
+            self.current_bar["close"] = price
+        else:
+            return
+        await self.send_browser(
+            "candle", candle=self.current_bar, asset=self.asset, price=price
+        )
+
+
+async def websocket_handler(browser: Any, path: str | None = None) -> None:
+    bridge = PocketBridge(browser)
+    await bridge.run()
+
+
+def start_http_server() -> ThreadingHTTPServer:
+    handler = lambda *args, **kwargs: SimpleHTTPRequestHandler(
+        *args, directory=str(WEB_DIR), **kwargs
+    )
+    server = ThreadingHTTPServer((HTTP_HOST, HTTP_PORT), handler)
+    thread = Thread(target=server.serve_forever, name="pocket-tracker-http", daemon=True)
+    thread.start()
+    return server
+
+
+async def main() -> None:
+    if not WEB_DIR.exists():
+        raise RuntimeError("Не найдена папка web/. Запускай bridge.py из корня проекта.")
+    http_server = start_http_server()
+    log.info("Интерфейс: http://%s:%s", HTTP_HOST, HTTP_PORT)
+    log.info("Локальный WebSocket мост: ws://%s:%s", WS_HOST, WS_PORT)
+    log.info("Мост принимает подключения только с этого компьютера.")
+    try:
+        async with websockets.serve(websocket_handler, WS_HOST, WS_PORT, max_size=2_000_000):
+            await asyncio.Future()
+    finally:
+        http_server.shutdown()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nPocket Tracker остановлен.")
