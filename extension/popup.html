@@ -2,7 +2,7 @@
 <html lang="ru">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pocket Tracker</title><link rel="stylesheet" href="popup.css"></head>
 <body><main class="app">
-<header><div class="mark">PT</div><div><h1>Pocket Tracker</h1><p>Поиск сигналов и торговля DEMO</p></div><span class="version">v1.3.0</span></header>
+<header><div class="mark">PT</div><div><h1>Pocket Tracker</h1><p>Поиск сигналов и торговля DEMO</p></div><span class="version">v1.3.1</span></header>
 <section class="status-card"><div class="section-title">СОСТОЯНИЕ ПОДКЛЮЧЕНИЯ</div>
 <div class="status-row"><span class="dot" id="tracker-dot"></span><div><b>Pocket Tracker</b><small id="tracker-status">Проверяем…</small></div></div>
 <div class="status-row"><span class="dot" id="broker-dot"></span><div><b>Pocket Option</b><small id="broker-status">Проверяем…</small></div></div>
@@ -21,5 +21,6 @@
 <button id="auto-toggle" class="auto" disabled>Включить автоторговлю</button>
 <p id="trade-result" class="hint">Открой Pocket Tracker, подключи DEMO и дождись подтверждения типа счёта.</p>
 </section>
+<button id="capture-auth" class="primary">Подключить DEMO из открытой вкладки</button><p id="capture-status" class="hint">Нажми кнопку, затем обнови вкладку Pocket Option. Кадр сессии не сохраняется.</p>
 <button id="refresh" class="primary">Обновить состояние</button><button id="test" class="secondary">Тест уведомления</button><p id="test-result" class="hint">Тест проверяет только доставку сообщения.</p>
 <footer>Торговля ограничена DEMO · неизвестный и REAL-счёт блокируются</footer></main><script src="popup.js"></script></body></html>
