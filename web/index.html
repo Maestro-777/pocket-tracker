@@ -67,7 +67,14 @@
             <div class="chart-heading-right">
               <button class="load-history-button" id="load-history-button" disabled>Загрузить ещё</button>
               <span class="data-state" id="data-state">НЕТ ДАННЫХ</span>
-              <button class="icon-button" id="fit-button" title="Показать весь график" aria-label="Показать весь график">⤢</button>
+              <div class="chart-navigation" aria-label="Навигация по графику">
+                <button class="icon-button" id="nav-left" title="Назад по истории" aria-label="Назад по истории">‹</button>
+                <button class="icon-button" id="nav-right" title="Вперёд по истории" aria-label="Вперёд по истории">›</button>
+                <button class="icon-button" id="nav-zoom-in" title="Увеличить" aria-label="Увеличить">＋</button>
+                <button class="icon-button" id="nav-zoom-out" title="Уменьшить" aria-label="Уменьшить">−</button>
+                <button class="icon-button" id="nav-latest" title="К последней свече" aria-label="К последней свече">●</button>
+                <button class="icon-button" id="fit-button" title="Показать всю историю" aria-label="Показать всю историю">⤢</button>
+              </div>
             </div>
           </div>
           <div class="chart-wrap">
