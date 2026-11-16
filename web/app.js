@@ -288,9 +288,11 @@
       return;
     }
     if (message.type === "candle") {
-      if (message.asset !== activeAsset) return;
+      if (message.asset !== activeAsset || (message.period != null && Number(message.period) !== activePeriod)) return;
       const bar = normalizeBar(message.candle);
       if (!bar || !Number.isFinite(bar.time) || !Number.isFinite(bar.close)) return;
+      // Keep the live bar on the exact same timeframe boundary as history.
+      bar.time = Math.floor(bar.time / activePeriod) * activePeriod;
       liveCandle = bar;
       const previous = candles.get(bar.time);
       const merged = previous ? mergeBars(previous, bar) : bar;
