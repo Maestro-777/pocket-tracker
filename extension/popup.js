@@ -80,11 +80,12 @@ function render(state) {
     "Проверка по закрытию свечи 5 секунд · экспирация 15 секунд";
   $("signalToggle").checked = Boolean(state.signalEnabled);
   $("autoToggle").checked = Boolean(state.autoTrading);
-  $("tradeStatus").textContent = state.executionUncertain ? "Неопределённый ордер: повтор заблокирован. Сначала проверь историю сделок." :
+  $("tradeStatus").textContent = state.executionUncertain ? "Неопределённый ордер: повтор заблокирован до ответа брокера." :
     state.orderPending ? "Ожидание подтверждения брокера…" :
     state.activeOrder ? "Есть открытая сделка. Новые заявки заблокированы." :
     state.demoVerified ? "DEMO подтверждён. Доступны ручные и автоматические сделки." :
     "Сделки заблокированы до подтверждения DEMO.";
+  $("checkOrderStatus").style.display = state.executionUncertain ? "block" : "none";
   const canTrade = Boolean(state.demoVerified && state.connected && !state.orderPending &&
     !state.activeOrder && !state.executionUncertain && state.lastTickAt && Date.now()-state.lastTickAt < 10000);
   $("callButton").disabled = !canTrade; $("putButton").disabled = !canTrade;
