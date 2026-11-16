@@ -39,29 +39,39 @@ function ema(source, period) {
 function rollingExtrema(source, period, highMode) {
   const out = nanArray(source.length);
   const deque = [];
+  let head = 0;
   for (let i = 0; i < source.length; i++) {
-    while (deque.length && deque[0] <= i - period) deque.shift();
-    while (deque.length) {
+    while (head < deque.length && deque[head] <= i - period) head++;
+    while (deque.length > head) {
       const last = deque[deque.length - 1];
       if (highMode ? source[last] <= source[i] : source[last] >= source[i]) deque.pop();
       else break;
     }
     deque.push(i);
-    if (i >= period - 1) out[i] = source[deque[0]];
+    if (i >= period - 1) out[i] = source[deque[head]];
+    if (head > 1024 && head * 2 > deque.length) {
+      deque.splice(0, head);
+      head = 0;
+    }
   }
   return out;
 }
 
 function rollingStd(source, period, means) {
   const out = nanArray(source.length);
-  for (let i = period - 1; i < source.length; i++) {
-    const mean = means[i];
-    let sum = 0;
-    for (let j = i - period + 1; j <= i; j++) {
-      const delta = source[j] - mean;
-      sum += delta * delta;
+  let sum = 0;
+  let sumSquares = 0;
+  for (let i = 0; i < source.length; i++) {
+    sum += source[i];
+    sumSquares += source[i] * source[i];
+    if (i >= period) {
+      sum -= source[i - period];
+      sumSquares -= source[i - period] * source[i - period];
     }
-    out[i] = Math.sqrt(sum / period);
+    if (i >= period - 1) {
+      const mean = sum / period;
+      out[i] = Math.sqrt(Math.max(0, sumSquares / period - mean * mean));
+    }
   }
   return out;
 }
@@ -78,14 +88,22 @@ function trueRange(high, low, close) {
 
 function wilder(source, period) {
   const out = nanArray(source.length);
-  if (source.length < period) return out;
-  let value = 0;
-  for (let i = 0; i < period; i++) value += source[i];
-  value /= period;
-  out[period - 1] = value;
-  for (let i = period; i < source.length; i++) {
-    value = ((value * (period - 1)) + source[i]) / period;
-    out[i] = value;
+  let value = Number.NaN;
+  let seedSum = 0;
+  let seedCount = 0;
+  for (let i = 0; i < source.length; i++) {
+    if (!Number.isFinite(source[i])) continue;
+    if (!Number.isFinite(value)) {
+      seedSum += source[i];
+      seedCount++;
+      if (seedCount === period) {
+        value = seedSum / period;
+        out[i] = value;
+      }
+    } else {
+      value = ((value * (period - 1)) + source[i]) / period;
+      out[i] = value;
+    }
   }
   return out;
 }
@@ -123,10 +141,18 @@ function calculateIndicator(item, data) {
     case "wma": {
       const out = nanArray(n);
       const denom = period * (period + 1) / 2;
-      for (let i = period - 1; i < n; i++) {
-        let sum = 0;
-        for (let j = 0; j < period; j++) sum += close[i - period + 1 + j] * (j + 1);
-        out[i] = sum / denom;
+      let windowSum = 0, weightedSum = 0;
+      for (let i = 0; i < n; i++) {
+        if (i < period) {
+          windowSum += close[i];
+          weightedSum += close[i] * (i + 1);
+          if (i === period - 1) out[i] = weightedSum / denom;
+        } else {
+          const oldValue = close[i - period];
+          weightedSum = weightedSum - windowSum + close[i] * period;
+          windowSum = windowSum - oldValue + close[i];
+          out[i] = weightedSum / denom;
+        }
       }
       addOutput(outputs, "WMA", out);
       break;
