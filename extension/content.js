@@ -32,8 +32,8 @@
     const d = marketState.diagnostics || {};
     root.querySelector("[data-details]").textContent =
       "WebSocket: " + (d.socketsCreated || 0) + " создано / " + (d.socketsOpened || 0) + " открыто · " +
-      "IN: " + (d.incomingFrames || 0) + " · OUT: " + (d.outgoingFrames || 0) +
-      " · событие: " + (d.lastEvent || "нет") + " · " +
+      (Array.isArray(d.sockets) ? d.sockets.map(s => "#" + s.id + " " + s.host + s.path + " [" + s.state + "] IN:" + s.in + " " + (s.lastIn || "—") + " OUT:" + s.out + " " + (s.lastOut || "—")).join(" | ") : "") +
+      " · событие: " + (d.lastEvent || "нет") + " · "
       "Рыночные события: " + marketState.candleCount +
       " · инструмент: " + (marketState.lastAsset || "ожидание") +
       " · последние данные: " + (marketState.lastMarketAt ? new Date(marketState.lastMarketAt).toLocaleTimeString() : "нет") +
