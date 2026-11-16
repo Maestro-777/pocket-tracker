@@ -9,10 +9,14 @@ function nanArray(length) {
 function rollingMean(source, period) {
   const out = nanArray(source.length);
   let sum = 0;
+  let count = 0;
   for (let i = 0; i < source.length; i++) {
-    sum += source[i];
-    if (i >= period) sum -= source[i - period];
-    if (i >= period - 1) out[i] = sum / period;
+    if (Number.isFinite(source[i])) { sum += source[i]; count++; }
+    if (i >= period && Number.isFinite(source[i - period])) {
+      sum -= source[i - period];
+      count--;
+    }
+    if (i >= period - 1 && count === period) out[i] = sum / period;
   }
   return out;
 }
