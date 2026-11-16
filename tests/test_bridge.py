@@ -1,4 +1,5 @@
 import asyncio
+import time
 import unittest
 
 from bridge import PocketBridge, collect_ticks, extract_history_rows, ticks_to_candles
@@ -70,6 +71,34 @@ class BridgeDataTests(unittest.TestCase):
         asyncio.run(bridge.handle_tick("GBPUSD_otc", 1_700_000_000, 1.2))
         asyncio.run(bridge.handle_tick("EURUSD_otc", 1_700_000_000, float("nan")))
         self.assertIsNone(bridge.current_bar)
+
+    def test_manual_readiness_is_independent_of_chart_timeframe(self):
+        bridge = PocketBridge(FakeBrowser())
+        bridge.authenticated = True
+        bridge.broker = object()
+        bridge.auth_payload = {"isDemo": 1}
+        bridge.account_verified_demo = True
+        bridge.asset_ids["EURUSD_otc"] = 1
+        bridge.last_tick_monotonic = time.monotonic()
+        bridge.period = 60
+        self.assertTrue(bridge.can_trade())
+        self.assertFalse(bridge.can_auto_trade())
+        bridge.period = 5
+        self.assertTrue(bridge.can_auto_trade())
+
+    def test_real_and_uncertain_accounts_cannot_trade(self):
+        bridge = PocketBridge(FakeBrowser())
+        bridge.authenticated = True
+        bridge.broker = object()
+        bridge.auth_payload = {"isDemo": 0}
+        bridge.account_verified_demo = False
+        bridge.asset_ids["EURUSD_otc"] = 1
+        bridge.last_tick_monotonic = time.monotonic()
+        self.assertFalse(bridge.can_trade())
+        bridge.auth_payload = {"isDemo": 1}
+        bridge.account_verified_demo = True
+        bridge.execution_uncertain = True
+        self.assertFalse(bridge.can_trade())
 
 
 if __name__ == "__main__":
