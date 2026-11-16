@@ -9,7 +9,7 @@
   let panel;
   let lastSignal = null;
   let signalCount = 0;
-  let marketState = { account: "unknown", authenticated: false, lastMarketAt: 0, candleCount: 0, lastAsset: "" };
+  let marketState = { account: "unknown", authenticated: false, lastMarketAt: 0, candleCount: 0, lastAsset: "", diagnostics: null };
 
   function ensurePanel() {
     if (panel && panel.isConnected) return panel;
@@ -29,7 +29,11 @@
     const safe = marketState.account === "demo";
     root.querySelector("[data-state]").textContent = "Счёт: " + account + " · " +
       (marketState.authenticated ? "авторизация подтверждена" : "ожидание авторизации");
+    const d = marketState.diagnostics || {};
     root.querySelector("[data-details]").textContent =
+      "WebSocket: " + (d.socketsCreated || 0) + " создано / " + (d.socketsOpened || 0) + " открыто · " +
+      "IN: " + (d.incomingFrames || 0) + " · OUT: " + (d.outgoingFrames || 0) +
+      " · событие: " + (d.lastEvent || "нет") + " · " +
       "Рыночные события: " + marketState.candleCount +
       " · инструмент: " + (marketState.lastAsset || "ожидание") +
       " · последние данные: " + (marketState.lastMarketAt ? new Date(marketState.lastMarketAt).toLocaleTimeString() : "нет") +
@@ -67,7 +71,10 @@
       if (event.source !== window || event.origin !== location.origin) return;
       const msg = event.data;
       if (!msg || msg.source !== "pt-pocketoption-page-hook") return;
-      if (msg.type === "account") {
+      if (msg.type === "diagnostic") {
+        marketState.diagnostics = msg.payload || null;
+        sendState();
+      } else if (msg.type === "account") {
         marketState.account = msg.payload?.isDemo === true ? "demo" : "real";
         sendState();
       } else if (msg.type === "broker-auth") {
@@ -92,7 +99,7 @@
         sendState();
       }
     });
-    ensurePanel().querySelector("[data-state]").textContent = "Хук установлен · ожидаю авторизацию и поток";
+    ensurePanel().querySelector("[data-state]").textContent = "Хук установлен · проверяю WebSocket";
     panel.style.display = "block";
   }
 
