@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Pocket Tracker",
-  "version": "3.1.0",
-  "description": "Pocket Option DEMO: 5s BB/RSI signals, verified DEMO stream and guarded 15s orders.",
+  "version": "3.2.0",
+  "description": "Pocket Option DEMO: 5s BB/RSI signals, stable chart selection and guarded DEMO orders.",
   "permissions": [
     "storage",
     "tabs"
