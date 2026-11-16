@@ -18,6 +18,8 @@ class ClosedCandleStrategy:
         rsi_period: int = 14,
         put_rsi: tuple[float, float] = (77.0, 83.0),
         call_rsi: tuple[float, float] = (18.0, 23.0),
+        bb_source: str = "close",
+        rsi_source: str = "close",
     ) -> None:
         self.period = period
         self.bb_period = bb_period
@@ -25,6 +27,8 @@ class ClosedCandleStrategy:
         self.rsi_period = rsi_period
         self.put_rsi = put_rsi
         self.call_rsi = call_rsi
+        self.bb_source = bb_source
+        self.rsi_source = rsi_source
 
     @staticmethod
     def point_size(asset: str, digits: int | None = None) -> float:
@@ -52,24 +56,27 @@ class ClosedCandleStrategy:
             return None
 
         closes = [float(row["close"]) for row in rows]
-        window = closes[-self.bb_period:]
-        middle = sum(window) / self.bb_period
-        variance = sum((value - middle) ** 2 for value in window) / self.bb_period
+        bb_values = [self._source(row, self.bb_source) for row in rows[-self.bb_period:]]
+        rsi_values = [self._source(row, self.rsi_source) for row in rows]
+        if any(not math.isfinite(value) for value in bb_values + rsi_values):
+            return None
+        middle = sum(bb_values) / self.bb_period
+        variance = sum((value - middle) ** 2 for value in bb_values) / self.bb_period
         deviation = math.sqrt(max(0.0, variance))
         upper = middle + self.bb_multiplier * deviation
         lower = middle - self.bb_multiplier * deviation
-        rsi = self._wilder_rsi(closes, self.rsi_period)
+        rsi = self._wilder_rsi(rsi_values, self.rsi_period)
         close = closes[-1]
         point = self.point_size(asset, digits)
 
         direction = None
         distance_points = None
-        if abs(close - upper) <= point and self.put_rsi[0] <= rsi <= self.put_rsi[1]:
+        if close >= upper and close - upper <= point and self.put_rsi[0] <= rsi <= self.put_rsi[1]:
             direction = "PUT"
-            distance_points = abs(close - upper) / point
-        elif abs(close - lower) <= point and self.call_rsi[0] <= rsi <= self.call_rsi[1]:
+            distance_points = (close - upper) / point
+        elif close <= lower and lower - close <= point and self.call_rsi[0] <= rsi <= self.call_rsi[1]:
             direction = "CALL"
-            distance_points = abs(close - lower) / point
+            distance_points = (lower - close) / point
 
         if direction is None:
             return None
@@ -89,6 +96,18 @@ class ClosedCandleStrategy:
             "distancePoints": distance_points,
             "createdAt": candle_time * 1000,
         }
+
+    @staticmethod
+    def _source(row: dict[str, Any], source: str) -> float:
+        if source == "open":
+            return float(row["open"])
+        if source == "hl2":
+            return (float(row["high"]) + float(row["low"])) / 2
+        if source == "hlc3":
+            return (float(row["high"]) + float(row["low"]) + float(row["close"])) / 3
+        if source == "ohlc4":
+            return (float(row["open"]) + float(row["high"]) + float(row["low"]) + float(row["close"])) / 4
+        return float(row["close"])
 
     @staticmethod
     def _valid_candle(row: dict[str, Any]) -> bool:
