@@ -23,3 +23,5 @@ jobs:
         run: python -m py_compile bridge.py
       - name: Check browser JavaScript syntax
         run: node --check web/app.js
+      - name: Check indicator worker syntax
+        run: node --check web/indicator-worker.js
