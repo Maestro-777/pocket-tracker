@@ -511,7 +511,7 @@ class PocketBridge:
             end_time = max(1, int(before_time) - self.period)
         else:
             # Until the first live tick arrives, use server-native OTC time.
-            end_time = self.latest_tick_time or int(time.time()) + 7200
+            end_time = self.latest_tick_time or int(time.time())
             self.history_reference_time = end_time
 
         self.history_request_kind = kind
