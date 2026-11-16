@@ -23,6 +23,8 @@ import certifi
 import websockets
 from websockets.exceptions import ConnectionClosed
 
+from strategy import ClosedCandleStrategy
+
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 HTTP_HOST = "127.0.0.1"
@@ -84,7 +86,9 @@ def parse_auth_frame(raw: str) -> dict[str, Any]:
     except (TypeError, ValueError):
         raise ValueError("В кадре отсутствует корректный uid.")
 
-    is_demo = 1 if str(payload.get("isDemo", 1)).lower() in {"1", "true"} else 0
+    if "isDemo" not in payload:
+        raise ValueError("В кадре отсутствует isDemo. Тип счёта нельзя определить безопасно.")
+    is_demo = 1 if payload.get("isDemo") is True or str(payload.get("isDemo")).lower() in {"1", "true"} else 0
     return {
         "session": session,
         "uid": uid,
@@ -278,6 +282,17 @@ class PocketBridge:
         self.history_has_more = False
         self.history_target_time: int | None = None
         self.history_page_task: asyncio.Task | None = None
+        self.asset_ids: dict[str, int] = {}
+        self.asset_digits: dict[str, int] = {}
+        self.account_verified_demo = False
+        self.auto_trading = False
+        self.auto_trade_amount = 1.0
+        self.trade_expiry = 15
+        self.strategy = ClosedCandleStrategy()
+        self.seen_signal_ids: set[str] = set()
+        self.pending_orders: dict[int, dict[str, Any]] = {}
+        self.order_busy = False
+        self.active_order_count = 0
         self.closed = False
 
     async def send_browser(self, kind: str, **payload: Any) -> None:
@@ -340,6 +355,32 @@ class PocketBridge:
             await self.reset_history()
             if self.authenticated:
                 await self.subscribe_broker()
+        elif action == "setAutoTrading":
+            enabled = bool(command.get("enabled"))
+            try:
+                amount = float(command.get("amount", self.auto_trade_amount))
+            except (TypeError, ValueError):
+                await self.status("Некорректная сумма сделки.", "error")
+                return
+            if not math.isfinite(amount) or amount < 1 or amount > 50000:
+                await self.status("Сумма сделки должна быть от 1 до 50000.", "error")
+                return
+            if enabled and not self.can_trade():
+                await self.status("Автоторговля не включена: требуется подтверждённый DEMO-счёт и доступный торговый инструмент.", "warning")
+                await self.send_browser("executionState", auto_trading=False, can_trade=False)
+                return
+            self.auto_trade_amount = amount
+            self.auto_trading = enabled
+            await self.send_browser("executionState", auto_trading=self.auto_trading, can_trade=self.can_trade(), amount=amount)
+            await self.status("Автоторговля " + ("включена" if enabled else "выключена") + ".", "connected" if enabled else "ready")
+        elif action == "trade":
+            direction = str(command.get("direction", "")).upper()
+            try:
+                amount = float(command.get("amount", self.auto_trade_amount))
+            except (TypeError, ValueError):
+                await self.status("Некорректная сумма сделки.", "error")
+                return
+            await self.place_order(direction, amount, source="manual")
         elif action == "loadMore":
             if not self.authenticated or self.broker is None:
                 await self.status("Сначала подключись к Pocket Option.", "warning")
@@ -361,6 +402,8 @@ class PocketBridge:
         await self.close_broker()
         self.auth_payload = auth
         self.authenticated = False
+        self.account_verified_demo = False
+        self.auto_trading = False
         self.auth_error = None
         self.auth_event = asyncio.Event()
         servers = DEMO_SERVERS if auth["isDemo"] else REAL_SERVERS
@@ -444,6 +487,8 @@ class PocketBridge:
 
     async def close_broker(self) -> None:
         self.authenticated = False
+        self.account_verified_demo = False
+        self.auto_trading = False
         self.history_auto_loading = False
         await self.cancel_history_request()
         page_task = self.history_page_task
@@ -686,7 +731,9 @@ class PocketBridge:
             await self.send_broker_event("indicator/load")
             await self.send_broker_event("favorite/load")
             await self.send_broker_event("price-alert/load")
-            await self.status("Авторизация подтверждена. Подписываюсь на котировки…", "connected")
+            await self.send_broker_event("updateBalance")
+            await self.send_browser("accountState", account="unknown", authenticated=True, demo_verified=False)
+            await self.status("Авторизация подтверждена. Проверяю тип счёта и подписываюсь на котировки…", "connected")
         elif name == "loadHistoryPeriodFast":
             kind = self.history_request_kind
             if kind is None:
@@ -766,13 +813,58 @@ class PocketBridge:
         elif name == "updateStream":
             for asset, stamp, price in collect_ticks(data):
                 await self.handle_tick(asset, stamp, price)
+        elif name == "successupdateBalance" and isinstance(data, dict):
+            raw_demo = data.get("isDemo")
+            server_demo = raw_demo is True or str(raw_demo).lower() in {"1", "true"}
+            self.account_verified_demo = bool(
+                self.auth_payload and self.auth_payload.get("isDemo") == 1 and server_demo
+            )
+            if not server_demo:
+                self.auto_trading = False
+            account = "demo" if server_demo else "real"
+            await self.send_browser(
+                "accountState", account=account, authenticated=self.authenticated,
+                demo_verified=self.account_verified_demo, balance=data.get("balance"),
+            )
+            await self.send_browser(
+                "executionState", auto_trading=self.auto_trading,
+                can_trade=self.can_trade(), amount=self.auto_trade_amount,
+            )
+            await self.status(
+                "DEMO подтверждён сервером. Торговля доступна." if self.account_verified_demo
+                else "Сервер подтвердил REAL-счёт или не подтвердил DEMO. Торговля заблокирована.",
+                "connected" if self.account_verified_demo else "warning",
+            )
+        elif name == "successopenOrder":
+            self.active_order_count = max(1, self.active_order_count)
+            await self.resolve_order_event(name, data, True)
+        elif name == "failopenOrder":
+            await self.resolve_order_event(name, data, False)
+        elif name == "successcloseOrder":
+            self.active_order_count = 0
+            await self.send_browser("dealClosed", deal=data)
+        elif name == "updateOpenedDeals":
+            deals = data if isinstance(data, list) else data.get("deals", []) if isinstance(data, dict) else []
+            self.active_order_count = len(deals) if isinstance(deals, list) else self.active_order_count
+            await self.send_browser("openedDeals", deals=deals)
         elif name == "updateAssets" and isinstance(data, list):
             symbols = []
             for row in data:
                 if isinstance(row, list) and len(row) > 1 and isinstance(row[1], str):
                     available = row[14] if len(row) > 14 else True
                     if available:
-                        symbols.append(row[1])
+                        symbol = row[1]
+                        symbols.append(symbol)
+                        try:
+                            self.asset_ids[symbol] = int(row[0])
+                        except (TypeError, ValueError, IndexError):
+                            pass
+                        try:
+                            digits = int(row[4])
+                            if 0 <= digits <= 12:
+                                self.asset_digits[symbol] = digits
+                        except (TypeError, ValueError, IndexError):
+                            pass
             if symbols:
                 await self.send_browser("assets", symbols=sorted(set(symbols)))
 
@@ -807,6 +899,134 @@ class PocketBridge:
             if self.live_emit_task is asyncio.current_task():
                 self.live_emit_task = None
 
+
+    def can_trade(self) -> bool:
+        return bool(
+            self.authenticated and self.broker is not None
+            and self.account_verified_demo
+            and self.auth_payload and self.auth_payload.get("isDemo") == 1
+            and self.asset in self.asset_ids
+        )
+
+    async def evaluate_closed_bar(self, closed_bar: dict[str, Any]) -> None:
+        if self.period != 5 or not self.authenticated:
+            return
+        signal = self.strategy.evaluate(
+            list(self.history_candles.values()),
+            asset=self.asset,
+            digits=self.asset_digits.get(self.asset),
+        )
+        if not signal or signal["candleTime"] != int(closed_bar["time"]):
+            return
+        signal_id = str(signal["id"])
+        if signal_id in self.seen_signal_ids:
+            return
+        self.seen_signal_ids.add(signal_id)
+        if len(self.seen_signal_ids) > 1000:
+            self.seen_signal_ids = set(sorted(self.seen_signal_ids)[-500:])
+        await self.send_browser("signal", signal=signal)
+        await self.status(
+            f"Найден сигнал {signal['direction']} · RSI {signal['rsi']:.1f} · {self.asset}",
+            "connected",
+        )
+        if self.auto_trading:
+            asyncio.create_task(
+                self.place_order(signal["direction"], self.auto_trade_amount, source="auto", signal=signal)
+            )
+
+    async def resolve_order_event(self, name: str, data: Any, success: bool) -> None:
+        request_id = None
+        if isinstance(data, dict):
+            try:
+                request_id = int(data.get("requestId", data.get("request_id")))
+            except (TypeError, ValueError):
+                request_id = None
+        if request_id is None and len(self.pending_orders) == 1:
+            request_id = next(iter(self.pending_orders))
+        pending = self.pending_orders.get(request_id) if request_id is not None else None
+        if pending is not None:
+            pending["success"] = success
+            pending["data"] = data
+            pending["event"].set()
+        await self.send_browser(
+            "orderEvent", success=success, event=name, data=data,
+            request_id=request_id,
+        )
+
+    async def place_order(
+        self,
+        direction: str,
+        amount: float,
+        *,
+        source: str,
+        signal: dict[str, Any] | None = None,
+    ) -> None:
+        direction = str(direction).upper()
+        if direction not in {"CALL", "PUT"}:
+            await self.status("Направление должно быть CALL или PUT.", "error")
+            return
+        if not math.isfinite(amount) or amount < 1 or amount > 50000:
+            await self.status("Сумма сделки должна быть от 1 до 50000.", "error")
+            return
+        if not self.can_trade():
+            await self.status("Ордер заблокирован: нужен подтверждённый сервером DEMO-счёт и доступный инструмент.", "warning")
+            return
+        if self.order_busy or self.active_order_count > 0:
+            await self.status("Ордер не отправлен: уже есть ожидающая или открытая сделка.", "warning")
+            return
+        self.order_busy = True
+        request_id = int(time.time() * 1000) % 2_147_483_647
+        pending = {"event": asyncio.Event(), "success": False, "data": None}
+        self.pending_orders[request_id] = pending
+        payload = {
+            "asset": self.asset_ids[self.asset],
+            "amount": amount,
+            "action": direction.lower(),
+            "isDemo": 1,
+            "requestId": request_id,
+            "optionType": 100,
+            "time": self.trade_expiry,
+        }
+        await self.send_browser(
+            "orderSubmitting", direction=direction, asset=self.asset,
+            amount=amount, source=source, signal=signal,
+        )
+        try:
+            await self.send_broker_event("openOrder", payload)
+            try:
+                await asyncio.wait_for(pending["event"].wait(), timeout=12)
+            except asyncio.TimeoutError:
+                await self.status("Нет подтверждения открытия от Pocket Option. Проверь историю сделок перед повторной отправкой.", "error")
+                await self.send_browser(
+                    "orderResult", success=False, uncertain=True,
+                    message="Нет подтверждения брокера; повторная отправка заблокирована до проверки.",
+                    request_id=request_id,
+                )
+                return
+            if pending["success"]:
+                self.active_order_count = max(1, self.active_order_count)
+                await self.status(f"Брокер подтвердил открытие {direction} · {self.asset} · {amount:g}", "connected")
+                await self.send_browser(
+                    "orderResult", success=True, direction=direction,
+                    asset=self.asset, amount=amount, expiry=self.trade_expiry,
+                    source=source, data=pending["data"], request_id=request_id,
+                )
+            else:
+                await self.status("Pocket Option отклонил ордер.", "error")
+                await self.send_browser(
+                    "orderResult", success=False, message="Pocket Option отклонил ордер.",
+                    data=pending["data"], request_id=request_id,
+                )
+        except Exception as exc:
+            await self.status(f"Ошибка отправки ордера: {type(exc).__name__}.", "error")
+            await self.send_browser(
+                "orderResult", success=False, message="Ошибка отправки ордера.",
+                request_id=request_id,
+            )
+        finally:
+            self.pending_orders.pop(request_id, None)
+            self.order_busy = False
+
     async def handle_tick(self, asset: str, stamp: int, price: float) -> None:
         if asset != self.asset:
             return
@@ -819,6 +1039,10 @@ class PocketBridge:
             return
         self.latest_tick_time = stamp
         start = stamp // self.period * self.period
+        if self.current_bar is not None and start > self.current_bar["time"]:
+            closed_bar = dict(self.current_bar)
+            self.history_candles[int(closed_bar["time"])] = closed_bar
+            await self.evaluate_closed_bar(closed_bar)
         if self.current_bar is None or start > self.current_bar["time"]:
             # Preserve historical OHLC when the first live tick belongs to
             # the same timeframe bucket as the last loaded candle.
