@@ -211,6 +211,10 @@
       else if (Array.isArray(row) && row.length >= 2) {
         const t = normalizeSeconds(row[0]), price = Number(row[1]);
         if (t && Number.isFinite(price) && price > 0) tickRows.push({ time: t, price: price });
+      } else if (row && typeof row === "object") {
+        const t = normalizeSeconds(row.time ?? row.timestamp ?? row.ts ?? row.t);
+        const price = Number(row.price ?? row.p ?? row.rate ?? row.value);
+        if (t && Number.isFinite(price) && price > 0) tickRows.push({ time: t, price: price });
       }
     }
     if (tickRows.length) {
