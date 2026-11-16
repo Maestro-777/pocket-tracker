@@ -290,7 +290,10 @@ class PocketBridge:
                 await self.status("Сначала подключись к Pocket Option.", "warning")
                 return
             if self.history_cursor is None:
-                await self.status("Сначала дождись загрузки первой порции истории.", "warning")
+                await self.status("Сначала дождись загрузки истории.", "warning")
+                return
+            if self.history_target_time is not None and self.history_cursor <= self.history_target_time:
+                await self.status("Загружены все доступные свечи за последние 3 дня.", "info")
                 return
             if self.history_request_kind is not None or self.history_auto_loading:
                 return
@@ -368,6 +371,14 @@ class PocketBridge:
 
     async def reset_history(self) -> None:
         await self.cancel_history_request()
+        page_task = self.history_page_task
+        self.history_page_task = None
+        if page_task and page_task is not asyncio.current_task():
+            page_task.cancel()
+            try:
+                await page_task
+            except (asyncio.CancelledError, Exception):
+                pass
         self.history_cursor = None
         self.history_reference_time = None
         self.history_target_time = None
@@ -375,12 +386,19 @@ class PocketBridge:
         self.history_auto_pages = 0
         self.history_auto_loading = False
         self.history_has_more = False
-        self.history_target_time = None
 
     async def close_broker(self) -> None:
         self.authenticated = False
         self.history_auto_loading = False
         await self.cancel_history_request()
+        page_task = self.history_page_task
+        self.history_page_task = None
+        if page_task and page_task is not asyncio.current_task():
+            page_task.cancel()
+            try:
+                await page_task
+            except (asyncio.CancelledError, Exception):
+                pass
         if self.ping_task and self.ping_task is not asyncio.current_task():
             self.ping_task.cancel()
             try:
@@ -534,7 +552,7 @@ class PocketBridge:
         })
         self.history_timeout_task = asyncio.create_task(self.history_request_timeout(kind))
         if kind == "older":
-            await self.status(f"Запрашиваю ещё {HISTORY_COUNT} старых свечей…", "connected")
+            await self.status(f"Запрашиваю более старые свечи {self.asset} · {self.period}s…", "connected")
         elif kind == "bulk":
             await self.status(f"Догружаю историю {self.asset} · {self.period}s за последние 3 дня…", "connected")
         else:
@@ -596,7 +614,7 @@ class PocketBridge:
         if reason == "target":
             message = f"Загружены последние 3 дня для {self.asset} · {self.period}s: {len(rows)} свечей ({days:.1f} дней)."
         elif reason == "max_pages":
-            message = f"Достигнут лимит автоматической загрузки: {len(rows)} свечей, {days:.1f} дней. Старые данные можно запросить ещё."
+            message = f"Загрузка остановлена по защитному лимиту: {len(rows)} свечей, {days:.1f} дней."
         elif reason == "timeout":
             message = f"История загружена частично: {len(rows)} свечей, {days:.1f} дней. Live-поток продолжает работать."
         elif reason == "empty":
