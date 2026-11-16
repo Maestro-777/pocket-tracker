@@ -169,8 +169,8 @@ def collect_ticks(value: Any, asset_hint: str | None = None) -> list[tuple[str, 
             price = float(price_value)
         except (TypeError, ValueError):
             price = float("nan")
-        if isinstance(asset, str) and stamp is not None and math.isfinite(price):
-            found.append((asset, stamp, price))
+        if asset is not None and stamp is not None and math.isfinite(price):
+            found.append((str(asset), stamp, price))
             return found
         for key, child in value.items():
             hint = key if isinstance(key, str) and re.fullmatch(r"[A-Za-z0-9_#]{3,32}", key) else asset_hint
@@ -178,7 +178,7 @@ def collect_ticks(value: Any, asset_hint: str | None = None) -> list[tuple[str, 
     elif isinstance(value, (list, tuple)):
         # Common forms: [asset, timestamp, price] and
         # [asset, [[timestamp, price], ...]].
-        if len(value) >= 2 and isinstance(value[0], str):
+        if len(value) >= 2 and isinstance(value[0], (str, int)) and not isinstance(value[0], bool):
             if len(value) >= 3:
                 stamp = as_seconds(value[1])
                 try:
@@ -186,9 +186,9 @@ def collect_ticks(value: Any, asset_hint: str | None = None) -> list[tuple[str, 
                 except (TypeError, ValueError):
                     price = float("nan")
                 if stamp is not None and math.isfinite(price):
-                    found.append((value[0], stamp, price))
+                    found.append((str(value[0]), stamp, price))
                     return found
-            hint = value[0]
+            hint = str(value[0])
             for child in value[1:]:
                 found.extend(collect_ticks(child, hint))
             return found
@@ -284,6 +284,7 @@ class PocketBridge:
         self.history_target_time: int | None = None
         self.history_page_task: asyncio.Task | None = None
         self.asset_ids: dict[str, int] = {}
+        self.asset_symbols: dict[int, str] = {}
         self.asset_digits: dict[str, int] = {}
         self.account_verified_demo = False
         self.auto_trading = False
@@ -348,6 +349,7 @@ class PocketBridge:
                 self.subscribed_asset = None
             self.asset = asset
             self.period = period
+            self.last_tick_monotonic = None
             if period != 5:
                 self.auto_trading = False
             self.current_bar = None
@@ -825,7 +827,11 @@ class PocketBridge:
             await self.send_browser("historyLoading", loading=False, request_kind="older")
             await self.status(f"Добавлено ещё {len(clean)} свечей истории.", "connected")
         elif name == "updateStream":
-            for asset, stamp, price in collect_ticks(data):
+            for asset_key, stamp, price in collect_ticks(data):
+                try:
+                    asset = self.asset_symbols.get(int(asset_key), asset_key)
+                except (TypeError, ValueError):
+                    asset = asset_key
                 await self.handle_tick(asset, stamp, price)
         elif name == "successupdateBalance" and isinstance(data, dict):
             raw_demo = data.get("isDemo")
@@ -873,24 +879,37 @@ class PocketBridge:
                 "executionState", auto_trading=self.auto_trading,
                 can_trade=self.can_trade(), amount=self.auto_trade_amount,
             )
-        elif name == "updateAssets" and isinstance(data, list):
+        elif name == "updateAssets":
+            rows = data if isinstance(data, list) else data.get("assets", []) if isinstance(data, dict) else []
             symbols = []
-            for row in data:
-                if isinstance(row, list) and len(row) > 1 and isinstance(row[1], str):
+            for row in rows:
+                if isinstance(row, dict):
+                    symbol = row.get("asset", row.get("symbol"))
+                    asset_id = row.get("id", row.get("assetId"))
+                    digits_value = row.get("digits")
+                    available = row.get("active", row.get("available", True))
+                elif isinstance(row, list) and len(row) > 1:
+                    asset_id = row[0]
+                    symbol = row[1]
+                    digits_value = row[4] if len(row) > 4 else None
                     available = row[14] if len(row) > 14 else True
-                    if available:
-                        symbol = row[1]
-                        symbols.append(symbol)
-                        try:
-                            self.asset_ids[symbol] = int(row[0])
-                        except (TypeError, ValueError, IndexError):
-                            pass
-                        try:
-                            digits = int(row[4])
-                            if 0 <= digits <= 12:
-                                self.asset_digits[symbol] = digits
-                        except (TypeError, ValueError, IndexError):
-                            pass
+                else:
+                    continue
+                if not isinstance(symbol, str) or not available:
+                    continue
+                symbols.append(symbol)
+                try:
+                    numeric_id = int(asset_id)
+                    self.asset_ids[symbol] = numeric_id
+                    self.asset_symbols[numeric_id] = symbol
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    digits = int(digits_value)
+                    if 0 <= digits <= 12:
+                        self.asset_digits[symbol] = digits
+                except (TypeError, ValueError):
+                    pass
             if symbols:
                 await self.send_browser("assets", symbols=sorted(set(symbols)))
                 await self.send_browser(
