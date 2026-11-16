@@ -178,6 +178,16 @@ def collect_ticks(value: Any, asset_hint: str | None = None) -> list[tuple[str, 
     elif isinstance(value, (list, tuple)):
         # Common forms: [asset, timestamp, price] and
         # [asset, [[timestamp, price], ...]].
+        # A pair [timestamp, price] belongs to its enclosing asset key.
+        if len(value) == 2 and asset_hint is not None:
+            stamp = as_seconds(value[0])
+            try:
+                price = float(value[1])
+            except (TypeError, ValueError):
+                price = float("nan")
+            if stamp is not None and math.isfinite(price):
+                found.append((asset_hint, stamp, price))
+                return found
         if len(value) >= 2 and isinstance(value[0], (str, int)) and not isinstance(value[0], bool):
             if len(value) >= 3:
                 stamp = as_seconds(value[1])
@@ -192,16 +202,6 @@ def collect_ticks(value: Any, asset_hint: str | None = None) -> list[tuple[str, 
             for child in value[1:]:
                 found.extend(collect_ticks(child, hint))
             return found
-        # A pair [timestamp, price] is valid when an enclosing asset is known.
-        if len(value) >= 2 and asset_hint is not None:
-            stamp = as_seconds(value[0])
-            try:
-                price = float(value[1])
-            except (TypeError, ValueError):
-                price = float("nan")
-            if stamp is not None and math.isfinite(price):
-                found.append((asset_hint, stamp, price))
-                return found
         for child in value:
             found.extend(collect_ticks(child, asset_hint))
     return found
