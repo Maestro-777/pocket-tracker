@@ -1,7 +1,8 @@
 "use strict";
 const $=id=>document.getElementById(id);
 const send=message=>chrome.runtime.sendMessage(message);
-function log(text){$("log").textContent=new Date().toLocaleTimeString()+" · "+text+"\n"+$("log").textContent;}
+function log(text){$("log").textContent=new Date().toLocaleTimeString()+" · "+text+"
+"+$("log").textContent;}
 async function refresh(){
  const s=await send({type:"GET_STATE"});
  if(!s)return;
@@ -17,10 +18,10 @@ async function refresh(){
  if(s.status)$("log").textContent=s.status;
 }
 $("connect").addEventListener("click",async()=>{
- const ssid=$("ssid").value.trim(),uid=Number($("uid").value);
- if(!ssid||!Number.isSafeInteger(uid)||uid<=0){log("Введи SSID и корректный UID.");return;}
+ const authMessage=$("authMessage").value.trim();
+ if(!authMessage){log("Вставь полное auth-сообщение.");return;}
  $("connect").disabled=true;
- try{const r=await send({type:"CONNECT",ssid,uid,asset:$("asset").value.trim()});log(r?.message||"Запрос подключения отправлен.");}
+ try{const r=await send({type:"CONNECT",authMessage,asset:$("asset").value.trim()});log(r?.message||"Запрос подключения отправлен.");}
  catch(e){log("Ошибка: "+e.message);}
  $("connect").disabled=false;refresh();
 });
