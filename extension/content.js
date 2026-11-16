@@ -46,6 +46,22 @@
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (isTracker && message?.type === "PT_MANUAL_TRADE") {
+      window.postMessage({
+        source:"pt-pocket-tracker-extension", type:"manual-trade",
+        direction:message.direction, amount:message.amount
+      }, location.origin);
+      sendResponse({ok:true});
+      return;
+    }
+    if (isTracker && message?.type === "PT_SET_AUTO_TRADING") {
+      window.postMessage({
+        source:"pt-pocket-tracker-extension", type:"auto-trading",
+        enabled:Boolean(message.enabled), amount:message.amount
+      }, location.origin);
+      sendResponse({ok:true});
+      return;
+    }
     if (message?.type === "PT_PING") {
       sendResponse({ ok: true, role: isTracker ? "tracker" : "broker", url: location.href, title: document.title, lastSignal, signalCount, marketState });
       return;
@@ -108,6 +124,10 @@
       const data = event.data;
       if (data?.source === "pocket-tracker" && data.type === "strategy-signal" && data.signal) {
         chrome.runtime.sendMessage({ type: "PT_FORWARD_SIGNAL", signal: data.signal }).catch(() => {});
+      } else if (data?.source === "pocket-tracker" && data.type === "execution-state") {
+        chrome.runtime.sendMessage({
+          type:"PT_EXECUTION_STATE", event:data.event, payload:data.payload
+        }).catch(() => {});
       }
     });
   }
