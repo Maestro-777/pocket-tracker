@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Pocket Tracker Signal Bridge",
+  "version": "1.0.0",
+  "description": "Передаёт сигналы закрытых 5-секундных свечей Pocket Tracker на вкладку Pocket Option.",
+  "permissions": [
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://pocketoption.com/*",
+    "https://*.pocketoption.com/*",
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://pocketoption.com/*",
+        "https://*.pocketoption.com/*",
+        "http://127.0.0.1:8000/*",
+        "http://localhost:8000/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
