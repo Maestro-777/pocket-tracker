@@ -45,8 +45,8 @@ DEFAULT_ASSET = "EURUSD_otc"
 # large enough to reduce round trips, but small enough for a WebSocket frame.
 HISTORY_COUNT = 9000
 AUTO_HISTORY_DAYS = 30
-MAX_AUTO_HISTORY_PAGES = 100
-HISTORY_PAGE_DELAY = 0.12
+MAX_AUTO_HISTORY_PAGES = 1200
+HISTORY_PAGE_DELAY = 0.08
 
 logging.basicConfig(
     level=logging.INFO,
