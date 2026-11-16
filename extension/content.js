@@ -281,7 +281,9 @@
   function updateIndicators() {
     const rows = state.candles;
     const period = state.config.bbPeriod;
-    const needed = Math.max(period, state.config.rsiPeriod + 1);
+    const rsiPeriod = state.config.rsiPeriod;
+    // Warm up Wilder smoothing with several RSI windows, not just one.
+    const needed = Math.max(period, rsiPeriod * 5 + 1);
     if (rows.length < needed) {
       state.rsi = null; state.bbUpper = null; state.bbLower = null; return;
     }
@@ -292,7 +294,7 @@
     const deviation = Math.sqrt(variance);
     state.bbUpper = mean + state.config.bbDeviation * deviation;
     state.bbLower = mean - state.config.bbDeviation * deviation;
-    const n = state.config.rsiPeriod;
+    const n = rsiPeriod;
     let gains = 0, losses = 0;
     for (let i=1;i<=n;i++) {
       const diff=closes[i]-closes[i-1];
@@ -422,6 +424,12 @@
       if (data.command === "SUBSCRIBE") {
         if (data.ok) note(data.message + " Инструмент: " + (data.asset || activeAsset()));
         else note(data.message || "Не удалось подписаться на рынок.");
+      } else if (data.command === "OPEN_ORDER" && data.ok === false) {
+        state.orderPending = false;
+        state.executionUncertain = false;
+        state.autoTrading = false;
+        if (state.lastOrder) state.lastOrder.status = "Не отправлен: " + (data.message || "ошибка проверки");
+        log(data.message || "Брокерское соединение не приняло команду открытия ордера.");
       }
     } else if (data.type === "ORDER_SENT") {
       state.orderPending = true;
@@ -439,7 +447,7 @@
     } else if (data.type === "ORDER_ACK") {
       const order = data.order || {};
       if (data.accepted) {
-        if (state.lastOrder && (order.requestId == null || String(order.requestId) === String(state.lastOrder.requestId))) {
+        if (state.lastOrder && order.requestId != null && String(order.requestId) === String(state.lastOrder.requestId)) {
           state.orderPending = false;
           state.activeOrder = true;
           state.lastOrder.id = order.id;
@@ -447,7 +455,7 @@
           log("Брокер подтвердил открытие сделки.");
         }
       } else {
-        if (!state.lastOrder || order.requestId == null || String(order.requestId) === String(state.lastOrder.requestId)) {
+        if (state.lastOrder && order.requestId != null && String(order.requestId) === String(state.lastOrder.requestId)) {
           state.orderPending = false;
           state.executionUncertain = false;
           state.autoTrading = false;
