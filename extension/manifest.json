@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Pocket Tracker — Signal Monitor",
-  "version": "1.2.1",
-  "description": "Монитор состояния Pocket Option без перехвата WebSocket. Торговля заблокирована.",
+  "version": "1.3.0",
+  "description": "Поиск сигналов, ручные и автоматические DEMO-сделки Pocket Tracker.",
   "permissions": ["tabs", "scripting", "storage"],
   "host_permissions": [
     "https://pocketoption.com/*",
