@@ -130,6 +130,21 @@ function calculateIndicator(item, data) {
   const { open, high, low, close, volume, times } = data;
   const n = close.length;
   const p = item.params || {};
+  const source = (kind) => {
+    if (kind === "open") return open;
+    if (kind === "high") return high;
+    if (kind === "low") return low;
+    if (kind === "close" || !kind) return close;
+    const out = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      if (kind === "hl2") out[i] = (high[i] + low[i]) / 2;
+      else if (kind === "hlc3") out[i] = (high[i] + low[i] + close[i]) / 3;
+      else if (kind === "ohlc4") out[i] = (open[i] + high[i] + low[i] + close[i]) / 4;
+      else out[i] = close[i];
+    }
+    return out;
+  };
+  const price = source(p.source);
   const period = Math.max(1, Math.min(500, Math.round(Number(p.period) || 14)));
   const mult = Math.max(0.1, Math.min(10, Number(p.multiplier) || 2));
   const outputs = [];
@@ -137,10 +152,10 @@ function calculateIndicator(item, data) {
 
   switch (item.id) {
     case "sma":
-      addOutput(outputs, "SMA", rollingMean(close, period));
+      addOutput(outputs, "SMA", rollingMean(price, period));
       break;
     case "ema":
-      addOutput(outputs, "EMA", ema(close, period));
+      addOutput(outputs, "EMA", ema(price, period));
       break;
     case "wma": {
       const out = nanArray(n);
@@ -148,13 +163,13 @@ function calculateIndicator(item, data) {
       let windowSum = 0, weightedSum = 0;
       for (let i = 0; i < n; i++) {
         if (i < period) {
-          windowSum += close[i];
-          weightedSum += close[i] * (i + 1);
+          windowSum += price[i];
+          weightedSum += price[i] * (i + 1);
           if (i === period - 1) out[i] = weightedSum / denom;
         } else {
-          const oldValue = close[i - period];
-          weightedSum = weightedSum - windowSum + close[i] * period;
-          windowSum = windowSum - oldValue + close[i];
+          const oldValue = price[i - period];
+          weightedSum = weightedSum - windowSum + price[i] * period;
+          windowSum = windowSum - oldValue + price[i];
           out[i] = weightedSum / denom;
         }
       }
@@ -162,7 +177,7 @@ function calculateIndicator(item, data) {
       break;
     }
     case "dema": {
-      const first = ema(close, period);
+      const first = ema(price, period);
       const second = ema(first, period);
       const out = nanArray(n);
       for (let i = 0; i < n; i++) if (Number.isFinite(first[i]) && Number.isFinite(second[i])) out[i] = 2 * first[i] - second[i];
@@ -170,8 +185,8 @@ function calculateIndicator(item, data) {
       break;
     }
     case "bollinger": {
-      const mid = rollingMean(close, period);
-      const dev = rollingStd(close, period, mid);
+      const mid = rollingMean(price, period);
+      const dev = rollingStd(price, period, mid);
       const upper = nanArray(n), lower = nanArray(n);
       for (let i = 0; i < n; i++) if (Number.isFinite(mid[i]) && Number.isFinite(dev[i])) {
         upper[i] = mid[i] + mult * dev[i];
@@ -253,7 +268,7 @@ function calculateIndicator(item, data) {
     case "rsi": {
       const gains = nanArray(n), losses = nanArray(n);
       if (n) { gains[0] = 0; losses[0] = 0; }
-      for (let i = 1; i < n; i++) { const delta = close[i] - close[i - 1]; gains[i] = Math.max(delta, 0); losses[i] = Math.max(-delta, 0); }
+      for (let i = 1; i < n; i++) { const delta = price[i] - price[i - 1]; gains[i] = Math.max(delta, 0); losses[i] = Math.max(-delta, 0); }
       const avgGain = wilder(gains, period), avgLoss = wilder(losses, period), out = nanArray(n);
       for (let i = 0; i < n; i++) {
         if (Number.isFinite(avgGain[i]) && Number.isFinite(avgLoss[i])) out[i] = avgLoss[i] === 0 ? 100 : 100 - (100 / (1 + avgGain[i] / avgLoss[i]));
@@ -262,7 +277,7 @@ function calculateIndicator(item, data) {
       break;
     }
     case "macd": {
-      const fast = ema(close, Number(p.fast) || 12), slow = ema(close, Number(p.slow) || 26);
+      const fast = ema(price, Number(p.fast) || 12), slow = ema(price, Number(p.slow) || 26);
       const line = nanArray(n);
       for (let i = 0; i < n; i++) if (Number.isFinite(fast[i]) && Number.isFinite(slow[i])) line[i] = fast[i] - slow[i];
       const signal = ema(line, Number(p.signal) || 9), hist = nanArray(n);
@@ -273,8 +288,9 @@ function calculateIndicator(item, data) {
     case "stochastic": {
       const kPeriod = Number(p.k) || 14, dPeriod = Number(p.d) || 3;
       const hh = rollingExtrema(high, kPeriod, true), ll = rollingExtrema(low, kPeriod, false);
-      const k = nanArray(n);
-      for (let i = 0; i < n; i++) if (Number.isFinite(hh[i]) && Number.isFinite(ll[i]) && hh[i] !== ll[i]) k[i] = 100 * (close[i] - ll[i]) / (hh[i] - ll[i]);
+      const rawK = nanArray(n);
+      for (let i = 0; i < n; i++) if (Number.isFinite(hh[i]) && Number.isFinite(ll[i]) && hh[i] !== ll[i]) rawK[i] = 100 * (close[i] - ll[i]) / (hh[i] - ll[i]);
+      const k = rollingMean(rawK, Math.max(1, Number(p.smoothK) || 1));
       addOutput(outputs, "%K", k); addOutput(outputs, "%D", rollingMean(k, dPeriod));
       break;
     }
@@ -298,7 +314,7 @@ function calculateIndicator(item, data) {
     }
     case "roc": {
       const out = nanArray(n);
-      for (let i = period; i < n; i++) if (close[i - period] !== 0) out[i] = 100 * (close[i] - close[i - period]) / close[i - period];
+      for (let i = period; i < n; i++) if (price[i - period] !== 0) out[i] = 100 * (price[i] - price[i - period]) / price[i - period];
       addOutput(outputs, "ROC", out);
       break;
     }
