@@ -657,6 +657,11 @@ class PocketBridge:
                     await self.status("Исторические свечи больше не найдены.", "warning")
                 return
 
+            # Historical timestamps may be candle close times or carry a
+            # non-zero offset. Snap them to the same timeframe boundary used
+            # by live ticks so history and live update the exact same bar.
+            for bar in bars:
+                bar["time"] = int(bar["time"]) // self.period * self.period
             bars.sort(key=lambda bar: bar["time"])
             deduped = {int(bar["time"]): bar for bar in bars}
             clean = [deduped[key] for key in sorted(deduped)]
@@ -741,7 +746,7 @@ class PocketBridge:
             self.last_live_emit = time.monotonic()
             await self.send_browser(
                 "candle", candle=self.current_bar, asset=self.asset,
-                price=self.pending_live_price,
+                period=self.period, price=self.pending_live_price,
             )
         except asyncio.CancelledError:
             raise
