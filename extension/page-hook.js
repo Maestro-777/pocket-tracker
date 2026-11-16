@@ -246,7 +246,16 @@
     if (name === "updateOpenedDeals") {
       const deals = safeDeals(payload);
       rec.activeDealCount = deals.filter(function(d) { return d.closeTimestamp == null || d.closeTimestamp === 0 || d.closeTimestamp === ""; }).length;
-      if (rec.activeDealCount > 0) rec.pendingOrderId = null;
+      if (rec.activeDealCount > 0) {
+        rec.pendingOrderId = null;
+        rec.pendingOrderAt = 0;
+      } else if (rec.pendingOrderId != null && rec.pendingOrderAt &&
+          Date.now() - rec.pendingOrderAt >= 30000) {
+        rec.ownRequestIds.delete(String(rec.pendingOrderId));
+        rec.pendingOrderId = null;
+        rec.pendingOrderAt = 0;
+        post("ORDER_STATUS_RESOLVED", { reason: "empty_open_deals_snapshot" });
+      }
       post("OPEN_DEALS", { deals: deals });
       return;
     }
@@ -256,6 +265,7 @@
       if (own) {
         rec.ownRequestIds.delete(requestId);
         rec.pendingOrderId = null;
+        rec.pendingOrderAt = 0;
         rec.activeDealCount = Math.max(1, rec.activeDealCount);
         post("ORDER_ACK", { accepted: true, order: {
           id: payload.id ?? null, requestId: payload.requestId,
@@ -271,6 +281,7 @@
       if (own) {
         rec.ownRequestIds.delete(requestId);
         rec.pendingOrderId = null;
+        rec.pendingOrderAt = 0;
         post("ORDER_ACK", { accepted: false, order: {
           requestId: payload.requestId, error: String(payload.error || payload.message || "Order rejected")
         }});
@@ -387,6 +398,7 @@
     const requestId = ++requestCounter;
     rec.ownRequestIds.add(String(requestId));
     rec.pendingOrderId = requestId;
+    rec.pendingOrderAt = Date.now();
     if (rec.ownRequestIds.size > 100) rec.ownRequestIds.delete(rec.ownRequestIds.values().next().value);
     const payload = {
       asset: asset, amount: amount, action: direction.toLowerCase(),
@@ -395,6 +407,7 @@
     if (!sendRaw(rec, "openOrder", payload)) {
       rec.ownRequestIds.delete(String(requestId));
       rec.pendingOrderId = null;
+      rec.pendingOrderAt = 0;
       return post("COMMAND_RESULT", { command: "OPEN_ORDER", ok: false, message: "Соединение закрылось до отправки ордера." });
     }
     post("ORDER_SENT", { requestId: requestId, asset: asset, direction: direction, amount: amount, expiry: expiry });
@@ -424,7 +437,7 @@
             ws: ws, host: host, demoEndpoint: isDemoHost(host),
             serverDemo: null, balanceKnown: false, authenticated: false,
             lastDataAt: 0, pendingBinaryEvent: null, subscribedAsset: null,
-            ownRequestIds: new Set(), pendingOrderId: null, activeDealCount: 0
+            ownRequestIds: new Set(), pendingOrderId: null, pendingOrderAt: 0, activeDealCount: 0
           };
           sockets.set(ws, rec);
           try { ws.binaryType = "arraybuffer"; } catch (_) {}
