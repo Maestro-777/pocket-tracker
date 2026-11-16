@@ -295,6 +295,9 @@
       if (!bar || !Number.isFinite(bar.time) || !Number.isFinite(bar.close)) return;
       // Keep the live bar on the exact same timeframe boundary as history.
       bar.time = Math.floor(bar.time / activePeriod) * activePeriod;
+      if (liveCandle && bar.time > liveCandle.time) {
+        evaluateClosedBarStrategy(liveCandle.time);
+      }
       liveCandle = bar;
       const previous = candles.get(bar.time);
       const merged = previous ? mergeBars(previous, bar) : bar;
@@ -436,6 +439,83 @@
       $("data-state").textContent = "LIVE";
       $("data-state").classList.add("live");
     }
+  }
+
+  function strategyPointSize(asset) {
+    if (String(asset).includes("BTC")) return 0.01;
+    if (String(asset).includes("JPY")) return 0.001;
+    return 0.00001;
+  }
+
+  function strategySource(row, source) {
+    if (source === "open") return row.open;
+    if (source === "hl2") return (row.high + row.low) / 2;
+    if (source === "hlc3") return (row.high + row.low + row.close) / 3;
+    if (source === "ohlc4") return (row.open + row.high + row.low + row.close) / 4;
+    return row.close;
+  }
+
+  function evaluateClosedBarStrategy(closedTime) {
+    if (activePeriod !== 5) return;
+    const bb = activeIndicators.find(item => item.id === "bollinger" && item.visible);
+    const rsi = activeIndicators.find(item => item.id === "rsi" && item.visible);
+    if (!bb || !rsi) return;
+    const rows = sortedBars();
+    const index = rows.findIndex(row => row.time === closedTime);
+    if (index < 1) return;
+    const bbPeriod = Math.max(2, Math.round(Number(bb.params.period) || 20));
+    const multiplier = Number(bb.params.multiplier) || 2;
+    const rsiPeriod = Math.max(2, Math.round(Number(rsi.params.period) || 14));
+    const required = Math.max(bbPeriod, rsiPeriod + 1);
+    if (index + 1 < required) return;
+
+    const bbValues = rows.slice(index - bbPeriod + 1, index + 1)
+      .map(row => strategySource(row, bb.params.source));
+    if (bbValues.some(value => !Number.isFinite(value))) return;
+    const mean = bbValues.reduce((sum, value) => sum + value, 0) / bbPeriod;
+    const variance = bbValues.reduce((sum, value) => sum + (value - mean) ** 2, 0) / bbPeriod;
+    const deviation = Math.sqrt(Math.max(0, variance));
+    const upper = mean + multiplier * deviation;
+    const lower = mean - multiplier * deviation;
+
+    const rsiSource = rows.slice(0, index + 1).map(row => strategySource(row, rsi.params.source));
+    let gain = 0, loss = 0;
+    for (let i = 1; i <= rsiPeriod; i++) {
+      const delta = rsiSource[i] - rsiSource[i - 1];
+      gain += Math.max(delta, 0);
+      loss += Math.max(-delta, 0);
+    }
+    gain /= rsiPeriod;
+    loss /= rsiPeriod;
+    for (let i = rsiPeriod + 1; i <= index; i++) {
+      const delta = rsiSource[i] - rsiSource[i - 1];
+      gain = (gain * (rsiPeriod - 1) + Math.max(delta, 0)) / rsiPeriod;
+      loss = (loss * (rsiPeriod - 1) + Math.max(-delta, 0)) / rsiPeriod;
+    }
+    const rsiValue = loss === 0 ? (gain === 0 ? 50 : 100) : 100 - 100 / (1 + gain / loss);
+    const close = rows[index].close;
+    const point = strategyPointSize(activeAsset);
+    let direction = null;
+    let distance = null;
+    if (close >= upper && close - upper <= point && rsiValue >= 77 && rsiValue <= 83) {
+      direction = "PUT";
+      distance = (close - upper) / point;
+    } else if (close <= lower && lower - close <= point && rsiValue >= 18 && rsiValue <= 23) {
+      direction = "CALL";
+      distance = (lower - close) / point;
+    }
+    if (!direction) return;
+
+    const signal = {
+      id: activeAsset + ":" + activePeriod + ":" + closedTime + ":" + direction,
+      asset: activeAsset, period: activePeriod, candleTime: closedTime,
+      direction, durationSeconds: 15, entryPrice: close,
+      bollingerUpper: upper, bollingerLower: lower,
+      rsi: rsiValue, distancePoints: distance,
+      createdAt: Date.now()
+    };
+    window.postMessage({ source: "pocket-tracker", type: "strategy-signal", signal }, location.origin);
+    setStatus("Сигнал " + direction + " · RSI " + rsiValue.toFixed(1) + " · ожидает исполнения", "warning");
   }
 
   function updatePrice(price) {
