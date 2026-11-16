@@ -153,25 +153,66 @@ def normalize_candle(item: Any) -> dict[str, Any] | None:
         return None
 
 
-def collect_ticks(value: Any) -> list[tuple[str, int, float]]:
+def collect_ticks(value: Any, asset_hint: str | None = None) -> list[tuple[str, int, float]]:
+    """Read updateStream ticks from flat, nested, and asset-keyed payloads."""
     found: list[tuple[str, int, float]] = []
-    if isinstance(value, (list, tuple)):
-        if (
-            len(value) >= 3
-            and isinstance(value[0], str)
-            and isinstance(value[1], (int, float))
-            and isinstance(value[2], (int, float))
-        ):
-            stamp = as_seconds(value[1])
-            if stamp is not None:
-                found.append((value[0], stamp, float(value[2])))
+    if isinstance(value, dict):
+        asset = value.get("asset", value.get("symbol", value.get("pair", asset_hint)))
+        stamp_value = value.get("time", value.get("timestamp", value.get("at")))
+        price_value = value.get("price", value.get("rate", value.get("value", value.get("close"))))
+        stamp = as_seconds(stamp_value)
+        try:
+            price = float(price_value)
+        except (TypeError, ValueError):
+            price = float("nan")
+        if isinstance(asset, str) and stamp is not None and math.isfinite(price):
+            found.append((asset, stamp, price))
             return found
+        for key, child in value.items():
+            hint = key if isinstance(key, str) and re.fullmatch(r"[A-Za-z0-9_#]{3,32}", key) else asset_hint
+            found.extend(collect_ticks(child, hint))
+    elif isinstance(value, (list, tuple)):
+        # Common flat form: [asset, timestamp, price].
+        if len(value) >= 3 and isinstance(value[0], str):
+            stamp = as_seconds(value[1])
+            try:
+                price = float(value[2])
+            except (TypeError, ValueError):
+                price = float("nan")
+            if stamp is not None and math.isfinite(price):
+                found.append((value[0], stamp, price))
+                return found
+            # Nested form: [asset, [[timestamp, price], ...]].
+            hint = value[0]
+            for child in value[1:]:
+                found.extend(collect_ticks(child, hint))
+            return found
+        # A pair [timestamp, price] is valid when an enclosing asset is known.
+        if len(value) >= 2 and asset_hint is not None:
+            stamp = as_seconds(value[0])
+            try:
+                price = float(value[1])
+            except (TypeError, ValueError):
+                price = float("nan")
+            if stamp is not None and math.isfinite(price):
+                found.append((asset_hint, stamp, price))
+                return found
         for child in value:
-            found.extend(collect_ticks(child))
-    elif isinstance(value, dict):
-        for child in value.values():
-            found.extend(collect_ticks(child))
+            found.extend(collect_ticks(child, asset_hint))
     return found
+
+
+def extract_history_rows(value: Any) -> list[Any]:
+    """Unwrap the history event's known array/container variants."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        for key in ("data", "candles", "history", "result", "items"):
+            child = value.get(key)
+            rows = extract_history_rows(child)
+            if rows:
+                return rows
+    return []
 
 
 def ticks_to_candles(ticks: Any, period: int) -> list[dict[str, Any]]:
@@ -651,7 +692,7 @@ class PocketBridge:
                 log.debug("Ignoring unsolicited history response")
                 return
             await self.cancel_history_request()
-            raw_bars = data.get("data", []) if isinstance(data, dict) else []
+            raw_bars = extract_history_rows(data)
             bars = [bar for item in raw_bars if (bar := normalize_candle(item)) is not None]
             if not bars and raw_bars:
                 bars = ticks_to_candles(raw_bars, self.period)
