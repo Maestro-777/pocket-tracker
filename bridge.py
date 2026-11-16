@@ -374,7 +374,8 @@ class PocketBridge:
         self.history_candles.clear()
         self.history_auto_pages = 0
         self.history_auto_loading = False
-        self.history_has_more = True
+        self.history_has_more = False
+        self.history_target_time = None
 
     async def close_broker(self) -> None:
         self.authenticated = False
@@ -495,7 +496,7 @@ class PocketBridge:
                 self.history_timeout_task = None
                 await self.send_browser("historyLoading", loading=False, request_kind=kind)
                 if kind == "bulk":
-                    await self.finish_auto_history("timeout", has_more=True)
+                    await self.finish_auto_history("timeout", has_more=False)
                 else:
                     await self.status("Сервер не прислал запрошенную историю. Попробуй ещё раз.", "warning")
         except asyncio.CancelledError:
@@ -544,27 +545,43 @@ class PocketBridge:
             )
 
     async def start_auto_history(self, first_page: list[dict[str, Any]]) -> None:
-        self.history_candles = {int(bar["time"]): bar for bar in first_page}
+        target = self.history_target_time or ((self.history_reference_time or int(time.time())) - AUTO_HISTORY_DAYS * 86400)
+        self.history_candles = {
+            int(bar["time"]): bar for bar in first_page if int(bar["time"]) >= target
+        }
         self.history_cursor = min(self.history_candles) if self.history_candles else None
         self.history_auto_pages = 1
         self.history_auto_loading = True
-        self.history_has_more = True
+        self.history_has_more = False
         await self.send_browser(
             "history", asset=self.asset, period=self.period,
-            candles=first_page, has_more=True,
+            candles=list(self.history_candles.values()), has_more=False,
         )
         if self.history_cursor is None:
             await self.finish_auto_history("empty", has_more=False)
             return
-        target = (self.history_reference_time or int(time.time())) - AUTO_HISTORY_DAYS * 86400
         if self.history_cursor <= target:
             await self.finish_auto_history("target", has_more=False)
             return
-        await asyncio.sleep(HISTORY_PAGE_DELAY)
-        await self.request_history("bulk")
+        self.history_page_task = asyncio.create_task(self.request_next_history_page())
+
+    async def request_next_history_page(self) -> None:
+        try:
+            await asyncio.sleep(HISTORY_PAGE_DELAY)
+            if self.history_auto_loading and self.authenticated and self.broker is not None:
+                await self.request_history("bulk")
+        except asyncio.CancelledError:
+            raise
+        finally:
+            if self.history_page_task is asyncio.current_task():
+                self.history_page_task = None
 
     async def finish_auto_history(self, reason: str, has_more: bool) -> None:
         self.history_auto_loading = False
+        task = self.history_page_task
+        self.history_page_task = None
+        if task and task is not asyncio.current_task():
+            task.cancel()
         self.history_has_more = has_more
         rows = [self.history_candles[key] for key in sorted(self.history_candles)]
         oldest = rows[0]["time"] if rows else None
@@ -577,11 +594,11 @@ class PocketBridge:
         )
         await self.send_browser("historyLoading", loading=False, request_kind="bulk")
         if reason == "target":
-            message = f"Загружены последние 7 дней: {len(rows)} свечей, фактически {days:.1f} дней."
+            message = f"Загружены последние 3 дня для {self.asset} · {self.period}s: {len(rows)} свечей ({days:.1f} дней)."
         elif reason == "max_pages":
             message = f"Достигнут лимит автоматической загрузки: {len(rows)} свечей, {days:.1f} дней. Старые данные можно запросить ещё."
         elif reason == "timeout":
-            message = f"Загрузка прервалась по тайм-ауту. Сохранена частичная история: {len(rows)} свечей, {days:.1f} дней."
+            message = f"История загружена частично: {len(rows)} свечей, {days:.1f} дней. Live-поток продолжает работать."
         elif reason == "empty":
             message = "Сервер не вернул исторические свечи."
         else:
@@ -646,10 +663,9 @@ class PocketBridge:
                 if new_cursor <= target:
                     await self.finish_auto_history("target", has_more=False)
                 elif self.history_auto_pages >= MAX_AUTO_HISTORY_PAGES:
-                    await self.finish_auto_history("max_pages", has_more=True)
+                    await self.finish_auto_history("max_pages", has_more=False)
                 else:
-                    await asyncio.sleep(HISTORY_PAGE_DELAY)
-                    await self.request_history("bulk")
+                    self.history_page_task = asyncio.create_task(self.request_next_history_page())
                 return
 
             # User-requested one-page extension after the automatic month load.
@@ -692,9 +708,9 @@ class PocketBridge:
         await self.request_history("initial")
 
     async def handle_tick(self, asset: str, stamp: int, price: float) -> None:
-        self.latest_tick_time = stamp
         if asset != self.asset:
             return
+        self.latest_tick_time = stamp
         start = stamp // self.period * self.period
         if self.current_bar is None or start > self.current_bar["time"]:
             self.current_bar = {
