@@ -43,3 +43,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .stats-grid small{font-size:9px;color:#8c9db2}
 .hint{margin:9px 0 0}
 footer{text-align:center;color:#c49d5c;font-size:9px;padding:5px 0 0}
+.signal-card{border:1px solid #26364b;background:#111b29;border-radius:13px;padding:12px;margin-bottom:10px}
+#last-signal{font-size:14px;font-weight:800;color:#dbe8f8;margin:2px 0 5px}
+#last-signal.call{color:#69d8a8}
+#last-signal.put{color:#ff9fa8}
+#last-signal-time{font-size:9px;color:#8c9db2}
