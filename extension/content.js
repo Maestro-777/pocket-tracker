@@ -25,18 +25,14 @@
   function paintPanel() {
     if (!isBroker) return;
     const root = ensurePanel();
-    const account = marketState.account === "demo" ? "DEMO" : marketState.account === "real" ? "REAL" : "НЕ ОПРЕДЕЛЁН";
-    const safe = marketState.account === "demo";
-    root.querySelector("[data-state]").textContent = "Счёт: " + account + " · " +
-      (marketState.authenticated ? "авторизация подтверждена" : "ожидание авторизации");
-    const d = marketState.diagnostics || {};
-    root.querySelector("[data-details]").textContent =
-      "WebSocket: " + (d.socketsCreated || 0) + " создано / " + (d.socketsOpened || 0) + " открыто · пакеты IN:" + (d.incomingPackets || 0) + " OUT:" + (d.outgoingPackets || 0) + " · типы IN: " + (d.incomingTypes || []).join(",") + " · " +
-      (Array.isArray(d.sockets) ? d.sockets.map(s => "#" + s.id + " " + s.host + s.path + " [" + s.state + "] packets IN:" + s.inPackets + " (" + s.lastInType + ", " + s.lastInBytes + "B) events:" + s.in + " " + (s.lastIn || "—") + " OUT:" + s.outPackets + " (" + s.lastOutType + ", " + s.lastOutBytes + "B) " + (s.lastOut || "—")).join(" | ") : "") +
-      " · событие: " + (d.lastEvent || "нет") + " · Рыночные события: " + marketState.candleCount +
-      " · инструмент: " + (marketState.lastAsset || "ожидание") +
-      " · последние данные: " + (marketState.lastMarketAt ? new Date(marketState.lastMarketAt).toLocaleTimeString() : "нет") +
-      " · мониторинг: отключён для совместимости · исполнение: заблокировано";
+    root.querySelector("[data-state]").textContent =
+      "Сигналы из независимого Pocket Tracker · график сайта не перехватывается";
+    const signalText = lastSignal
+      ? "Последний сигнал: " + lastSignal.direction + " · " + (lastSignal.asset || "инструмент") +
+        " · RSI " + Number(lastSignal.rsi).toFixed(1) +
+        " · " + new Date(lastSignal.receivedAt || Date.now()).toLocaleTimeString()
+      : "Получено сигналов: " + signalCount + " · ожидание локального моста";
+    root.querySelector("[data-details]").textContent = signalText;
     root.style.display = "block";
   }
 
