@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from strategy import ClosedCandleStrategy
 
@@ -26,6 +27,27 @@ class ClosedCandleStrategyTests(unittest.TestCase):
         ]
         rows[-1]["close"] = float("nan")
         self.assertIsNone(self.strategy.evaluate(rows, asset="EURUSD_otc"))
+
+    def test_call_signal_uses_closed_candle_and_band_proximity(self):
+        rows = [
+            {"time": 1_700_000_000 + index * 5, "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0}
+            for index in range(20)
+        ]
+        with patch.object(self.strategy, "_wilder_rsi", return_value=20.0):
+            signal = self.strategy.evaluate(rows, asset="EURUSD_otc", digits=5)
+        self.assertIsNotNone(signal)
+        self.assertEqual(signal["direction"], "CALL")
+        self.assertEqual(signal["candleTime"], rows[-1]["time"])
+
+    def test_put_signal_uses_rsi_band(self):
+        rows = [
+            {"time": 1_700_000_000 + index * 5, "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0}
+            for index in range(20)
+        ]
+        with patch.object(self.strategy, "_wilder_rsi", return_value=80.0):
+            signal = self.strategy.evaluate(rows, asset="EURUSD_otc", digits=5)
+        self.assertIsNotNone(signal)
+        self.assertEqual(signal["direction"], "PUT")
 
 
 if __name__ == "__main__":
