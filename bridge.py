@@ -39,9 +39,14 @@ REAL_SERVERS = [
     "wss://api-us-north.po.market/socket.io/?EIO=4&transport=websocket",
     "wss://api-us2.po.market/socket.io/?EIO=4&transport=websocket",
 ]
-ALLOWED_PERIODS = {15, 30, 60, 300, 900, 1800, 3600}
+ALLOWED_PERIODS = {5, 15, 30, 60, 300, 900, 1800, 3600}
 DEFAULT_ASSET = "EURUSD_otc"
-HISTORY_COUNT = 500
+# Pocket Option's history channel accepts an offset in bars. Keep each page
+# large enough to reduce round trips, but small enough for a WebSocket frame.
+HISTORY_COUNT = 9000
+AUTO_HISTORY_DAYS = 30
+MAX_AUTO_HISTORY_PAGES = 100
+HISTORY_PAGE_DELAY = 0.12
 
 logging.basicConfig(
     level=logging.INFO,
@@ -204,6 +209,11 @@ class PocketBridge:
         self.history_cursor: int | None = None
         self.history_request_kind: str | None = None
         self.history_timeout_task: asyncio.Task | None = None
+        self.history_reference_time: int | None = None
+        self.history_candles: dict[int, dict[str, Any]] = {}
+        self.history_auto_pages = 0
+        self.history_auto_loading = False
+        self.history_has_more = True
         self.closed = False
 
     async def send_browser(self, kind: str, **payload: Any) -> None:
@@ -255,9 +265,7 @@ class PocketBridge:
             self.period = period
             self.current_bar = None
             self.latest_tick_time = None
-            self.history_requested = False
-            self.history_cursor = None
-            await self.cancel_history_request()
+            await self.reset_history()
             if self.authenticated:
                 await self.subscribe_broker()
         elif action == "loadMore":
@@ -267,7 +275,7 @@ class PocketBridge:
             if self.history_cursor is None:
                 await self.status("Сначала дождись загрузки первой порции истории.", "warning")
                 return
-            if self.history_request_kind is not None:
+            if self.history_request_kind is not None or self.history_auto_loading:
                 return
             await self.request_history("older")
         elif action == "disconnect":
@@ -341,8 +349,18 @@ class PocketBridge:
             "error",
         )
 
+    async def reset_history(self) -> None:
+        await self.cancel_history_request()
+        self.history_cursor = None
+        self.history_reference_time = None
+        self.history_candles.clear()
+        self.history_auto_pages = 0
+        self.history_auto_loading = False
+        self.history_has_more = True
+
     async def close_broker(self) -> None:
         self.authenticated = False
+        self.history_auto_loading = False
         await self.cancel_history_request()
         if self.ping_task and self.ping_task is not asyncio.current_task():
             self.ping_task.cancel()
@@ -453,12 +471,15 @@ class PocketBridge:
 
     async def history_request_timeout(self, kind: str) -> None:
         try:
-            await asyncio.sleep(15)
+            await asyncio.sleep(20)
             if self.history_request_kind == kind:
                 self.history_request_kind = None
                 self.history_timeout_task = None
                 await self.send_browser("historyLoading", loading=False, request_kind=kind)
-                await self.status("Сервер не прислал запрошенную историю. Попробуй ещё раз.", "warning")
+                if kind == "bulk":
+                    await self.finish_auto_history("timeout", has_more=True)
+                else:
+                    await self.status("Сервер не прислал запрошенную историю. Попробуй ещё раз.", "warning")
         except asyncio.CancelledError:
             raise
 
@@ -467,7 +488,7 @@ class PocketBridge:
             return
         if self.history_request_kind is not None:
             return
-        if kind == "older":
+        if kind == "older" or kind == "bulk":
             if before_time is None:
                 before_time = self.history_cursor
             if before_time is None:
@@ -476,6 +497,7 @@ class PocketBridge:
         else:
             # Until the first live tick arrives, use server-native OTC time.
             end_time = self.latest_tick_time or int(time.time()) + 7200
+            self.history_reference_time = end_time
 
         self.history_request_kind = kind
         await self.send_browser("historyLoading", loading=True, request_kind=kind)
@@ -488,13 +510,60 @@ class PocketBridge:
         })
         self.history_timeout_task = asyncio.create_task(self.history_request_timeout(kind))
         if kind == "older":
-            await self.status("Запрашиваю предыдущие 500 свечей…", "connected")
+            await self.status(f"Запрашиваю ещё {HISTORY_COUNT} старых свечей…", "connected")
+        elif kind == "bulk":
+            await self.status("Загружаю историю за последний месяц…", "connected")
         else:
             self.history_requested = True
             await self.status(
-                f"Запрошены первые {HISTORY_COUNT} свечей {self.asset} · {self.period}s.",
+                f"Запрашиваю до {HISTORY_COUNT} свечей {self.asset} · {self.period}s.",
                 "connected",
             )
+
+    async def start_auto_history(self, first_page: list[dict[str, Any]]) -> None:
+        self.history_candles = {int(bar["time"]): bar for bar in first_page}
+        self.history_cursor = min(self.history_candles) if self.history_candles else None
+        self.history_auto_pages = 1
+        self.history_auto_loading = True
+        self.history_has_more = True
+        await self.send_browser(
+            "history", asset=self.asset, period=self.period,
+            candles=first_page, has_more=True,
+        )
+        if self.history_cursor is None:
+            await self.finish_auto_history("empty", has_more=False)
+            return
+        target = (self.history_reference_time or int(time.time())) - AUTO_HISTORY_DAYS * 86400
+        if self.history_cursor <= target:
+            await self.finish_auto_history("target", has_more=True)
+            return
+        await asyncio.sleep(HISTORY_PAGE_DELAY)
+        await self.request_history("bulk")
+
+    async def finish_auto_history(self, reason: str, has_more: bool) -> None:
+        self.history_auto_loading = False
+        self.history_has_more = has_more
+        rows = [self.history_candles[key] for key in sorted(self.history_candles)]
+        oldest = rows[0]["time"] if rows else None
+        reference = self.history_reference_time or int(time.time())
+        days = max(0.0, (reference - oldest) / 86400) if oldest is not None else 0.0
+        await self.send_browser(
+            "historyComplete", asset=self.asset, period=self.period,
+            candles=rows, has_more=has_more, days_covered=round(days, 2),
+            page_count=self.history_auto_pages, reason=reason,
+        )
+        await self.send_browser("historyLoading", loading=False, request_kind="bulk")
+        if reason == "target":
+            message = f"История загружена: {len(rows)} свечей, примерно {days:.1f} дней. Можно загрузить ещё."
+        elif reason == "max_pages":
+            message = f"Достигнут лимит автоматической загрузки: {len(rows)} свечей, {days:.1f} дней. Старые данные можно запросить ещё."
+        elif reason == "timeout":
+            message = f"Загрузка прервалась по тайм-ауту. Сохранена частичная история: {len(rows)} свечей, {days:.1f} дней."
+        elif reason == "empty":
+            message = "Сервер не вернул исторические свечи."
+        else:
+            message = f"Доступная история закончилась: {len(rows)} свечей, примерно {days:.1f} дней."
+        await self.status(message, "connected" if rows else "warning")
 
     async def handle_broker_event(self, name: str, data: Any) -> None:
         if name == "successauth":
@@ -514,40 +583,65 @@ class PocketBridge:
             bars = [bar for item in raw_bars if (bar := normalize_candle(item)) is not None]
             if not bars and raw_bars:
                 bars = ticks_to_candles(raw_bars, self.period)
-            if bars:
-                bars.sort(key=lambda bar: bar["time"])
-                deduped = {bar["time"]: bar for bar in bars}
-                clean = [deduped[key] for key in sorted(deduped)]
-                previous_cursor = self.history_cursor
-                new_cursor = min(bar["time"] for bar in clean)
-                has_more = True
-                if kind == "older":
-                    has_more = previous_cursor is not None and new_cursor < previous_cursor
-                    if has_more:
-                        self.history_cursor = new_cursor
+            if not bars:
+                if kind == "bulk":
+                    await self.finish_auto_history("end", has_more=False)
                 else:
-                    self.history_cursor = new_cursor
-                event_type = "historyOlder" if kind == "older" else "history"
-                await self.send_browser(
-                    event_type, asset=self.asset, period=self.period,
-                    candles=clean, has_more=has_more,
-                )
-                await self.send_browser("historyLoading", loading=False, request_kind=kind)
-                await self.status(
-                    f"Добавлено {len(clean)} свечей истории." if kind == "older"
-                    else f"История загружена: {len(clean)} свечей.",
-                    "connected",
-                )
-                if kind == "older" and not has_more:
+                    await self.send_browser("historyLoading", loading=False, request_kind=kind)
                     await self.send_browser("historyEnd")
-            else:
-                await self.send_browser("historyLoading", loading=False, request_kind=kind)
-                await self.send_browser("historyEnd")
-                await self.status(
-                    "Более ранняя история не найдена." if kind == "older"
-                    else "Соединение есть, но история пока не пришла от сервера.",
-                    "warning",
+                    await self.status("Исторические свечи больше не найдены.", "warning")
+                return
+
+            bars.sort(key=lambda bar: bar["time"])
+            deduped = {int(bar["time"]): bar for bar in bars}
+            clean = [deduped[key] for key in sorted(deduped)]
+            previous_cursor = self.history_cursor
+            new_cursor = min(bar["time"] for bar in clean)
+
+            if kind == "initial":
+                await self.start_auto_history(clean)
+                return
+
+            if kind == "bulk":
+                if previous_cursor is None or new_cursor >= previous_cursor:
+                    await self.finish_auto_history("end", has_more=False)
+                    return
+                for bar in clean:
+                    self.history_candles[int(bar["time"])] = bar
+                self.history_cursor = new_cursor
+                self.history_auto_pages += 1
+                target = (self.history_reference_time or int(time.time())) - AUTO_HISTORY_DAYS * 86400
+                rows_count = len(self.history_candles)
+                days = max(0.0, ((self.history_reference_time or int(time.time())) - new_cursor) / 86400)
+                await self.send_browser(
+                    "historyProgress", candles_count=rows_count,
+                    days_covered=round(days, 2), pages=self.history_auto_pages,
                 )
+                if new_cursor <= target:
+                    await self.finish_auto_history("target", has_more=True)
+                elif self.history_auto_pages >= MAX_AUTO_HISTORY_PAGES:
+                    await self.finish_auto_history("max_pages", has_more=True)
+                else:
+                    await asyncio.sleep(HISTORY_PAGE_DELAY)
+                    await self.request_history("bulk")
+                return
+
+            # User-requested one-page extension after the automatic month load.
+            if previous_cursor is None or new_cursor >= previous_cursor:
+                await self.send_browser("historyLoading", loading=False, request_kind="older")
+                await self.send_browser("historyEnd")
+                self.history_has_more = False
+                await self.status("Более ранняя история не найдена.", "warning")
+                return
+            for bar in clean:
+                self.history_candles[int(bar["time"])] = bar
+            self.history_cursor = new_cursor
+            await self.send_browser(
+                "historyOlder", asset=self.asset, period=self.period,
+                candles=clean, has_more=True,
+            )
+            await self.send_browser("historyLoading", loading=False, request_kind="older")
+            await self.status(f"Добавлено ещё {len(clean)} свечей истории.", "connected")
         elif name == "updateStream":
             for asset, stamp, price in collect_ticks(data):
                 await self.handle_tick(asset, stamp, price)
@@ -564,6 +658,7 @@ class PocketBridge:
     async def subscribe_broker(self) -> None:
         if not self.authenticated or self.broker is None:
             return
+        await self.reset_history()
         await self.send_broker_event(
             "changeSymbol", {"asset": self.asset, "period": self.period}
         )
