@@ -399,7 +399,11 @@ class PocketBridge:
                 return
             if enabled and not self.can_auto_trade():
                 await self.status("Автоторговля не включена: требуется подтверждённый DEMO-счёт и доступный торговый инструмент.", "warning")
-                await self.send_browser("executionState", auto_trading=False, can_trade=False, can_auto_trade=False)
+                await self.send_browser(
+                    "executionState", auto_trading=False,
+                    can_trade=self.can_trade(), can_auto_trade=self.can_auto_trade(),
+                    amount=self.auto_trade_amount,
+                )
                 return
             self.auto_trade_amount = amount
             self.auto_trading = enabled
