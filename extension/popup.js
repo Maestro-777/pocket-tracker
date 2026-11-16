@@ -1,128 +1,84 @@
 "use strict";
-
-const TRACKER_URLS = [
-  "http://127.0.0.1/*",
-  "http://localhost/*"
-];
-const BROKER_URLS = [
-  "https://pocketoption.com/*",
-  "https://*.pocketoption.com/*"
-];
-
+const TRACKER_URLS = ["http://127.0.0.1/*", "http://localhost/*"];
+const BROKER_URLS = ["https://pocketoption.com/*", "https://*.pocketoption.com/*"];
 const $ = id => document.getElementById(id);
 let current = { tracker: [], broker: [] };
-let trackerDiagnostic = "";
 
 function setStatus(name, state, message) {
   $(name + "-dot").className = "dot " + state;
   $(name + "-status").textContent = message;
 }
-
-async function pingTab(tab, allowInjection = false) {
+async function pingTab(tab, inject = false) {
   if (tab.id == null) return null;
   try {
     const reply = await chrome.tabs.sendMessage(tab.id, { type: "PT_PING" });
-    if (reply && reply.ok) return { tab, reply };
-  } catch (error) {
-    trackerDiagnostic = error && error.message ? error.message : String(error);
-  }
-
-  // If the static content script was not injected (for example, the extension
-  // was updated while the tab remained open), inject it once and retry.
-  if (allowInjection) {
+    if (reply?.ok) return { tab, reply };
+  } catch (_) {}
+  if (inject) {
     try {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ["content.js"]
-      });
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
+      await new Promise(r => setTimeout(r, 120));
       const reply = await chrome.tabs.sendMessage(tab.id, { type: "PT_PING" });
-      if (reply && reply.ok) return { tab, reply, injected: true };
-    } catch (error) {
-      trackerDiagnostic = error && error.message ? error.message : String(error);
-    }
+      if (reply?.ok) return { tab, reply };
+    } catch (_) {}
   }
   return null;
 }
-
-async function pingTabs(tabs, allowInjection = false) {
-  const found = [];
-  for (const tab of tabs) {
-    const result = await pingTab(tab, allowInjection);
-    if (result) found.push(result);
-  }
-  return found;
+async function getMonitor() {
+  return (await chrome.storage.local.get("ptBrokerMonitor")).ptBrokerMonitor || {};
 }
-
-function showLastSignal(brokerResults) {
-  const latest = brokerResults
-    .map(item => item.reply.lastSignal)
-    .filter(Boolean)
-    .sort((a, b) => (b.receivedAt || 0) - (a.receivedAt || 0))[0];
-  const el = $("last-signal");
-  if (!latest) {
-    el.className = "last-empty";
-    el.textContent = "Пока сигналов нет";
-    return;
-  }
-  el.className = "last-signal";
-  el.textContent = (latest.test ? "Тест доставки · " : "Получен сигнал · ") +
-    latest.direction + " · " + latest.asset + " · RSI " +
-    Number(latest.rsi).toFixed(1) + " · " +
-    new Date(latest.receivedAt).toLocaleTimeString();
+function showAccount(state) {
+  const type = state?.account || "unknown";
+  $("account-state").textContent = type === "demo" ? "DEMO · подтверждён" : type === "real" ? "REAL · торговля запрещена" : "Тип счёта не определён";
+  $("account-state").className = type === "demo" ? "safe" : "blocked";
+  $("execution-state").textContent = type === "demo"
+    ? "DEMO определён. Исполнение всё равно отключено до подтверждения протокола сделки."
+    : "Fail-closed: ручные и автоматические ордера заблокированы.";
 }
-
+function showStats() {
+  // The current read-only build deliberately records no trades. Never infer
+  // wins/losses from signal notifications or chart movements.
+  $("trades").textContent = "0";
+  $("wins").textContent = "0";
+  $("losses").textContent = "0";
+  $("winrate").textContent = "—";
+}
 async function refresh() {
   $("refresh").disabled = true;
   $("refresh").textContent = "Проверяем…";
-  trackerDiagnostic = "";
   try {
     const [trackerTabs, brokerTabs] = await Promise.all([
-      chrome.tabs.query({ url: TRACKER_URLS }),
-      chrome.tabs.query({ url: BROKER_URLS })
+      chrome.tabs.query({ url: TRACKER_URLS }), chrome.tabs.query({ url: BROKER_URLS })
     ]);
-    // Try normal messaging first, then inject the content script only into
-    // matching local Tracker tabs that did not answer.
-    const tracker = await pingTabs(trackerTabs, true);
-    const broker = await pingTabs(brokerTabs);
+    const tracker = [];
+    for (const tab of trackerTabs) { const x = await pingTab(tab, true); if (x) tracker.push(x); }
+    const broker = [];
+    for (const tab of brokerTabs) { const x = await pingTab(tab); if (x) broker.push(x); }
     current = { tracker, broker };
-
-    setStatus("tracker", tracker.length ? "ok" : (trackerTabs.length ? "warn" : "bad"),
-      tracker.length
-        ? "Подключён · вкладка отвечает" + (tracker.some(item => item.injected) ? " (скрипт восстановлен)" : "")
-        : trackerTabs.length
-          ? "Вкладка найдена, скрипт не запустился: " + (trackerDiagnostic || "нет ответа")
-          : "Не найдена вкладка localhost / 127.0.0.1");
-    setStatus("broker", broker.length ? "ok" : (brokerTabs.length ? "warn" : "bad"),
-      broker.length ? "Подключён · " + broker.length + " вкладка(и)" :
-      brokerTabs.length ? "Вкладка найдена, но скрипт не отвечает" : "Открой сайт Pocket Option");
-    const both = tracker.length > 0 && broker.length > 0;
-    setStatus("bridge", both ? "ok" : "warn",
-      both ? "Оба конца связи доступны" : "Нужны обе подключённые вкладки");
+    setStatus("tracker", tracker.length ? "ok" : "bad", tracker.length ? "Вкладка отвечает" : "Открой локальный Pocket Tracker");
+    setStatus("broker", broker.length ? "ok" : "bad", broker.length ? "Вкладка отвечает · " + broker.length : "Открой Pocket Option");
+    const monitor = await getMonitor();
+    const state = broker.map(x => x.reply.marketState).find(Boolean) || monitor.state || {};
+    const fresh = !!(monitor.lastMarketAt && Date.now() - monitor.lastMarketAt < 15000);
+    setStatus("bridge", fresh ? "ok" : "warn", fresh ? "Получены данные напрямую с сайта" : "Нет свежих рыночных событий");
+    showAccount(state);
+    showStats();
     $("test").disabled = broker.length === 0;
-    showLastSignal(broker);
   } catch (error) {
-    setStatus("bridge", "bad", "Ошибка проверки: " + error.message);
+    setStatus("bridge", "bad", "Ошибка: " + error.message);
   } finally {
     $("refresh").disabled = false;
-    $("refresh").textContent = "Проверить подключение";
+    $("refresh").textContent = "Обновить состояние";
   }
 }
-
 $("refresh").addEventListener("click", refresh);
 $("test").addEventListener("click", async () => {
   $("test").disabled = true;
-  $("test-result").textContent = "Отправляем тестовое уведомление…";
+  $("test-result").textContent = "Отправляю тест уведомления…";
   try {
     await chrome.runtime.sendMessage({ type: "PT_TEST_BROADCAST" });
-    $("test-result").textContent =
-      "Тест отправлен. На вкладке Pocket Option должна появиться плашка «Тестовое уведомление». Сделка не открывается.";
-    setTimeout(refresh, 500);
-  } catch (error) {
-    $("test-result").textContent = "Не удалось отправить тест: " + error.message;
-  } finally {
-    $("test").disabled = current.broker.length === 0;
-  }
+    $("test-result").textContent = "Тест отправлен на вкладку Pocket Option. Сделка не открывается.";
+  } catch (e) { $("test-result").textContent = "Ошибка: " + e.message; }
+  $("test").disabled = current.broker.length === 0;
 });
-
 refresh();
