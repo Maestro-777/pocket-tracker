@@ -9,6 +9,7 @@
   const sockets = new Map();
   let requestCounter = Date.now() % 1000000000;
   let lastStatusKey = "";
+  let lastAccountMode = "unknown";
   let desiredAsset = null;
   let desiredPeriod = 5;
   const DEMO_HOSTS = new Set(["demo-api-eu.po.market", "try-demo-eu.po.market"]);
@@ -79,7 +80,7 @@
   function latestDemoSocket() {
     let chosen = null;
     const mode = visibleAccountMode();
-    if (mode === "real") return null;
+    if (mode === "real" || (mode === "unknown" && lastAccountMode === "real")) return null;
     for (const rec of sockets.values()) {
       if (!rec.demoEndpoint || rec.serverDemo !== true || rec.ws.readyState !== NativeWebSocket.OPEN) continue;
       if (!chosen || rec.lastDataAt > chosen.lastDataAt) chosen = rec;
@@ -87,9 +88,12 @@
     return chosen;
   }
   function reportStatus(force) {
-    const mode = visibleAccountMode();
+    const visibleMode = visibleAccountMode();
     const open = Array.from(sockets.values()).filter(x => x.ws.readyState === NativeWebSocket.OPEN);
     const demo = latestDemoSocket();
+    const mode = visibleMode === "real" ? "real" :
+      visibleMode === "demo" ? "demo" :
+      lastAccountMode === "real" ? "real" : (demo ? "demo" : lastAccountMode);
     const key = [open.length, !!demo, mode, demo && demo.host, demo && demo.lastDataAt].join("|");
     if (!force && key === lastStatusKey) return;
     lastStatusKey = key;
@@ -207,6 +211,7 @@
       if (info.isDemo !== null) {
         rec.serverDemo = info.isDemo;
         rec.balanceKnown = true;
+        lastAccountMode = info.isDemo ? "demo" : "real";
       }
       rec.balance = info.balance;
       if (rec.demoEndpoint && rec.serverDemo === true) sendRaw(rec, "updateOpenedDeals");
@@ -307,7 +312,7 @@
       post("CHART_ASSET", { asset: data.asset, period: Number(data.period) || null });
     } else if (name === "subfor" && typeof data === "string") {
       desiredAsset = data;
-    } else if (name === "openOrder" && data && data.requestId != null && !rec.ownRequestIds.has(String(data.requestId))) {
+    } else if (name === "openOrder" && data && (data.requestId == null || !rec.ownRequestIds.has(String(data.requestId)))) {
       post("EXTERNAL_ORDER", { requestId: data.requestId, asset: data.asset || "", amount: Number(data.amount || 0) });
     }
   }
