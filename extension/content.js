@@ -31,10 +31,9 @@
       (marketState.authenticated ? "авторизация подтверждена" : "ожидание авторизации");
     const d = marketState.diagnostics || {};
     root.querySelector("[data-details]").textContent =
-      "WebSocket: " + (d.socketsCreated || 0) + " создано / " + (d.socketsOpened || 0) + " открыто · " +
-      (Array.isArray(d.sockets) ? d.sockets.map(s => "#" + s.id + " " + s.host + s.path + " [" + s.state + "] IN:" + s.in + " " + (s.lastIn || "—") + " OUT:" + s.out + " " + (s.lastOut || "—")).join(" | ") : "") +
-      " · событие: " + (d.lastEvent || "нет") + " · "
-      "Рыночные события: " + marketState.candleCount +
+      "WebSocket: " + (d.socketsCreated || 0) + " создано / " + (d.socketsOpened || 0) + " открыто · пакеты IN:" + (d.incomingPackets || 0) + " OUT:" + (d.outgoingPackets || 0) + " · типы IN: " + (d.incomingTypes || []).join(",") + " · " +
+      (Array.isArray(d.sockets) ? d.sockets.map(s => "#" + s.id + " " + s.host + s.path + " [" + s.state + "] packets IN:" + s.inPackets + " (" + s.lastInType + ", " + s.lastInBytes + "B) events:" + s.in + " " + (s.lastIn || "—") + " OUT:" + s.outPackets + " (" + s.lastOutType + ", " + s.lastOutBytes + "B) " + (s.lastOut || "—")).join(" | ") : "") +
+      " · событие: " + (d.lastEvent || "нет") + " · Рыночные события: " + marketState.candleCount +
       " · инструмент: " + (marketState.lastAsset || "ожидание") +
       " · последние данные: " + (marketState.lastMarketAt ? new Date(marketState.lastMarketAt).toLocaleTimeString() : "нет") +
       " · исполнение: " + (safe ? "DEMO допущен к следующему этапу" : "заблокировано");
