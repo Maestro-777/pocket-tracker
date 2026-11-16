@@ -1,20 +1,43 @@
 {
   "manifest_version": 3,
   "name": "Pocket Tracker",
-  "version": "2.0.0",
-  "description": "Поиск сигналов BB/RSI и DEMO-торговля Pocket Option.",
+  "version": "3.0.0",
+  "description": "Pocket Option DEMO: 5s BB/RSI signals, native market stream and 15s orders.",
   "permissions": [
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
-    "https://demo-api-eu.po.market/*",
-    "https://try-demo-eu.po.market/*",
     "https://pocketoption.com/*",
-    "https://*.pocketoption.com/*"
+    "https://*.pocketoption.com/*",
+    "https://p.finance/*"
   ],
-  "background": {
-    "service_worker": "background.js"
-  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://pocketoption.com/*",
+        "https://*.pocketoption.com/*",
+        "https://p.finance/*"
+      ],
+      "js": [
+        "page-hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://pocketoption.com/*",
+        "https://*.pocketoption.com/*",
+        "https://p.finance/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ],
   "action": {
     "default_title": "Pocket Tracker",
     "default_popup": "popup.html"
