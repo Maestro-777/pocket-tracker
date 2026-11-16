@@ -16,7 +16,7 @@ h1{font-size:19px;margin:2px 0 0;font-weight:800;letter-spacing:-.4px}.version{f
 .status-text{font-size:11px;line-height:1.4;color:#bdc8d6;min-height:29px;margin:8px 0 10px}
 .button{border:0;border-radius:10px;padding:10px 12px;font-size:12px;font-weight:800;cursor:pointer;transition:transform .12s,opacity .12s}
 .button:active{transform:scale(.985)}.button:disabled{opacity:.35;cursor:not-allowed;transform:none}
-.block{width:100%}.secondary{background:#253347;color:#d8e4f3}.secondary:hover{background:#2c3c54}
+.block{width:100%}.primary{background:#168c6b;color:#f1fff9;margin-top:9px}.primary:hover{background:#1aa77f}.secondary{background:#253347;color:#d8e4f3}.secondary:hover{background:#2c3c54}
 .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
 .metric{background:#141c29;border:1px solid #273345;border-radius:12px;padding:9px 7px;min-width:0}
 .metric span{display:block;font-size:9px;color:#7589a1;margin-bottom:6px;white-space:nowrap}
