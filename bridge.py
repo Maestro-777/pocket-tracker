@@ -44,7 +44,7 @@ DEFAULT_ASSET = "EURUSD_otc"
 # Pocket Option's history channel accepts an offset in bars. Keep each page
 # large enough to reduce round trips, but small enough for a WebSocket frame.
 HISTORY_COUNT = 9000
-AUTO_HISTORY_DAYS = 31
+AUTO_HISTORY_DAYS = 7
 MAX_AUTO_HISTORY_PAGES = 1200
 HISTORY_PAGE_DELAY = 0.08
 
@@ -550,7 +550,7 @@ class PocketBridge:
             return
         target = (self.history_reference_time or int(time.time())) - AUTO_HISTORY_DAYS * 86400
         if self.history_cursor <= target:
-            await self.finish_auto_history("target", has_more=True)
+            await self.finish_auto_history("target", has_more=False)
             return
         await asyncio.sleep(HISTORY_PAGE_DELAY)
         await self.request_history("bulk")
@@ -569,7 +569,7 @@ class PocketBridge:
         )
         await self.send_browser("historyLoading", loading=False, request_kind="bulk")
         if reason == "target":
-            message = f"История загружена: {len(rows)} свечей, примерно {days:.1f} дней. Можно загрузить ещё."
+            message = f"Загружены последние 7 дней: {len(rows)} свечей, фактически {days:.1f} дней."
         elif reason == "max_pages":
             message = f"Достигнут лимит автоматической загрузки: {len(rows)} свечей, {days:.1f} дней. Старые данные можно запросить ещё."
         elif reason == "timeout":
@@ -614,6 +614,8 @@ class PocketBridge:
             new_cursor = min(bar["time"] for bar in clean)
 
             if kind == "initial":
+                target = (self.history_reference_time or int(time.time())) - AUTO_HISTORY_DAYS * 86400
+                clean = [bar for bar in clean if bar["time"] >= target]
                 await self.start_auto_history(clean)
                 return
 
@@ -621,11 +623,12 @@ class PocketBridge:
                 if previous_cursor is None or new_cursor >= previous_cursor:
                     await self.finish_auto_history("end", has_more=False)
                     return
+                target = (self.history_reference_time or int(time.time())) - AUTO_HISTORY_DAYS * 86400
                 for bar in clean:
-                    self.history_candles[int(bar["time"])] = bar
+                    if bar["time"] >= target:
+                        self.history_candles[int(bar["time"])] = bar
                 self.history_cursor = new_cursor
                 self.history_auto_pages += 1
-                target = (self.history_reference_time or int(time.time())) - AUTO_HISTORY_DAYS * 86400
                 rows_count = len(self.history_candles)
                 days = max(0.0, ((self.history_reference_time or int(time.time())) - new_cursor) / 86400)
                 await self.send_browser(
@@ -633,7 +636,7 @@ class PocketBridge:
                     days_covered=round(days, 2), pages=self.history_auto_pages,
                 )
                 if new_cursor <= target:
-                    await self.finish_auto_history("target", has_more=True)
+                    await self.finish_auto_history("target", has_more=False)
                 elif self.history_auto_pages >= MAX_AUTO_HISTORY_PAGES:
                     await self.finish_auto_history("max_pages", has_more=True)
                 else:
