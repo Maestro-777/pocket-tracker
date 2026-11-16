@@ -362,6 +362,31 @@ class PocketBridge:
             if self.authenticated:
                 await self.subscribe_broker()
             await self.send_browser("executionState", auto_trading=self.auto_trading, can_trade=self.can_trade(), amount=self.auto_trade_amount)
+        elif action == "strategyConfig":
+            config = command.get("config") if isinstance(command.get("config"), dict) else {}
+            try:
+                bb_period = int(config.get("bbPeriod", self.strategy.bb_period))
+                rsi_period = int(config.get("rsiPeriod", self.strategy.rsi_period))
+                multiplier = float(config.get("bbMultiplier", self.strategy.bb_multiplier))
+                bb_source = str(config.get("bbSource", self.strategy.bb_source))
+                rsi_source = str(config.get("rsiSource", self.strategy.rsi_source))
+            except (TypeError, ValueError):
+                await self.status("Некорректные параметры индикаторов стратегии.", "error")
+                return
+            sources = {"close", "open", "hl2", "hlc3", "ohlc4"}
+            if not (2 <= bb_period <= 200 and 2 <= rsi_period <= 200 and math.isfinite(multiplier) and 0.1 <= multiplier <= 10 and bb_source in sources and rsi_source in sources):
+                await self.status("Параметры стратегии вне допустимого диапазона.", "error")
+                return
+            self.strategy.bb_period = bb_period
+            self.strategy.rsi_period = rsi_period
+            self.strategy.bb_multiplier = multiplier
+            self.strategy.bb_source = bb_source
+            self.strategy.rsi_source = rsi_source
+            await self.send_browser(
+                "strategyState", bb_period=bb_period, bb_multiplier=multiplier,
+                bb_source=bb_source, rsi_period=rsi_period, rsi_source=rsi_source,
+            )
+            await self.status("Параметры поиска сигналов обновлены.", "connected")
         elif action == "setAutoTrading":
             enabled = bool(command.get("enabled"))
             try:
