@@ -638,7 +638,17 @@ class PocketBridge:
                 self.auth_event.set()
             elif not self.closed:
                 self.authenticated = False
+                self.account_verified_demo = False
+                self.auto_trading = False
+                self.last_tick_monotonic = None
                 await self.status("Соединение с Pocket Option закрыто сервером.", "error")
+                await self.send_browser(
+                    "accountState", account="unknown", authenticated=False, demo_verified=False,
+                )
+                await self.send_browser(
+                    "executionState", auto_trading=False, can_trade=False,
+                    can_auto_trade=False, amount=self.auto_trade_amount,
+                )
 
     async def cancel_history_request(self) -> None:
         self.history_request_kind = None
