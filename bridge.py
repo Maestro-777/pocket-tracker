@@ -267,6 +267,7 @@ class PocketBridge:
         self.period = 300
         self.subscribed_asset: str | None = None
         self.latest_tick_time: int | None = None
+        self.last_tick_monotonic: float | None = None
         self.current_bar: dict[str, Any] | None = None
         self.last_live_emit = 0.0
         self.pending_live_price: float | None = None
@@ -493,6 +494,7 @@ class PocketBridge:
         self.authenticated = False
         self.account_verified_demo = False
         self.auto_trading = False
+        self.last_tick_monotonic = None
         self.history_auto_loading = False
         await self.cancel_history_request()
         page_task = self.history_page_task
@@ -928,6 +930,10 @@ class PocketBridge:
             and self.auth_payload and self.auth_payload.get("isDemo") == 1
             and self.asset in self.asset_ids
             and self.period == 5
+            and self.last_tick_monotonic is not None
+            and time.monotonic() - self.last_tick_monotonic < 10
+            and self.active_order_count == 0
+            and not self.order_busy
             and not self.execution_uncertain
         )
 
@@ -975,6 +981,10 @@ class PocketBridge:
             "orderEvent", success=success, event=name, data=data,
             request_id=request_id,
         )
+        await self.send_browser(
+            "executionState", auto_trading=self.auto_trading,
+            can_trade=self.can_trade(), amount=self.auto_trade_amount,
+        )
 
     async def place_order(
         self,
@@ -998,6 +1008,10 @@ class PocketBridge:
             await self.status("Ордер не отправлен: уже есть ожидающая или открытая сделка.", "warning")
             return
         self.order_busy = True
+        await self.send_browser(
+            "executionState", auto_trading=self.auto_trading,
+            can_trade=False, amount=self.auto_trade_amount,
+        )
         request_id = int(time.time() * 1000) % 2_147_483_647
         pending = {"event": asyncio.Event(), "success": False, "data": None}
         self.pending_orders[request_id] = pending
@@ -1055,6 +1069,10 @@ class PocketBridge:
         finally:
             self.pending_orders.pop(request_id, None)
             self.order_busy = False
+            await self.send_browser(
+                "executionState", auto_trading=self.auto_trading,
+                can_trade=self.can_trade(), amount=self.auto_trade_amount,
+            )
 
     async def handle_tick(self, asset: str, stamp: int, price: float) -> None:
         if asset != self.asset:
@@ -1066,7 +1084,14 @@ class PocketBridge:
             return
         if stamp <= 0 or not math.isfinite(price) or price <= 0:
             return
+        was_trade_ready = self.can_trade()
         self.latest_tick_time = stamp
+        self.last_tick_monotonic = time.monotonic()
+        if not was_trade_ready and self.can_trade():
+            await self.send_browser(
+                "executionState", auto_trading=self.auto_trading,
+                can_trade=self.can_trade(), amount=self.auto_trade_amount,
+            )
         start = stamp // self.period * self.period
         if self.current_bar is not None and start > self.current_bar["time"]:
             closed_bar = dict(self.current_bar)
