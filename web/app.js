@@ -24,18 +24,18 @@
     {id:"ichimoku",name:"Ichimoku Cloud",short:"Ichimoku",category:"trend",panel:"overlay",description:"Tenkan, Kijun и линии облака Ichimoku.",color:"#8eabef",params:[{id:"tenkan",label:"Tenkan",default:9,min:2,max:200},{id:"kijun",label:"Kijun",default:26,min:2,max:200},{id:"senkou",label:"Senkou B",default:52,min:2,max:300}]},
     {id:"psar",name:"Parabolic SAR",short:"SAR",category:"trend",panel:"overlay",description:"Трендовый стоп с ускорением по экстремумам.",color:"#df9a62",params:[{id:"step",label:"Шаг",default:0.02,min:0.001,max:0.2,step:0.001},{id:"maxStep",label:"Максимальный шаг",default:0.2,min:0.01,max:1,step:0.01}]},
     {id:"pivots",name:"Pivot Points Classic",short:"Pivots",category:"price",panel:"overlay",description:"Классические дневные Pivot, R1/R2 и S1/S2.",color:"#dfc36e",params:[]},
-    {id:"rsi",name:"Relative Strength Index",short:"RSI",category:"momentum",panel:"oscillator",description:"Осциллятор относительной силы, диапазон 0–100.",color:"#b48af3",params:[{id:"period",label:"Период",default:14,min:2,max:500}]},
+    {id:"rsi",name:"Relative Strength Index",short:"RSI",category:"momentum",panel:"oscillator",description:"RSI Уайлдера с настраиваемыми уровнями и источником цены.",color:"#b48af3",params:[{id:"period",label:"Период",default:14,min:2,max:500},{id:"overbought",label:"Верхний уровень",default:70,min:50,max:100},{id:"oversold",label:"Нижний уровень",default:30,min:0,max:50},{id:"source",label:"Источник цены",type:"select",default:"close",options:[["close","Close"],["open","Open"],["hl2","HL2"],["hlc3","HLC3"]]}]},
     {id:"macd",name:"Moving Average Convergence Divergence",short:"MACD",category:"momentum",panel:"oscillator",description:"Разница EMA, сигнальная линия и гистограмма.",color:"#62b6ef",params:[{id:"fast",label:"Быстрая EMA",default:12,min:2,max:200},{id:"slow",label:"Медленная EMA",default:26,min:3,max:300},{id:"signal",label:"Сигнальная EMA",default:9,min:2,max:100}]},
-    {id:"stochastic",name:"Stochastic Oscillator",short:"Stochastic",category:"momentum",panel:"oscillator",description:"Положение закрытия внутри диапазона High/Low.",color:"#57c7b3",params:[{id:"k",label:"%K period",default:14,min:2,max:300},{id:"d",label:"%D smoothing",default:3,min:1,max:100}]},
-    {id:"cci",name:"Commodity Channel Index",short:"CCI",category:"momentum",panel:"oscillator",description:"Отклонение типичной цены от её среднего.",color:"#e2a96b",params:[{id:"period",label:"Период",default:20,min:2,max:200}]},
-    {id:"williams",name:"Williams %R",short:"Williams %R",category:"momentum",panel:"oscillator",description:"Осциллятор положения цены в диапазоне.",color:"#7db6e9",params:[{id:"period",label:"Период",default:14,min:2,max:300}]},
+    {id:"stochastic",name:"Stochastic Oscillator",short:"Stochastic",category:"momentum",panel:"oscillator",description:"Стохастик с отдельными периодами %K, сглаживания и %D.",color:"#57c7b3",params:[{id:"k",label:"%K период",default:14,min:2,max:300},{id:"smoothK",label:"Сглаживание %K",default:3,min:1,max:100},{id:"d",label:"%D период",default:3,min:1,max:100},{id:"overbought",label:"Верхний уровень",default:80,min:50,max:100},{id:"oversold",label:"Нижний уровень",default:20,min:0,max:50}]},
+    {id:"cci",name:"Commodity Channel Index",short:"CCI",category:"momentum",panel:"oscillator",description:"CCI с настраиваемым порогом.",color:"#e2a96b",params:[{id:"period",label:"Период",default:20,min:2,max:200},{id:"level",label:"Уровень зоны",default:100,min:25,max:300}]},
+    {id:"williams",name:"Williams %R",short:"Williams %R",category:"momentum",panel:"oscillator",description:"Williams %R с настраиваемыми зонами.",color:"#7db6e9",params:[{id:"period",label:"Период",default:14,min:2,max:300},{id:"overbought",label:"Верхний уровень",default:-20,min:-50,max:0},{id:"oversold",label:"Нижний уровень",default:-80,min:-100,max:-50}]},
     {id:"roc",name:"Rate of Change",short:"ROC",category:"momentum",panel:"oscillator",description:"Процентное изменение цены за период.",color:"#e9a0ae",params:[{id:"period",label:"Период",default:12,min:1,max:500}]},
     {id:"ao",name:"Awesome Oscillator",short:"AO",category:"momentum",panel:"oscillator",description:"Разница короткой и длинной SMA медианной цены.",color:"#a4b7ee",params:[{id:"fast",label:"Быстрый период",default:5,min:2,max:100},{id:"slow",label:"Медленный период",default:34,min:3,max:200}]},
     {id:"atr",name:"Average True Range",short:"ATR",category:"volatility",panel:"oscillator",description:"Средний истинный диапазон волатильности.",color:"#ddaa6d",params:[{id:"period",label:"Период",default:14,min:2,max:500}]},
-    {id:"adx",name:"Average Directional Index",short:"ADX / DMI",category:"trend",panel:"oscillator",description:"Сила тренда и направленные движения +DI/−DI.",color:"#d28df0",params:[{id:"period",label:"Период",default:14,min:2,max:300}]},
+    {id:"adx",name:"Average Directional Index",short:"ADX / DMI",category:"trend",panel:"oscillator",description:"ADX, +DI и −DI с настраиваемым порогом силы тренда.",color:"#d28df0",params:[{id:"period",label:"Период",default:14,min:2,max:300},{id:"threshold",label:"Порог тренда",default:25,min:5,max:60}]},
     {id:"obv",name:"On Balance Volume",short:"OBV",category:"volume",panel:"oscillator",description:"Накопительный поток объёма по направлению свечи.",color:"#55c6a4",params:[],requiresVolume:true},
     {id:"vwap",name:"Volume Weighted Average Price",short:"VWAP",category:"volume",panel:"overlay",description:"Средняя цена, взвешенная по объёму внутри дня.",color:"#e3bb69",params:[],requiresVolume:true},
-    {id:"mfi",name:"Money Flow Index",short:"MFI",category:"volume",panel:"oscillator",description:"Осциллятор денежного потока по цене и объёму.",color:"#77b8ed",params:[{id:"period",label:"Период",default:14,min:2,max:300}],requiresVolume:true}
+    {id:"mfi",name:"Money Flow Index",short:"MFI",category:"volume",panel:"oscillator",description:"MFI с настраиваемыми уровнями.",color:"#77b8ed",params:[{id:"period",label:"Период",default:14,min:2,max:300},{id:"overbought",label:"Верхний уровень",default:80,min:50,max:100},{id:"oversold",label:"Нижний уровень",default:20,min:0,max:50}],requiresVolume:true}
   ];
 
   const chartNode = $("chart");
@@ -144,10 +144,16 @@
     const definition = indicatorCatalog.find(def => def.id === item.id);
     const params = {};
     for (const field of definition.params) {
-      const raw = Number(item.params && item.params[field.id]);
-      params[field.id] = Number.isFinite(raw)
-        ? Math.min(field.max, Math.max(field.min, raw))
-        : field.default;
+      const rawValue = item.params && item.params[field.id];
+      if (field.type === "select") {
+        const allowed = (field.options || []).map(option => option[0]);
+        params[field.id] = allowed.includes(rawValue) ? rawValue : field.default;
+      } else {
+        const raw = Number(rawValue);
+        params[field.id] = Number.isFinite(raw)
+          ? Math.min(field.max, Math.max(field.min, raw))
+          : field.default;
+      }
     }
     return {
       uid: item.uid || ("ind-" + Math.random().toString(36).slice(2)),
@@ -407,7 +413,9 @@
   }
 
   function setPeriod(period) {
-    activePeriod = Number(period);
+    period = Number(period);
+    if (!periodNames[period] || period === activePeriod) return;
+    activePeriod = period;
     $("period-state").textContent = periodNames[activePeriod] || activePeriod + "s";
     document.querySelectorAll(".tf-button").forEach(button => {
       button.classList.toggle("active", Number(button.dataset.period) === activePeriod);
@@ -598,13 +606,25 @@
       const label = document.createElement("label");
       label.className = "setting-field";
       label.textContent = field.label;
-      const input = document.createElement("input");
-      input.type = "number";
+      let input;
+      if (field.type === "select") {
+        input = document.createElement("select");
+        for (const [value,text] of field.options || []) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = text;
+          input.appendChild(option);
+        }
+        input.value = instance.params[field.id];
+      } else {
+        input = document.createElement("input");
+        input.type = "number";
+        input.min = field.min;
+        input.max = field.max;
+        input.step = field.step || 1;
+        input.value = instance.params[field.id];
+      }
       input.name = field.id;
-      input.min = field.min;
-      input.max = field.max;
-      input.step = field.step || 1;
-      input.value = instance.params[field.id];
       label.appendChild(input);
       host.appendChild(label);
     }
@@ -649,6 +669,10 @@
     const host = $("indicator-settings-fields");
     for (const field of definition.params) {
       const input = host.querySelector('[name="' + field.id + '"]');
+      if (field.type === "select") {
+        instance.params[field.id] = input.value;
+        continue;
+      }
       const value = Number(input.value);
       if (!Number.isFinite(value) || value < field.min || value > field.max) {
         input.focus();
@@ -696,7 +720,7 @@
     indicatorRefreshTimer = setTimeout(() => {
       indicatorRefreshTimer = null;
       runIndicatorCalculation();
-    }, 700);
+    }, 350);
   }
 
   function runIndicatorCalculation() {
@@ -793,7 +817,9 @@
     container.className = "indicator-pane";
     const heading = document.createElement("div");
     heading.className = "indicator-pane-heading";
-    heading.textContent = definition.short + " · " + definition.params.map(field => instance.params[field.id]).join("/");
+    heading.textContent = definition.short + " · " + definition.params
+      .filter(field => field.id !== "source")
+      .map(field => instance.params[field.id]).join("/");
     const target = document.createElement("div");
     target.className = "indicator-pane-chart";
     container.append(heading,target);
@@ -816,11 +842,21 @@
         lastValueVisible:false,crosshairMarkerVisible:false
       });
       series.setData(line.data);
-      if (definition.id==="rsi" || definition.id==="stochastic" || definition.id==="mfi") {
-        const levels = definition.id==="stochastic" ? [20,80] : [30,70];
-        for (const level of levels) {
-          series.createPriceLine({price:level,color:"#53687d",lineWidth:1,lineStyle:LightweightCharts.LineStyle.Dashed,axisLabelVisible:false,title:""});
-        }
+      const p = instance.params || {};
+      let levels = [];
+      if (["rsi","mfi","stochastic","williams"].includes(definition.id)) {
+        levels = [Number(p.oversold),Number(p.overbought)];
+      } else if (definition.id==="cci") {
+        levels = [-Number(p.level || 100),Number(p.level || 100)];
+      } else if (definition.id==="adx") {
+        levels = [Number(p.threshold || 25)];
+      }
+      for (const level of levels) {
+        if (Number.isFinite(level)) series.createPriceLine({
+          price:level,color:"#53687d",lineWidth:1,
+          lineStyle:LightweightCharts.LineStyle.Dashed,
+          axisLabelVisible:false,title:""
+        });
       }
     }
     paneChart.timeScale().subscribeVisibleLogicalRangeChange(range=>syncTimeRanges(paneChart,range));
@@ -925,7 +961,30 @@
     trendStart = null;
     $("tool-hint").textContent = "Все пользовательские рисунки удалены";
   });
+  function shiftVisibleBars(direction) {
+    const scale = chart.timeScale();
+    const range = scale.getVisibleLogicalRange();
+    if (!range) return;
+    const width = Math.max(5, range.to - range.from);
+    const shift = direction * Math.max(1, Math.round(width * 0.35));
+    scale.setVisibleLogicalRange({from:range.from + shift,to:range.to + shift});
+  }
+
+  function zoomVisible(factor) {
+    const scale = chart.timeScale();
+    const range = scale.getVisibleLogicalRange();
+    if (!range) return;
+    const center = (range.from + range.to) / 2;
+    const width = Math.max(10, Math.min(2000, (range.to - range.from) * factor));
+    scale.setVisibleLogicalRange({from:center - width / 2,to:center + width / 2});
+  }
+
   $("fit-button").addEventListener("click",()=>chart.timeScale().fitContent());
+  $("nav-left").addEventListener("click",()=>shiftVisibleBars(-1));
+  $("nav-right").addEventListener("click",()=>shiftVisibleBars(1));
+  $("nav-zoom-in").addEventListener("click",()=>zoomVisible(0.75));
+  $("nav-zoom-out").addEventListener("click",()=>zoomVisible(1.33));
+  $("nav-latest").addEventListener("click",()=>chart.timeScale().scrollToRealTime());
 
   $("open-indicators").addEventListener("click",openIndicatorLibrary);
   $("close-indicators").addEventListener("click",()=>$("indicator-modal").hidden=true);
