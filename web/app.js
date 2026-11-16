@@ -233,6 +233,7 @@
   }
 
   function syncStrategyConfig() {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
     const bb = activeIndicators.find(item => item.id === "bollinger");
     const rsi = activeIndicators.find(item => item.id === "rsi");
     sendBridge({
