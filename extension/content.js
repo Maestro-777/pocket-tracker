@@ -460,10 +460,16 @@
           state.orderPending = false;
           state.executionUncertain = true;
           state.autoTrading = false;
-          log("Нет подтверждения ордера. Повторная отправка заблокирована; проверь историю сделок.");
+          log("Нет подтверждения ордера. Повторная отправка заблокирована; запрашиваю открытые сделки.");
           emitCommand("REQUEST_STATUS", {});
         }
       }, 12000);
+      setTimeout(function() {
+        if (state.executionUncertain && state.lastOrder && state.lastOrder.requestId === data.requestId) {
+          emitCommand("REQUEST_STATUS", {});
+          log("Повторно проверяю статус неопределённого ордера у брокера.");
+        }
+      }, 32000);
     } else if (data.type === "ORDER_ACK") {
       const order = data.order || {};
       if (data.accepted) {
@@ -483,6 +489,13 @@
           log("Брокер отклонил ордер: " + (order.error || "неизвестная ошибка"));
         }
       }
+    } else if (data.type === "ORDER_STATUS_RESOLVED") {
+      state.orderPending = false;
+      state.executionUncertain = false;
+      state.activeOrder = false;
+      state.activeDealCount = 0;
+      if (state.lastOrder) state.lastOrder.status = "Не найден среди открытых сделок";
+      log("Брокер подтвердил: открытых сделок нет. Блокировка снята.");
     } else if (data.type === "OPEN_DEALS") {
       const deals = Array.isArray(data.deals) ? data.deals : [];
       const open = deals.filter(function(d){return d.closeTimestamp == null || d.closeTimestamp === 0 || d.closeTimestamp === "";});
@@ -565,9 +578,8 @@
     if (message.type === "PT_CLEAR_UNCERTAIN") {
       if (state.orderPending) throw new Error("Ордер ещё ожидает ответа.");
       emitCommand("REQUEST_STATUS", {});
-      state.executionUncertain = false;
       state.activeOrder = true;
-      log("Блокировка снята вручную. Новый ордер всё равно заблокирован, пока статус открытых сделок не станет известен.");
+      log("Запрошена повторная проверка у брокера. Блокировка останется до подтверждённого статуса.");
       return { ok:true, state:publicState() };
     }
     return { ok:false, message:"Неизвестная команда." };
