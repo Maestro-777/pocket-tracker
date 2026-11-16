@@ -29,7 +29,7 @@ async function getMonitor() {
 }
 function showAccount(state) {
   const type = state?.account || "unknown";
-  $("account-state").textContent = type === "demo" ? "DEMO · подтверждён" : type === "real" ? "REAL · торговля запрещена" : "Тип счёта не определён";
+  $("account-state").textContent = type === "demo" ? (state?.authenticated ? "DEMO · авторизация подтверждена" : "DEMO определён · авторизация НЕ подтверждена") : type === "real" ? "REAL · торговля запрещена" : "Тип счёта не определён";
   $("account-state").className = type === "demo" ? "safe" : "blocked";
   $("execution-state").textContent = type === "demo"
     ? "DEMO определён. Исполнение всё равно отключено до подтверждения протокола сделки."
@@ -59,8 +59,9 @@ async function refresh() {
     setStatus("broker", broker.length ? "ok" : "bad", broker.length ? "Вкладка отвечает · " + broker.length : "Открой Pocket Option");
     const monitor = await getMonitor();
     const state = broker.map(x => x.reply.marketState).find(Boolean) || monitor.state || {};
+    const diagnostics = state?.diagnostics || {};
     const fresh = !!(monitor.lastMarketAt && Date.now() - monitor.lastMarketAt < 15000);
-    setStatus("bridge", fresh ? "ok" : "warn", fresh ? "Получены данные напрямую с сайта" : "Нет свежих рыночных событий");
+    setStatus("bridge", fresh ? "ok" : "warn", `WS ${diagnostics.socketsCreated || 0}/${diagnostics.socketsOpened || 0} · IN ${diagnostics.incomingFrames || 0} · OUT ${diagnostics.outgoingFrames || 0} · последнее: ${diagnostics.lastEvent || "нет"}${diagnostics.socketHost ? " · " + diagnostics.socketHost + diagnostics.socketPath : ""}`);
     showAccount(state);
     showStats();
     $("test").disabled = broker.length === 0;
