@@ -506,7 +506,7 @@
         state.orderPending = false;
         state.executionUncertain = false;
         if (state.lastOrder) state.lastOrder.status = "Найдена среди открытых сделок";
-      } else if (!state.orderPending && !state.executionUncertain) {
+      } else if (!state.orderPending && !state.executionUncertain && state.activeDealCount === 0) {
         state.activeOrder = false;
       }
     } else if (data.type === "CLOSED_DEALS") {
