@@ -45,12 +45,6 @@ function showAccount(accountState, executionState) {
   $("auto-toggle").textContent = current.autoTrading ? "Остановить автоторговлю" : "Включить автоторговлю";
   $("auto-toggle").classList.toggle("active", current.autoTrading);
 }
-function showStats() {
-  $("trades").textContent = "0";
-  $("wins").textContent = "0";
-  $("losses").textContent = "0";
-  $("winrate").textContent = "—";
-}
 function amountValue() {
   const amount = Number($("trade-amount").value);
   if (!Number.isFinite(amount) || amount < 1 || amount > 50000) {
@@ -78,6 +72,18 @@ async function refresh() {
     const accountState = monitor.accountState || {};
     const executionState = monitor.executionState || {};
     showAccount(accountState, executionState);
+    if (monitor.lastSignal) {
+      const signal = monitor.lastSignal;
+      const node = $("last-signal");
+      node.textContent = signal.direction + " · " + (signal.asset || "инструмент") +
+        " · RSI " + Number(signal.rsi).toFixed(1);
+      node.className = String(signal.direction).toLowerCase();
+      $("last-signal-time").textContent = "Свеча: " + new Date(Number(signal.candleTime || signal.createdAt) * 1000).toLocaleTimeString();
+    } else {
+      $("last-signal").textContent = "Пока сигналов нет";
+      $("last-signal").className = "";
+      $("last-signal-time").textContent = "Ожидание закрытой свечи";
+    }
     setStatus("bridge", current.canTrade ? "ok" : "warn",
       current.canTrade ? "DEMO подтверждён · мост готов" : (accountState.account === "real" ? "REAL · заблокировано" : "Ожидание подтверждённого DEMO"));
     if (monitor.lastOrderResult) {
@@ -86,7 +92,6 @@ async function refresh() {
         ? "Последний ордер подтверждён брокером · " + (last.direction || "")
         : (last.message || "Последний ордер не подтверждён");
     }
-    showStats();
     $("test").disabled = broker.length === 0;
   } catch (error) {
     setStatus("bridge", "bad", "Ошибка: " + error.message);
