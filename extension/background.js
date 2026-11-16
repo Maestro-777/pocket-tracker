@@ -24,7 +24,7 @@ function parseAuthMessage(raw){
  const frame=raw.trim();
  if(!frame.startsWith("42"))throw Error("Сообщение должно начинаться с 42 и содержать событие auth.");
  let packet;try{packet=JSON.parse(frame.slice(2));}catch{throw Error("Не удалось разобрать JSON в auth-сообщении.");}
- if(!Array.isArray(packet)||packet[0]!=="auth"||!packet[1]||typeof packet[1]!=="object"||Array.isArray(packet[1]))throw Error("Ожидается формат 42[\\"auth\\",{...}].");
+ if(!Array.isArray(packet)||packet[0]!=="auth"||!packet[1]||typeof packet[1]!=="object"||Array.isArray(packet[1]))throw Error("Неверный формат: ожидается Socket.IO auth-сообщение.");
  const payload={...packet[1]};
  if(typeof payload.sessionToken!=="string"||payload.sessionToken.trim().length<8)throw Error("В auth-сообщении отсутствует корректный sessionToken.");
  const uid=Number(payload.uid);
