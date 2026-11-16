@@ -189,6 +189,7 @@ class PocketBridge:
         self.browser = browser
         self.broker: Any = None
         self.reader_task: asyncio.Task | None = None
+        self.ping_task: asyncio.Task | None = None
         self.auth_payload: dict[str, Any] | None = None
         self.authenticated = False
         self.auth_event = asyncio.Event()
@@ -248,6 +249,7 @@ class PocketBridge:
             self.asset = asset
             self.period = period
             self.current_bar = None
+            self.latest_tick_time = None
             self.history_requested = False
             if self.authenticated:
                 await self.subscribe_broker()
@@ -281,6 +283,7 @@ class PocketBridge:
                     max_size=2_000_000,
                 )
                 self.reader_task = asyncio.create_task(self.read_broker())
+                self.ping_task = asyncio.create_task(self.ping_broker())
                 try:
                     await asyncio.wait_for(self.auth_event.wait(), timeout=18)
                 except asyncio.TimeoutError:
@@ -306,6 +309,13 @@ class PocketBridge:
 
     async def close_broker(self) -> None:
         self.authenticated = False
+        if self.ping_task and self.ping_task is not asyncio.current_task():
+            self.ping_task.cancel()
+            try:
+                await self.ping_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        self.ping_task = None
         if self.reader_task and self.reader_task is not asyncio.current_task():
             self.reader_task.cancel()
             try:
@@ -319,6 +329,16 @@ class PocketBridge:
             except Exception:
                 pass
         self.broker = None
+
+    async def ping_broker(self) -> None:
+        while self.broker is not None:
+            await asyncio.sleep(20)
+            if self.broker is None:
+                return
+            try:
+                await self.broker.send('42["ps"]')
+            except Exception:
+                return
 
     async def send_broker_event(self, event: str, data: Any = None) -> None:
         if self.broker is None:
@@ -355,6 +375,11 @@ class PocketBridge:
                             await self.handle_broker_event(event_name, payload)
                     except Exception as exc:
                         log.debug("Binary event could not be decoded: %s", type(exc).__name__)
+                elif message.startswith("42") and "NotAuthorized" in message:
+                    self.auth_error = "Pocket Option отклонил авторизацию. Сессия недействительна или истекла."
+                    self.auth_event.set()
+                    await self.status(self.auth_error, "error")
+                    return
                 elif message.startswith("42"):
                     try:
                         event_data = json.loads(message[2:])
@@ -376,6 +401,9 @@ class PocketBridge:
         finally:
             if not self.authenticated:
                 self.auth_event.set()
+            elif not self.closed:
+                self.authenticated = False
+                await self.status("Соединение с Pocket Option закрыто сервером.", "error")
 
     async def handle_broker_event(self, name: str, data: Any) -> None:
         if name == "successauth":
