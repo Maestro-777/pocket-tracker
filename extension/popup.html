@@ -3,10 +3,9 @@
 <body><main>
 <header><div><small>POCKET OPTION</small><h1>Pocket Tracker</h1></div><span id="lamp" class="lamp"></span></header>
 <section class="panel"><h2>Подключение DEMO</h2>
-<label>SSID / session<input id="ssid" type="password" autocomplete="off" placeholder="Вставь значение session"></label>
-<label>UID<input id="uid" inputmode="numeric" placeholder="Например, 12345678"></label>
+<label>Полное Socket.IO auth-сообщение<textarea id="authMessage" rows="4" spellcheck="false" autocomplete="off" placeholder='42["auth",{"sessionToken":"…","uid":"…","lang":"ru","currentUrl":"cabinet/demo-quick-high-low","isChart":1}]'></textarea></label>
 <button id="connect" class="primary">Подключиться к DEMO</button>
-<p class="hint">SSID хранится только в памяти фонового процесса и не записывается в настройки браузера. Используется только DEMO-сервер.</p>
+<p class="hint">Вставляй всю строку, начиная с 42. Токен используется только в памяти расширения, не сохраняется в настройках и не выводится в журнал. Только DEMO-сервер.</p>
 </section>
 <section class="panel"><h2>Рынок и стратегия</h2>
 <label>Инструмент<input id="asset" value="EURUSD_otc"></label>
