@@ -123,6 +123,7 @@
     };
   } catch (error) {
     console.error("Cannot create indicator worker", error);
+    setStatus("Расчёт индикаторов недоступен: браузер не смог запустить Web Worker.", "warning");
   }
 
   function loadStoredArray(key) {
