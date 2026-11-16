@@ -64,12 +64,12 @@ class ClosedCandleStrategy:
 
         direction = None
         distance_points = None
-        if close >= upper and close - upper <= point and self.put_rsi[0] <= rsi <= self.put_rsi[1]:
+        if abs(close - upper) <= point and self.put_rsi[0] <= rsi <= self.put_rsi[1]:
             direction = "PUT"
-            distance_points = (close - upper) / point
-        elif close <= lower and lower - close <= point and self.call_rsi[0] <= rsi <= self.call_rsi[1]:
+            distance_points = abs(close - upper) / point
+        elif abs(close - lower) <= point and self.call_rsi[0] <= rsi <= self.call_rsi[1]:
             direction = "CALL"
-            distance_points = (lower - close) / point
+            distance_points = abs(close - lower) / point
 
         if direction is None:
             return None
