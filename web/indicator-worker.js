@@ -360,10 +360,15 @@ function calculateIndicator(item, data) {
         negative[i] = typical[i] < typical[i - 1] ? flow : 0;
       }
       const out = nanArray(n);
-      for (let i = period; i < n; i++) {
-        let pos = 0, neg = 0;
-        for (let j = i - period + 1; j <= i; j++) { pos += positive[j] || 0; neg += negative[j] || 0; }
-        out[i] = neg === 0 ? 100 : 100 - 100 / (1 + pos / neg);
+      let pos = 0, neg = 0;
+      for (let i = 0; i < n; i++) {
+        pos += Number.isFinite(positive[i]) ? positive[i] : 0;
+        neg += Number.isFinite(negative[i]) ? negative[i] : 0;
+        if (i >= period) {
+          pos -= Number.isFinite(positive[i - period]) ? positive[i - period] : 0;
+          neg -= Number.isFinite(negative[i - period]) ? negative[i - period] : 0;
+        }
+        if (i >= period) out[i] = neg === 0 ? 100 : 100 - 100 / (1 + pos / neg);
       }
       addOutput(outputs, "MFI", out);
       break;
