@@ -42,6 +42,14 @@
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (isTracker && message?.type === "PT_AUTH_FRAME" && typeof message.authFrame === "string") {
+      window.postMessage({
+        source:"pt-pocket-tracker-extension", type:"broker-auth-frame",
+        authFrame:message.authFrame
+      }, location.origin);
+      sendResponse({ok:true});
+      return;
+    }
     if (isTracker && message?.type === "PT_MANUAL_TRADE") {
       window.postMessage({
         source:"pt-pocket-tracker-extension", type:"manual-trade",
