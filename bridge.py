@@ -293,6 +293,7 @@ class PocketBridge:
         self.pending_orders: dict[int, dict[str, Any]] = {}
         self.order_busy = False
         self.active_order_count = 0
+        self.execution_uncertain = False
         self.closed = False
 
     async def send_browser(self, kind: str, **payload: Any) -> None:
@@ -372,7 +373,7 @@ class PocketBridge:
             self.auto_trade_amount = amount
             self.auto_trading = enabled
             await self.send_browser("executionState", auto_trading=self.auto_trading, can_trade=self.can_trade(), amount=amount)
-            await self.status("Автоторговля " + ("включена" if enabled else "выключена") + ".", "connected" if enabled else "ready")
+            await self.status("Автоторговля " + ("включена" if enabled else "выключена") + ".", "connected" if enabled else "info")
         elif action == "trade":
             direction = str(command.get("direction", "")).upper()
             try:
@@ -837,16 +838,28 @@ class PocketBridge:
             )
         elif name == "successopenOrder":
             self.active_order_count = max(1, self.active_order_count)
+            self.execution_uncertain = False
             await self.resolve_order_event(name, data, True)
         elif name == "failopenOrder":
+            self.execution_uncertain = False
             await self.resolve_order_event(name, data, False)
         elif name == "successcloseOrder":
             self.active_order_count = 0
+            self.execution_uncertain = False
             await self.send_browser("dealClosed", deal=data)
+            await self.send_browser(
+                "executionState", auto_trading=self.auto_trading,
+                can_trade=self.can_trade(), amount=self.auto_trade_amount,
+            )
         elif name == "updateOpenedDeals":
             deals = data if isinstance(data, list) else data.get("deals", []) if isinstance(data, dict) else []
             self.active_order_count = len(deals) if isinstance(deals, list) else self.active_order_count
+            self.execution_uncertain = False
             await self.send_browser("openedDeals", deals=deals)
+            await self.send_browser(
+                "executionState", auto_trading=self.auto_trading,
+                can_trade=self.can_trade(), amount=self.auto_trade_amount,
+            )
         elif name == "updateAssets" and isinstance(data, list):
             symbols = []
             for row in data:
@@ -906,6 +919,7 @@ class PocketBridge:
             and self.account_verified_demo
             and self.auth_payload and self.auth_payload.get("isDemo") == 1
             and self.asset in self.asset_ids
+            and not self.execution_uncertain
         )
 
     async def evaluate_closed_bar(self, closed_bar: dict[str, Any]) -> None:
@@ -996,6 +1010,8 @@ class PocketBridge:
             try:
                 await asyncio.wait_for(pending["event"].wait(), timeout=12)
             except asyncio.TimeoutError:
+                self.execution_uncertain = True
+                self.auto_trading = False
                 await self.status("Нет подтверждения открытия от Pocket Option. Проверь историю сделок перед повторной отправкой.", "error")
                 await self.send_browser(
                     "orderResult", success=False, uncertain=True,
