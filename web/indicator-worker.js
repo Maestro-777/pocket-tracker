@@ -151,6 +151,7 @@ function calculateIndicator(item, data) {
   const mult = Math.max(0.1, Math.min(10, Number(p.multiplier) || 2));
   const outputs = [];
   const tr = () => trueRange(high, low, close);
+  const movingAverage = (values, length, method) => method === "sma" ? rollingMean(values, length) : ema(values, length);
 
   switch (item.id) {
     case "sma":
@@ -273,16 +274,17 @@ function calculateIndicator(item, data) {
       for (let i = 1; i < n; i++) { const delta = price[i] - price[i - 1]; gains[i] = Math.max(delta, 0); losses[i] = Math.max(-delta, 0); }
       const avgGain = wilder(gains, period), avgLoss = wilder(losses, period), out = nanArray(n);
       for (let i = 0; i < n; i++) {
-        if (Number.isFinite(avgGain[i]) && Number.isFinite(avgLoss[i])) out[i] = avgLoss[i] === 0 ? 100 : 100 - (100 / (1 + avgGain[i] / avgLoss[i]));
+        if (Number.isFinite(avgGain[i]) && Number.isFinite(avgLoss[i])) out[i] = avgLoss[i] === 0 ? (avgGain[i] === 0 ? 50 : 100) : 100 - (100 / (1 + avgGain[i] / avgLoss[i]));
       }
       addOutput(outputs, "RSI", out);
       break;
     }
     case "macd": {
-      const fast = ema(price, Number(p.fast) || 12), slow = ema(price, Number(p.slow) || 26);
+      const method = p.method || "ema";
+      const fast = movingAverage(price, Number(p.fast) || 12, method), slow = movingAverage(price, Number(p.slow) || 26, method);
       const line = nanArray(n);
       for (let i = 0; i < n; i++) if (Number.isFinite(fast[i]) && Number.isFinite(slow[i])) line[i] = fast[i] - slow[i];
-      const signal = ema(line, Number(p.signal) || 9), hist = nanArray(n);
+      const signal = movingAverage(line, Number(p.signal) || 9, method), hist = nanArray(n);
       for (let i = 0; i < n; i++) if (Number.isFinite(line[i]) && Number.isFinite(signal[i])) hist[i] = line[i] - signal[i];
       addOutput(outputs, "MACD", line); addOutput(outputs, "Signal", signal); addOutput(outputs, "Histogram", hist);
       break;
@@ -302,7 +304,7 @@ function calculateIndicator(item, data) {
       const avg = rollingMean(typical, period), out = nanArray(n);
       for (let i = period - 1; i < n; i++) {
         let dev = 0; for (let j = i - period + 1; j <= i; j++) dev += Math.abs(typical[j] - avg[i]);
-        const meanDev = dev / period; if (meanDev) out[i] = (typical[i] - avg[i]) / (0.015 * meanDev);
+        const meanDev = dev / period; out[i] = meanDev ? (typical[i] - avg[i]) / (0.015 * meanDev) : 0;
       }
       addOutput(outputs, "CCI", out);
       break;
