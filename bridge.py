@@ -871,10 +871,19 @@ class PocketBridge:
                 can_trade=self.can_trade(), amount=self.auto_trade_amount,
             )
         elif name == "updateOpenedDeals":
-            deals = data if isinstance(data, list) else data.get("deals", []) if isinstance(data, dict) else []
-            self.active_order_count = len(deals) if isinstance(deals, list) else self.active_order_count
-            self.execution_uncertain = False
-            await self.send_browser("openedDeals", deals=deals)
+            if isinstance(data, list):
+                deals = data
+                synchronized = True
+            elif isinstance(data, dict) and isinstance(data.get("deals"), list):
+                deals = data["deals"]
+                synchronized = True
+            else:
+                deals = None
+                synchronized = False
+            if synchronized:
+                self.active_order_count = len(deals)
+                self.execution_uncertain = False
+            await self.send_browser("openedDeals", deals=deals, synchronized=synchronized)
             await self.send_browser(
                 "executionState", auto_trading=self.auto_trading,
                 can_trade=self.can_trade(), amount=self.auto_trade_amount,
