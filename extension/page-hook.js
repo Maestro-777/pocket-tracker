@@ -82,7 +82,7 @@
     const mode = visibleAccountMode();
     if (mode === "real" || (mode === "unknown" && lastAccountMode === "real")) return null;
     for (const rec of sockets.values()) {
-      if (!rec.demoEndpoint || rec.serverDemo !== true || rec.ws.readyState !== NativeWebSocket.OPEN) continue;
+      if (!rec.demoEndpoint || rec.serverDemo !== true || rec.authenticated !== true || rec.ws.readyState !== NativeWebSocket.OPEN) continue;
       if (!chosen || rec.lastDataAt > chosen.lastDataAt) chosen = rec;
     }
     return chosen;
@@ -237,22 +237,37 @@
       return;
     }
     if (name === "updateOpenedDeals") {
-      post("OPEN_DEALS", { deals: safeDeals(payload) });
+      const deals = safeDeals(payload);
+      rec.activeDealCount = deals.filter(function(d) { return d.closeTimestamp == null || d.closeTimestamp === 0 || d.closeTimestamp === ""; }).length;
+      if (rec.activeDealCount > 0) rec.pendingOrderId = null;
+      post("OPEN_DEALS", { deals: deals });
       return;
     }
     if (name === "successopenOrder") {
-      if (payload && payload.requestId != null) rec.ownRequestIds.delete(String(payload.requestId));
-      post("ORDER_ACK", { accepted: true, order: payload && {
-        id: payload.id ?? null, requestId: payload.requestId ?? null,
-        asset: payload.asset || "", amount: Number(payload.amount || 0)
-      }});
+      const requestId = payload && payload.requestId != null ? String(payload.requestId) : "";
+      const own = !!requestId && rec.ownRequestIds.has(requestId);
+      if (own) {
+        rec.ownRequestIds.delete(requestId);
+        rec.pendingOrderId = null;
+        rec.activeDealCount = Math.max(1, rec.activeDealCount);
+        post("ORDER_ACK", { accepted: true, order: {
+          id: payload.id ?? null, requestId: payload.requestId,
+          asset: payload.asset || "", amount: Number(payload.amount || 0)
+        }});
+        sendRaw(rec, "updateOpenedDeals");
+      }
       return;
     }
     if (name === "failopenOrder") {
-      if (payload && payload.requestId != null) rec.ownRequestIds.delete(String(payload.requestId));
-      post("ORDER_ACK", { accepted: false, order: payload && {
-        requestId: payload.requestId ?? null, error: String(payload.error || payload.message || "Order rejected")
-      }});
+      const requestId = payload && payload.requestId != null ? String(payload.requestId) : "";
+      const own = !!requestId && rec.ownRequestIds.has(requestId);
+      if (own) {
+        rec.ownRequestIds.delete(requestId);
+        rec.pendingOrderId = null;
+        post("ORDER_ACK", { accepted: false, order: {
+          requestId: payload.requestId, error: String(payload.error || payload.message || "Order rejected")
+        }});
+      }
       return;
     }
     if (name === "successcloseOrder") {
@@ -313,6 +328,7 @@
     } else if (name === "subfor" && typeof data === "string") {
       desiredAsset = data;
     } else if (name === "openOrder" && data && (data.requestId == null || !rec.ownRequestIds.has(String(data.requestId)))) {
+      rec.activeDealCount = Math.max(1, rec.activeDealCount);
       post("EXTERNAL_ORDER", { requestId: data.requestId, asset: data.asset || "", amount: Number(data.amount || 0) });
     }
   }
@@ -349,7 +365,8 @@
     const mode = visibleAccountMode();
     const rec = latestDemoSocket();
     if (mode === "real") return post("COMMAND_RESULT", { command: "OPEN_ORDER", ok: false, message: "REAL-счёт обнаружен в торговом интерфейсе. Ордер заблокирован." });
-    if (!rec || rec.serverDemo !== true || !rec.demoEndpoint) return post("COMMAND_RESULT", { command: "OPEN_ORDER", ok: false, message: "Нет подтверждённого DEMO-соединения." });
+    if (!rec || rec.serverDemo !== true || !rec.demoEndpoint || rec.authenticated !== true) return post("COMMAND_RESULT", { command: "OPEN_ORDER", ok: false, message: "Нет авторизованного соединения с подтверждённым DEMO-счётом." });
+    if (rec.pendingOrderId != null || rec.activeDealCount > 0) return post("COMMAND_RESULT", { command: "OPEN_ORDER", ok: false, message: "На стороне брокерского соединения уже есть ожидающий или открытый ордер." });
     const asset = String(args.asset || "").trim();
     const direction = String(args.direction || "").toUpperCase();
     const amount = Number(args.amount);
@@ -359,6 +376,7 @@
     if (!Number.isFinite(amount) || amount < 1 || amount > 50000) return post("COMMAND_RESULT", { command: "OPEN_ORDER", ok: false, message: "Сумма сделки должна быть от 1 до 50000." });
     const requestId = ++requestCounter;
     rec.ownRequestIds.add(String(requestId));
+    rec.pendingOrderId = requestId;
     if (rec.ownRequestIds.size > 100) rec.ownRequestIds.delete(rec.ownRequestIds.values().next().value);
     const payload = {
       asset: asset, amount: amount, action: direction.toLowerCase(),
@@ -366,6 +384,7 @@
     };
     if (!sendRaw(rec, "openOrder", payload)) {
       rec.ownRequestIds.delete(String(requestId));
+      rec.pendingOrderId = null;
       return post("COMMAND_RESULT", { command: "OPEN_ORDER", ok: false, message: "Соединение закрылось до отправки ордера." });
     }
     post("ORDER_SENT", { requestId: requestId, asset: asset, direction: direction, amount: amount, expiry: expiry });
@@ -401,7 +420,7 @@
             ws: ws, host: host, demoEndpoint: isDemoHost(host),
             serverDemo: null, balanceKnown: false, authenticated: false,
             lastDataAt: 0, pendingBinaryEvent: null, subscribedAsset: null,
-            ownRequestIds: new Set()
+            ownRequestIds: new Set(), pendingOrderId: null, activeDealCount: 0
           };
           sockets.set(ws, rec);
           try { ws.binaryType = "arraybuffer"; } catch (_) {}
