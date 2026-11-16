@@ -27,11 +27,13 @@ function ema(source, period) {
   const alpha = 2 / (period + 1);
   let value = Number.NaN;
   let seed = 0;
+  let seedCount = 0;
   for (let i = 0; i < source.length; i++) {
     if (!Number.isFinite(source[i])) continue;
     if (!Number.isFinite(value)) {
       seed += source[i];
-      if (i >= period - 1) value = seed / period;
+      seedCount++;
+      if (seedCount === period) value = seed / period;
     } else {
       value = source[i] * alpha + value * (1 - alpha);
     }
