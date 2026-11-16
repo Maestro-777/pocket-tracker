@@ -11,7 +11,7 @@ const DEMO_URLS=[
 ];
 const state={connected:false,authenticated:false,demoVerified:false,account:"unknown",autoTrading:false,
  asset:"EURUSD_otc",period:5,expiry:15,price:null,lastTickAt:0,assetIds:{},assetSymbols:{},assetDigits:{},candleCount:0,rsi:null,lastSignal:null,status:"Расширение готово.",
- candles:[],current:null,ws:null,ssid:null,uid:null,orderPending:false,activeOrder:false,executionUncertain:false,lastSignalId:null,amount:1};
+ candles:[],current:null,ws:null,ssid:null,uid:null,authPayload:null,orderPending:false,activeOrder:false,executionUncertain:false,lastSignalId:null,amount:1};
 let pingTimer=null,orderTimer=null;
 function publish(message){state.status=message;chrome.runtime.sendMessage({type:"LOG",message}).catch(()=>{});chrome.runtime.sendMessage({type:"STATE"}).catch(()=>{});}
 function snapshot(){return {...state,ws:undefined,ssid:undefined,uid:undefined,candles:undefined,current:undefined};}
@@ -19,15 +19,33 @@ function event(name,data){if(!state.ws||state.ws.readyState!==WebSocket.OPEN)thr
 function stopTimers(){if(pingTimer)clearInterval(pingTimer);pingTimer=null;if(orderTimer)clearTimeout(orderTimer);orderTimer=null;}
 function resetConnection(){stopTimers();state.connected=false;state.authenticated=false;state.demoVerified=false;state.account="unknown";state.autoTrading=false;state.orderPending=false;state.executionUncertain=false;state.ws=null;}
 function disconnect(message){const ws=state.ws;resetConnection();if(ws&&ws.readyState<2){try{ws.close();}catch{}}publish(message);}
-function connect(ssid,uid,asset){
- if(typeof ssid!=="string"||ssid.trim().length<8)throw Error("SSID выглядит некорректно.");
- if(!Number.isSafeInteger(uid)||uid<=0)throw Error("UID должен быть положительным целым числом.");
+function parseAuthMessage(raw){
+ if(typeof raw!=="string"||!raw.trim())throw Error("Вставь полное Socket.IO auth-сообщение.");
+ const frame=raw.trim();
+ if(!frame.startsWith("42"))throw Error("Сообщение должно начинаться с 42 и содержать событие auth.");
+ let packet;try{packet=JSON.parse(frame.slice(2));}catch{throw Error("Не удалось разобрать JSON в auth-сообщении.");}
+ if(!Array.isArray(packet)||packet[0]!=="auth"||!packet[1]||typeof packet[1]!=="object"||Array.isArray(packet[1]))throw Error("Ожидается формат 42[\\"auth\\",{...}].");
+ const payload={...packet[1]};
+ if(typeof payload.sessionToken!=="string"||payload.sessionToken.trim().length<8)throw Error("В auth-сообщении отсутствует корректный sessionToken.");
+ const uid=Number(payload.uid);
+ if(!Number.isSafeInteger(uid)||uid<=0)throw Error("В auth-сообщении отсутствует корректный числовой UID.");
+ payload.sessionToken=payload.sessionToken.trim();
+ payload.uid=uid;
+ // Broker auth parameters are preserved; enforce DEMO and required client flags.
+ payload.isDemo=1;
+ if(payload.platform==null)payload.platform=2;
+ if(payload.isFastHistory==null)payload.isFastHistory=true;
+ if(payload.isOptimized==null)payload.isOptimized=true;
+ return payload;
+}
+function connect(authPayload,asset){
+ if(!authPayload||typeof authPayload.sessionToken!=="string"||!Number.isSafeInteger(authPayload.uid))throw Error("Неверное auth-сообщение.");
  if(!/^[A-Za-z0-9_#]{3,32}$/.test(asset))throw Error("Некорректный символ инструмента.");
  if(state.ws)disconnect("Переподключение…");
- state.ssid=ssid.trim();state.uid=uid;state.asset=asset;state.candles=[];state.current=null;state.lastSignalId=null;
+ state.ssid=authPayload.sessionToken;state.uid=authPayload.uid;state.authPayload={...authPayload};state.asset=asset;state.candles=[];state.current=null;state.lastSignalId=null;
  let index=0;
  function tryEndpoint(){
-  if(index>=DEMO_URLS.length){state.ssid=null;state.uid=null;publish("Не удалось подключиться к DEMO endpoint. Проверь сеть и попробуй позже.");return;}
+  if(index>=DEMO_URLS.length){state.ssid=null;state.uid=null;state.authPayload=null;publish("Не удалось подключиться к DEMO endpoint. Проверь сеть и попробуй позже.");return;}
   const url=DEMO_URLS[index++];let ws;
   try{ws=new WebSocket(url);}catch(e){tryEndpoint();return;}
   state.ws=ws;
@@ -42,7 +60,7 @@ function handleFrame(raw){
  if(raw==="2"){try{state.ws.send("3");}catch{}return;}
  if(raw.startsWith("0")){try{state.ws.send("40");}catch{}return;}
  if(raw.startsWith("40")){
-  try{event("auth",{session:state.ssid,uid:state.uid,isDemo:1,platform:2,isFastHistory:true,isOptimized:true});publish("Отправлен запрос авторизации. Проверяю ответ сервера…");}catch(e){disconnect(e.message);}return;
+  try{event("auth",state.authPayload);publish("Отправлен запрос авторизации. Проверяю ответ сервера…");}catch(e){disconnect(e.message);}return;
  }
  if(raw==="41"){disconnect("Сервер отклонил подключение. Проверь SSID и UID.");return;}
  if(!raw.startsWith("42"))return;
@@ -135,8 +153,10 @@ function evaluate(){
 async function placeOrder(direction,amount,source){
  if(!["CALL","PUT"].includes(direction))return {ok:false,message:"Неизвестное направление."};
  if(!Number.isFinite(amount)||amount<1||amount>50000)return {ok:false,message:"Сумма должна быть от 1 до 50000."};
- if(!state.authenticated||!state.demoVerified||!state.ws||state.ws.readyState!==WebSocket.OPEN)return {ok:false,message:"Сделки доступны только при подключённом и подтверждённом DEMO."};\n if(!state.lastTickAt||Date.now()-state.lastTickAt>10000)return {ok:false,message:"Нет свежей котировки по выбранному инструменту. Сделка заблокирована."};
- if(state.executionUncertain||state.orderPending)return {ok:false,message:"Предыдущий ордер ещё не подтверждён. Повторная отправка заблокирована."};\n if(state.activeOrder)return {ok:false,message:"Уже есть открытая сделка. Дождись её закрытия."};
+ if(!state.authenticated||!state.demoVerified||!state.ws||state.ws.readyState!==WebSocket.OPEN)return {ok:false,message:"Сделки доступны только при подключённом и подтверждённом DEMO."};
+ if(!state.lastTickAt||Date.now()-state.lastTickAt>10000)return {ok:false,message:"Нет свежей котировки по выбранному инструменту. Сделка заблокирована."};
+ if(state.executionUncertain||state.orderPending)return {ok:false,message:"Предыдущий ордер ещё не подтверждён. Повторная отправка заблокирована."};
+ if(state.activeOrder)return {ok:false,message:"Уже есть открытая сделка. Дождись её закрытия."};
  state.orderPending=true;state.amount=amount;
  const requestId=Date.now();
  try{
@@ -149,7 +169,7 @@ async function placeOrder(direction,amount,source){
 chrome.runtime.onMessage.addListener((m,sender,respond)=>{
  (async()=>{
   if(m.type==="GET_STATE")return snapshot();
-  if(m.type==="CONNECT"){try{connect(m.ssid,m.uid,m.asset||"EURUSD_otc");return {ok:true,message:"Подключение запущено. SSID не сохраняется."};}catch(e){return {ok:false,message:e.message};}}
+  if(m.type==="CONNECT"){try{const authPayload=parseAuthMessage(m.authMessage);connect(authPayload,m.asset||"EURUSD_otc");return {ok:true,message:"Auth-сообщение разобрано. Подключение к DEMO запущено; секрет не сохраняется."};}catch(e){return {ok:false,message:e.message};}}
   if(m.type==="MANUAL_TRADE")return placeOrder(m.direction,Number(m.amount),"manual");
   if(m.type==="SET_AUTO"){
    const amount=Number(m.amount);if(!Number.isFinite(amount)||amount<1||amount>50000)return {ok:false,message:"Некорректная сумма."};
