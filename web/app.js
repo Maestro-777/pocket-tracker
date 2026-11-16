@@ -242,8 +242,9 @@
     }
     if (message.type === "history") {
       if (message.asset !== activeAsset || Number(message.period) !== activePeriod) return;
+      const cutoff = Math.floor(Date.now() / 1000) - 7 * 86400;
       const received = Array.isArray(message.candles) ? message.candles : [];
-      candles = new Map(received.map(bar => [Number(bar.time), normalizeBar(bar)]));
+      candles = new Map(received.filter(bar => Number(bar.time) >= cutoff).map(bar => [Number(bar.time), normalizeBar(bar)]));
       if (liveCandle) {
         candles.set(liveCandle.time, candles.has(liveCandle.time)
           ? mergeBars(candles.get(liveCandle.time), liveCandle)
@@ -337,9 +338,10 @@
   function appendOlderHistory(rows) {
     const visibleRange = chart.timeScale().getVisibleLogicalRange();
     const previousSize = candles.size;
+    const cutoff = Math.floor(Date.now() / 1000) - 7 * 86400;
     for (const row of rows) {
       const bar = normalizeBar(row);
-      if (!Number.isFinite(bar.time) || !Number.isFinite(bar.close)) continue;
+      if (!Number.isFinite(bar.time) || !Number.isFinite(bar.close) || bar.time < cutoff) continue;
       if (!candles.has(bar.time)) candles.set(bar.time, bar);
     }
     if (liveCandle) {
