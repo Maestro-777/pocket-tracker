@@ -431,10 +431,26 @@ self.onmessage = (event) => {
       times: message.times, open: message.open, high: message.high,
       low: message.low, close: message.close, volume: message.volume
     };
-    const results = message.indicators.map(item => calculateIndicator(item, data));
+    const results = [];
+    const errors = [];
+    for (const item of message.indicators) {
+      try {
+        results.push(calculateIndicator(item, data));
+      } catch (error) {
+        errors.push({ uid:item.uid, id:item.id, error:String(error && error.message || error) });
+      }
+    }
+    // Avoid duplicate ArrayBuffers in the transferable list.
     const transfer = [];
-    for (const result of results) for (const line of result.lines) transfer.push(line.values.buffer);
-    self.postMessage({ type:"result", jobId:message.jobId, results }, transfer);
+    const transferred = new Set();
+    for (const result of results) for (const line of result.lines) {
+      const buffer = line.values && line.values.buffer;
+      if (buffer && !transferred.has(buffer)) {
+        transferred.add(buffer);
+        transfer.push(buffer);
+      }
+    }
+    self.postMessage({ type:"result", jobId:message.jobId, results, errors }, transfer);
   } catch (error) {
     self.postMessage({ type:"error", jobId:message.jobId, error:String(error && error.message || error) });
   }
