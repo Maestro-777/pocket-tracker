@@ -62,6 +62,25 @@ function amountValue() {
   }
   return amount;
 }
+async function captureAuth() {
+  const button = $("capture-auth");
+  button.disabled = true;
+  $("capture-status").textContent = "Подготавливаю одноразовый захват. После запуска обнови вкладку Pocket Option.";
+  try {
+    const tabs = await chrome.tabs.query({ url: BROKER_URLS });
+    if (!tabs.length) throw new Error("Сначала открой вкладку Pocket Option и войди в DEMO.");
+    let tab = tabs.find(item => item.active) || tabs[0];
+    const result = await chrome.runtime.sendMessage({ type:"PT_CAPTURE_AUTH", tabId:tab.id });
+    if (!result?.ok) throw new Error(result?.error || "Не удалось начать захват.");
+    $("capture-status").textContent = "Захват активен 25 секунд. Теперь обнови вкладку Pocket Option (F5). DevTools должны быть закрыты.";
+  } catch (error) {
+    $("capture-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+$("capture-auth").addEventListener("click", captureAuth);
+
 async function refresh() {
   $("refresh").disabled = true;
   $("refresh").textContent = "Проверяем…";
@@ -78,6 +97,7 @@ async function refresh() {
     setStatus("tracker", tracker.length ? "ok" : "bad", tracker.length ? "Вкладка отвечает" : "Открой локальный Pocket Tracker");
     setStatus("broker", broker.length ? "ok" : "warn", broker.length ? "Вкладка открыта · " + broker.length : "Вкладка сайта не обязательна для мониторинга моста");
     const monitor = await getMonitor();
+    $("capture-status").textContent = monitor.authCaptureStatus || "Кадр сессии не сохраняется; захват запускается только по кнопке.";
     const accountState = monitor.accountState || {};
     const executionState = monitor.executionState || {};
     showAccount(accountState, executionState);
