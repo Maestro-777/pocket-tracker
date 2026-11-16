@@ -11,7 +11,7 @@ const DEMO_URLS=[
 ];
 const state={connected:false,authenticated:false,demoVerified:false,account:"unknown",autoTrading:false,
  asset:"EURUSD_otc",period:5,expiry:15,price:null,lastTickAt:0,assetIds:{},assetSymbols:{},assetDigits:{},candleCount:0,rsi:null,lastSignal:null,status:"Расширение готово.",
- candles:[],current:null,ws:null,ssid:null,uid:null,orderPending:false,executionUncertain:false,lastSignalId:null,amount:1};
+ candles:[],current:null,ws:null,ssid:null,uid:null,orderPending:false,activeOrder:false,executionUncertain:false,lastSignalId:null,amount:1};
 let pingTimer=null,orderTimer=null;
 function publish(message){state.status=message;chrome.runtime.sendMessage({type:"LOG",message}).catch(()=>{});chrome.runtime.sendMessage({type:"STATE"}).catch(()=>{});}
 function snapshot(){return {...state,ws:undefined,ssid:undefined,uid:undefined,candles:undefined,current:undefined};}
@@ -72,14 +72,16 @@ function handleFrame(raw){
  }else if(name==="loadHistoryPeriodFast"){
   // Historical data is currently diagnostic only; live signal calculation starts from received ticks.
   publish("Исторический ответ получен. Накопление живых 5-секундных свечей…");
+ }else if(name==="updateOpenedDeals"){
+  const deals=Array.isArray(data)?data:(Array.isArray(data?.deals)?data.deals:[]);state.activeOrder=deals.length>0;
  }else if(name==="successopenOrder"){
-  state.orderPending=false;state.executionUncertain=false;if(orderTimer)clearTimeout(orderTimer);orderTimer=null;
+  state.activeOrder=true;state.orderPending=false;state.executionUncertain=false;if(orderTimer)clearTimeout(orderTimer);orderTimer=null;
   publish("Брокер подтвердил открытие сделки.");
  }else if(name==="failopenOrder"){
   state.orderPending=false;state.executionUncertain=false;if(orderTimer)clearTimeout(orderTimer);orderTimer=null;
   state.autoTrading=false;publish("Брокер отклонил ордер. Автоторговля выключена.");
  }else if(name==="successcloseOrder"){
-  publish("Сделка закрыта по сообщению брокера.");
+  state.activeOrder=false;publish("Сделка закрыта по сообщению брокера.");
  }
 }
 function toSeconds(v){let n=Number(v);if(!Number.isFinite(n)||n<=0)return null;if(n>1e10)n/=1000;return Math.floor(n);}
@@ -134,7 +136,7 @@ async function placeOrder(direction,amount,source){
  if(!["CALL","PUT"].includes(direction))return {ok:false,message:"Неизвестное направление."};
  if(!Number.isFinite(amount)||amount<1||amount>50000)return {ok:false,message:"Сумма должна быть от 1 до 50000."};
  if(!state.authenticated||!state.demoVerified||!state.ws||state.ws.readyState!==WebSocket.OPEN)return {ok:false,message:"Сделки доступны только при подключённом и подтверждённом DEMO."};\n if(!state.lastTickAt||Date.now()-state.lastTickAt>10000)return {ok:false,message:"Нет свежей котировки по выбранному инструменту. Сделка заблокирована."};
- if(state.executionUncertain||state.orderPending)return {ok:false,message:"Предыдущий ордер ещё не подтверждён. Повторная отправка заблокирована."};
+ if(state.executionUncertain||state.orderPending)return {ok:false,message:"Предыдущий ордер ещё не подтверждён. Повторная отправка заблокирована."};\n if(state.activeOrder)return {ok:false,message:"Уже есть открытая сделка. Дождись её закрытия."};
  state.orderPending=true;state.amount=amount;
  const requestId=Date.now();
  try{
