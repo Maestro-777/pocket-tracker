@@ -100,13 +100,18 @@ async function startAuthCapture(tabId) {
     await updateMonitor({ authCaptureStatus: error.message });
     throw error;
   });
-  await new Promise((resolve, reject) => {
-    chrome.debugger.sendCommand({ tabId }, "Network.enable", {}, () => {
-      const err = chrome.runtime.lastError;
-      if (err) reject(new Error(err.message));
-      else resolve();
+  try {
+    await new Promise((resolve, reject) => {
+      chrome.debugger.sendCommand({ tabId }, "Network.enable", {}, () => {
+        const err = chrome.runtime.lastError;
+        if (err) reject(new Error(err.message));
+        else resolve();
+      });
     });
-  });
+  } catch (error) {
+    await finishAuthCapture("Не удалось включить мониторинг WebSocket: " + error.message, null, tabId);
+    throw error;
+  }
   authCaptureTimer = setTimeout(() => {
     finishAuthCapture("За 25 секунд auth-кадр не получен. Нажми захват и сразу обнови вкладку Pocket Option.", null, tabId);
   }, 25000);
