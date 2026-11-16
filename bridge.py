@@ -109,30 +109,39 @@ def as_seconds(value: Any) -> int | None:
 def normalize_candle(item: Any) -> dict[str, Any] | None:
     """Normalize known Pocket Option history shapes into Lightweight Charts OHLC."""
     try:
+        volume = None
         if isinstance(item, dict):
             stamp = as_seconds(item.get("time", item.get("timestamp", item.get("at"))))
             opening = float(item.get("open"))
             closing = float(item.get("close"))
             high = float(item.get("high"))
             low = float(item.get("low"))
+            raw_volume = item.get("volume")
+            if raw_volume is not None:
+                volume = float(raw_volume)
         elif isinstance(item, (list, tuple)) and len(item) >= 5:
-            # Observed Pocket Option tuple: time, open, close, high, low.
+            # Observed Pocket Option tuple: time, open, close, high, low[, volume].
             stamp = as_seconds(item[0])
             opening = float(item[1])
             closing = float(item[2])
             high = float(item[3])
             low = float(item[4])
+            if len(item) > 5 and item[5] is not None:
+                volume = float(item[5])
         else:
             return None
         if stamp is None:
             return None
-        return {
+        candle = {
             "time": stamp,
             "open": opening,
             "high": max(high, opening, closing),
             "low": min(low, opening, closing),
             "close": closing,
         }
+        if volume is not None and volume >= 0:
+            candle["volume"] = volume
+        return candle
     except (TypeError, ValueError):
         return None
 
