@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import re
 import ssl
 import time
@@ -218,6 +219,7 @@ class PocketBridge:
         self.auth_error: str | None = None
         self.asset = DEFAULT_ASSET
         self.period = 300
+        self.subscribed_asset: str | None = None
         self.latest_tick_time: int | None = None
         self.current_bar: dict[str, Any] | None = None
         self.last_live_emit = 0.0
@@ -281,6 +283,10 @@ class PocketBridge:
             if period not in ALLOWED_PERIODS:
                 await self.status("Этот таймфрейм пока не поддерживается мостом.", "error")
                 return
+            previous_asset = self.asset
+            if self.authenticated and self.broker is not None and previous_asset != asset:
+                await self.send_broker_event("unsubfor", previous_asset)
+                self.subscribed_asset = None
             self.asset = asset
             self.period = period
             self.current_bar = None
@@ -426,6 +432,7 @@ class PocketBridge:
             except Exception:
                 pass
         self.broker = None
+        self.subscribed_asset = None
 
     async def ping_broker(self) -> None:
         while self.broker is not None:
@@ -731,10 +738,14 @@ class PocketBridge:
         if not self.authenticated or self.broker is None:
             return
         await self.reset_history()
+        if self.subscribed_asset and self.subscribed_asset != self.asset:
+            await self.send_broker_event("unsubfor", self.subscribed_asset)
         await self.send_broker_event(
             "changeSymbol", {"asset": self.asset, "period": self.period}
         )
-        await self.send_broker_event("subfor", self.asset)
+        if self.subscribed_asset != self.asset:
+            await self.send_broker_event("subfor", self.asset)
+            self.subscribed_asset = self.asset
         await self.request_history("initial")
 
     async def flush_live_update(self, delay: float = 0.0) -> None:
@@ -757,10 +768,20 @@ class PocketBridge:
     async def handle_tick(self, asset: str, stamp: int, price: float) -> None:
         if asset != self.asset:
             return
+        try:
+            stamp = int(stamp)
+            price = float(price)
+        except (TypeError, ValueError):
+            return
+        if stamp <= 0 or not math.isfinite(price) or price <= 0:
+            return
         self.latest_tick_time = stamp
         start = stamp // self.period * self.period
         if self.current_bar is None or start > self.current_bar["time"]:
-            self.current_bar = {
+            # Preserve historical OHLC when the first live tick belongs to
+            # the same timeframe bucket as the last loaded candle.
+            historical = self.history_candles.get(start)
+            self.current_bar = dict(historical) if historical else {
                 "time": start, "open": price, "high": price,
                 "low": price, "close": price,
             }
