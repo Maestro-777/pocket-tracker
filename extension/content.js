@@ -44,6 +44,9 @@
     const symbol = String(value || "").trim();
     return /^[A-Za-z0-9_#]{3,32}$/.test(symbol) ? symbol : "";
   }
+  function sameAsset(a, b) {
+    return String(a || "").toUpperCase() === String(b || "").toUpperCase();
+  }
   function activeAsset() {
     return state.config.asset === "AUTO" ? (state.chartAsset || state.asset || "EURUSD_otc") : state.config.asset;
   }
@@ -182,7 +185,7 @@
   function ingestHistory(message) {
     const asset = safeSymbol(message.asset || activeAsset());
     const period = Number(message.period || 5);
-    if (!asset || asset !== activeAsset() || period !== 5) return;
+    if (!asset || !sameAsset(asset, activeAsset()) || period !== 5) return;
     const rows = Array.isArray(message.rows) ? message.rows : [];
     if (!rows.length) return;
     const batch = [];
@@ -207,7 +210,17 @@
       batch.push.apply(batch,Array.from(grouped.values()));
     }
     if (!batch.length) return;
-    state.candles = mergeCandleArrays(state.candles, batch);
+    if (state.current) {
+      const currentBatch = batch.filter(function(c){return c.time === state.current.time;});
+      for (const c of currentBatch) {
+        state.current = { time:c.time, open:c.open, high:Math.max(state.current.high,c.high),
+          low:Math.min(state.current.low,c.low), close:state.current.close };
+      }
+      const withoutCurrent = batch.filter(function(c){return c.time !== state.current.time;});
+      state.candles = mergeCandleArrays(state.candles, withoutCurrent);
+    } else {
+      state.candles = mergeCandleArrays(state.candles, batch);
+    }
     state.historyRows += rows.length;
     state.candleCount = state.candles.length;
     note("История загружена: " + state.candleCount + " свечей по 5 секунд.");
@@ -305,7 +318,7 @@
   }
   function onTick(tick) {
     const asset = safeSymbol(tick.asset);
-    if (!asset || asset !== activeAsset()) return;
+    if (!asset || !sameAsset(asset, activeAsset())) return;
     if (!state.demoVerified || domAccountMode() === "real") return;
     const time = normalizeSeconds(tick.time), price = Number(tick.price);
     if (!time || !Number.isFinite(price) || price <= 0) return;
@@ -371,8 +384,9 @@
     } else if (data.type === "CHART_ASSET") {
       const symbol = safeSymbol(data.asset);
       if (symbol) {
+        const previousAsset = activeAsset();
         state.chartAsset = symbol;
-        if (state.config.asset === "AUTO" && activeAsset() !== symbol) {
+        if (state.config.asset === "AUTO" && !sameAsset(previousAsset, symbol)) {
           state.asset = symbol;
           state.subscribedAsset = "";
           subscribeCurrentAsset();
@@ -404,7 +418,7 @@
     } else if (data.type === "ORDER_ACK") {
       const order = data.order || {};
       if (data.accepted) {
-        if (state.lastOrder && order.requestId != null && String(order.requestId) === String(state.lastOrder.requestId)) {
+        if (state.lastOrder && (order.requestId == null || String(order.requestId) === String(state.lastOrder.requestId))) {
           state.orderPending = false;
           state.activeOrder = true;
           state.lastOrder.id = order.id;
