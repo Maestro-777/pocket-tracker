@@ -47,6 +47,7 @@
             <span id="price-time">ожидание потока</span>
           </div>
           <div class="timeframes" id="timeframes" aria-label="Таймфрейм">
+            <button data-period="5" class="tf-button">5с</button>
             <button data-period="15" class="tf-button">15с</button>
             <button data-period="30" class="tf-button">30с</button>
             <button data-period="60" class="tf-button">1м</button>
@@ -77,6 +78,7 @@
                 <span>Запусти локальный мост и подключи сессию Pocket Option справа</span>
               </div>
             </div>
+            <div id="indicator-panes" class="indicator-panes"></div>
           </div>
           <div class="chart-footer">
             <div class="drawing-tools">
@@ -121,19 +123,14 @@
           <div class="panel-heading">
             <div>
               <div class="panel-title">Индикаторы</div>
-              <div class="panel-caption">Расчёт по текущим свечам</div>
+              <div class="panel-caption">Настраиваемая библиотека</div>
             </div>
+            <span class="local-badge">LOCAL</span>
           </div>
-          <label class="indicator-row">
-            <span class="indicator-name"><i class="legend-dot sma-dot"></i><span><b>SMA 20</b><small>Простая средняя</small></span></span>
-            <input type="checkbox" id="sma-toggle">
-            <span class="switch"></span>
-          </label>
-          <label class="indicator-row">
-            <span class="indicator-name"><i class="legend-dot ema-dot"></i><span><b>EMA 50</b><small>Экспоненциальная средняя</small></span></span>
-            <input type="checkbox" id="ema-toggle">
-            <span class="switch"></span>
-          </label>
+          <button class="primary-button indicator-open-button" id="open-indicators">＋ Добавить индикатор</button>
+          <div id="active-indicators-list" class="active-indicators-list">
+            <div class="empty-indicators">Пока нет активных индикаторов</div>
+          </div>
         </section>
 
         <section class="panel info-panel">
@@ -155,6 +152,51 @@
         </div>
       </aside>
     </main>
+    <div class="modal-backdrop" id="indicator-modal" hidden>
+      <section class="modal indicator-modal" role="dialog" aria-modal="true" aria-labelledby="indicator-modal-title">
+        <header class="modal-header">
+          <div>
+            <h2 id="indicator-modal-title">Библиотека индикаторов</h2>
+            <p>Добавляй индикаторы, настраивай параметры и сохраняй избранное</p>
+          </div>
+          <button class="modal-close" id="close-indicators" aria-label="Закрыть">×</button>
+        </header>
+        <div class="indicator-modal-toolbar">
+          <input id="indicator-search" class="indicator-search" type="search" placeholder="Найти индикатор…">
+          <select id="indicator-category" class="select-control category-select">
+            <option value="all">Все категории</option>
+            <option value="trend">Тренд</option>
+            <option value="momentum">Импульс</option>
+            <option value="volatility">Волатильность</option>
+            <option value="volume">Объём</option>
+            <option value="price">Price action</option>
+          </select>
+        </div>
+        <div class="modal-tabs">
+          <button class="modal-tab active" data-indicator-tab="all">Каталог</button>
+          <button class="modal-tab" data-indicator-tab="favorites">★ Избранное</button>
+        </div>
+        <div id="indicator-catalog" class="indicator-catalog"></div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="indicator-settings-modal" hidden>
+      <section class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="indicator-settings-title">
+        <header class="modal-header">
+          <div>
+            <h2 id="indicator-settings-title">Настройки индикатора</h2>
+            <p>Параметры расчёта и отображения</p>
+          </div>
+          <button class="modal-close" id="close-indicator-settings" aria-label="Закрыть">×</button>
+        </header>
+        <div id="indicator-settings-fields" class="indicator-settings-fields"></div>
+        <footer class="modal-actions">
+          <button class="secondary-button" id="cancel-indicator-settings">Отмена</button>
+          <button class="primary-button" id="save-indicator-settings">Сохранить</button>
+        </footer>
+      </section>
+    </div>
+
     <footer class="app-footer">
       <span>Pocket Tracker</span>
       <span>OTC market data · local session bridge</span>
