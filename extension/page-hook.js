@@ -26,6 +26,13 @@
     return DEMO_HOSTS.has(host);
   }
   function visibleAccountMode() {
+    const visible = function(selector) {
+      const el = document.querySelector(selector);
+      if (!el) return false;
+      const style = window.getComputedStyle(el);
+      return el.getClientRects().length > 0 && style.display !== "none" &&
+        style.visibility !== "hidden" && Number(style.opacity || 1) > 0;
+    };
     const realSelectors = [
       ".accounts-list__item--real.active", ".accounts-list__item--real.is-active",
       ".accounts-list__item--real.selected", '[data-account-type="real"].active',
@@ -42,8 +49,8 @@
       ".balance-info--demo.is-active", ".js-switch-to-demo.active"
     ];
     try {
-      for (const selector of realSelectors) if (document.querySelector(selector)) return "real";
-      for (const selector of demoSelectors) if (document.querySelector(selector)) return "demo";
+      for (const selector of realSelectors) if (visible(selector)) return "real";
+      for (const selector of demoSelectors) if (visible(selector)) return "demo";
       const real = document.querySelector(".js-balance-real-USD, .js-balance-real");
       const demo = document.querySelector(".js-balance-demo");
       if (real && real.offsetParent !== null && (!demo || demo.offsetParent === null)) return "real";
@@ -353,8 +360,11 @@
     if (!sendRaw(rec, "subfor", asset)) return post("COMMAND_RESULT", { command: "SUBSCRIBE", ok: false, message: "Не удалось подписаться на поток котировок." });
     sendRaw(rec, "changeSymbol", { asset: asset, period: period });
     const now = Math.floor(Date.now() / 1000);
+    const requestedSeconds = Number(args.lookbackSeconds);
     const days = Math.min(30, Math.max(1, Number(args.lookbackDays) || 30));
-    const offset = Math.max(days * 86400, period * 90);
+    const offset = Number.isFinite(requestedSeconds) && requestedSeconds > 0
+      ? Math.min(30 * 86400, Math.max(300, requestedSeconds))
+      : Math.max(days * 86400, period * 90);
     sendRaw(rec, "loadHistoryPeriod", { asset: asset, index: now, time: now, offset: offset, period: period });
     rec.subscribedAsset = asset;
     desiredAsset = asset;
@@ -403,12 +413,6 @@
   }
 
   window.addEventListener("message", handleCommand, true);
-  window.addEventListener("message", function(event) {
-    if (event.source !== window || event.origin !== location.origin) return;
-    const d = event.data;
-    if (!d || d.channel !== CHANNEL || d.type !== "COMMAND") return;
-  }, true);
-
   function installSocketHook() {
     window.WebSocket = new Proxy(NativeWebSocket, {
       construct: function(Target, args) {
