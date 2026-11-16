@@ -397,13 +397,13 @@ class PocketBridge:
             if not math.isfinite(amount) or amount < 1 or amount > 50000:
                 await self.status("Сумма сделки должна быть от 1 до 50000.", "error")
                 return
-            if enabled and not self.can_trade():
+            if enabled and not self.can_auto_trade():
                 await self.status("Автоторговля не включена: требуется подтверждённый DEMO-счёт и доступный торговый инструмент.", "warning")
                 await self.send_browser("executionState", auto_trading=False, can_trade=False)
                 return
             self.auto_trade_amount = amount
             self.auto_trading = enabled
-            await self.send_browser("executionState", auto_trading=self.auto_trading, can_trade=self.can_trade(), amount=amount)
+            await self.send_browser("executionState", auto_trading=self.auto_trading, can_trade=self.can_trade(), can_auto_trade=self.can_auto_trade(), amount=amount)
             await self.status("Автоторговля " + ("включена" if enabled else "выключена") + ".", "connected" if enabled else "info")
         elif action == "trade":
             direction = str(command.get("direction", "")).upper()
@@ -873,7 +873,7 @@ class PocketBridge:
             )
             await self.send_browser(
                 "executionState", auto_trading=self.auto_trading,
-                can_trade=self.can_trade(), amount=self.auto_trade_amount,
+                can_trade=self.can_trade(), can_auto_trade=self.can_auto_trade(), amount=self.auto_trade_amount,
             )
             await self.status(
                 "DEMO подтверждён сервером. Торговля доступна." if self.account_verified_demo
@@ -989,13 +989,15 @@ class PocketBridge:
             and self.account_verified_demo
             and self.auth_payload and self.auth_payload.get("isDemo") == 1
             and self.asset in self.asset_ids
-            and self.period == 5
             and self.last_tick_monotonic is not None
             and time.monotonic() - self.last_tick_monotonic < 10
             and self.active_order_count == 0
             and not self.order_busy
             and not self.execution_uncertain
         )
+
+    def can_auto_trade(self) -> bool:
+        return self.can_trade() and self.period == 5
 
     async def evaluate_closed_bar(self, closed_bar: dict[str, Any]) -> None:
         if self.period != 5 or not self.authenticated:
@@ -1070,7 +1072,7 @@ class PocketBridge:
         self.order_busy = True
         await self.send_browser(
             "executionState", auto_trading=self.auto_trading,
-            can_trade=False, amount=self.auto_trade_amount,
+            can_trade=False, can_auto_trade=False, amount=self.auto_trade_amount,
         )
         request_id = int(time.time() * 1000) % 2_147_483_647
         pending = {"event": asyncio.Event(), "success": False, "data": None}
