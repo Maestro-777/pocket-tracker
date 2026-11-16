@@ -125,6 +125,27 @@ $("auto-toggle").addEventListener("click", async () => {
     $("trade-result").textContent = "Не удалось изменить режим: " + error.message;
   }
 });
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes.ptBrokerMonitor?.newValue) return;
+  const monitor = changes.ptBrokerMonitor.newValue;
+  if (monitor.accountState || monitor.executionState) {
+    showAccount(monitor.accountState || {}, monitor.executionState || {});
+  }
+  if (monitor.lastSignal) {
+    const signal = monitor.lastSignal;
+    const node = $("last-signal");
+    node.textContent = signal.direction + " · " + (signal.asset || "инструмент") +
+      " · RSI " + Number(signal.rsi).toFixed(1);
+    node.className = String(signal.direction).toLowerCase();
+    $("last-signal-time").textContent = "Сигнал: " + new Date(Number(signal.createdAt || Number(signal.candleTime) * 1000)).toLocaleTimeString();
+  }
+  if (monitor.lastOrderResult) {
+    const last = monitor.lastOrderResult;
+    $("trade-result").textContent = last.success
+      ? "Брокер подтвердил открытие " + (last.direction || "")
+      : (last.message || "Последний ордер не подтверждён");
+  }
+});
 $("refresh").addEventListener("click", refresh);
 $("test").addEventListener("click", async () => {
   $("test").disabled = true;
