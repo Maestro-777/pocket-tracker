@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 let currentTabId = null;
 let lastConfigKey = "";
 let refreshBusy = false;
+let assetsSignature = "";
 async function getTab() {
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   const tab = tabs && tabs[0];
@@ -37,8 +38,12 @@ function renderJournal(rows) {
   }
 }
 function populateAssets(assets) {
+  const rows = Array.isArray(assets) ? assets : [];
+  const signature = rows.map(item => item && item.symbol ? item.symbol + "|" + (item.label || "") : "").join(";");
+  if (signature === assetsSignature) return;
+  assetsSignature = signature;
   const list = $("assetOptions"), seen = new Set(); list.textContent = "";
-  for (const item of (assets || [])) {
+  for (const item of rows) {
     if (!item || !item.symbol || seen.has(item.symbol)) continue;
     seen.add(item.symbol);
     const option = document.createElement("option"); option.value = item.symbol; option.label = item.label || item.symbol; list.appendChild(option);
@@ -80,6 +85,8 @@ function render(state) {
     "Проверка по закрытию свечи 5 секунд · экспирация 15 секунд";
   $("signalToggle").checked = Boolean(state.signalEnabled);
   $("autoToggle").checked = Boolean(state.autoTrading);
+  $("startSearchButton").textContent = state.signalEnabled ? "Остановить поиск сигналов" : "Запустить поиск сигналов";
+  $("startSearchButton").disabled = !state.demoVerified || !state.connected || state.accountMode === "real";
   $("tradeStatus").textContent = state.executionUncertain ? "Неопределённый ордер: повтор заблокирован до ответа брокера." :
     state.orderPending ? "Ожидание подтверждения брокера…" :
     state.activeOrder ? "Есть открытая сделка. Новые заявки заблокированы." :
@@ -129,6 +136,14 @@ $("subscribe").addEventListener("click", async function() {
     if (result && result.ok === false) throw new Error(result.message || "Не удалось подписаться.");
     if (result && result.message) $("statusText").textContent = result.message;
     lastConfigKey = ""; await refresh();
+  } catch (error) { $("statusText").textContent = error.message || String(error); }
+});
+$("startSearchButton").addEventListener("click", async function() {
+  const enabled = !$("signalToggle").checked;
+  try {
+    const result = await command("PT_SET_SIGNAL", { enabled:enabled });
+    if (result && result.ok === false) throw new Error(result.message || "Не удалось изменить поиск сигналов.");
+    await refresh();
   } catch (error) { $("statusText").textContent = error.message || String(error); }
 });
 $("signalToggle").addEventListener("change", async function(event) {
