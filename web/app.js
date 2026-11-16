@@ -10,6 +10,8 @@
   let activePeriod = 300, activeAsset = "EURUSD_otc", activeTool = "cursor";
   let trendStart = null, priceLines = [], drawingSeries = [], candles = new Map();
   let liveCandle = null, brokerConnected = false;
+  let historyLoading = false, hasMoreHistory = true, initialHistoryLoaded = false;
+  let autoLoadArmed = false;
 
   const chart = LightweightCharts.createChart(chartNode, {
     width: chartNode.clientWidth || 900, height: chartNode.clientHeight || 520,
@@ -64,13 +66,34 @@
   }
   function handleBridgeMessage(message) {
     if(message.type==="status"){setStatus(message.message||"Статус обновлён",message.state||"info");return;}
+    if(message.type==="historyLoading"){
+      setHistoryLoading(Boolean(message.loading));
+      return;
+    }
     if(message.type==="history"){
       if(message.asset!==activeAsset||Number(message.period)!==activePeriod)return;
       const received=Array.isArray(message.candles)?message.candles:[];
       candles=new Map(received.map(bar=>[Number(bar.time),normalizeBar(bar)]));
       if(liveCandle){candles.set(liveCandle.time,candles.has(liveCandle.time)?mergeBars(candles.get(liveCandle.time),liveCandle):normalizeBar(liveCandle));}
+      initialHistoryLoaded=true;
+      hasMoreHistory=message.has_more!==false;
+      setHistoryLoading(false);
       paintCandles(true);$("candle-count").textContent=String(candles.size);
       $("data-state").textContent="LIVE";$("data-state").classList.add("live");emptyNode.classList.add("hidden");return;
+    }
+    if(message.type==="historyOlder"){
+      if(message.asset!==activeAsset||Number(message.period)!==activePeriod)return;
+      appendOlderHistory(Array.isArray(message.candles)?message.candles:[]);
+      hasMoreHistory=message.has_more!==false;
+      setHistoryLoading(false);
+      if(!hasMoreHistory)endHistory();
+      return;
+    }
+    if(message.type==="historyEnd"){
+      hasMoreHistory=false;
+      setHistoryLoading(false);
+      endHistory();
+      return;
     }
     if(message.type==="candle"){
       if(message.asset!==activeAsset)return;
@@ -85,6 +108,45 @@
       const select=$("asset-select"),known=new Set(Array.from(select.options).map(option=>option.value));
       for(const symbol of message.symbols){if(known.has(symbol))continue;const option=document.createElement("option");option.value=symbol;option.textContent=symbol.replace("_otc"," OTC");select.appendChild(option);known.add(symbol);}
     }
+  }
+  function setHistoryLoading(loading){
+    historyLoading=loading;
+    const button=$("load-history-button");
+    button.disabled=loading||!initialHistoryLoaded||!hasMoreHistory;
+    button.textContent=loading?"Загрузка…":hasMoreHistory?"Загрузить ещё":"История закончилась";
+  }
+  function endHistory(){
+    hasMoreHistory=false;
+    const button=$("load-history-button");
+    button.disabled=true;
+    button.textContent="История закончилась";
+  }
+  function appendOlderHistory(rows){
+    const visibleRange=chart.timeScale().getVisibleLogicalRange();
+    const previousSize=candles.size;
+    for(const row of rows){
+      const bar=normalizeBar(row);
+      if(!Number.isFinite(bar.time))continue;
+      if(!candles.has(bar.time))candles.set(bar.time,bar);
+    }
+    if(liveCandle){
+      const current=candles.get(liveCandle.time);
+      candles.set(liveCandle.time,current?mergeBars(current,liveCandle):normalizeBar(liveCandle));
+    }
+    const added=candles.size-previousSize;
+    paintCandles(false);
+    $("candle-count").textContent=String(candles.size);
+    if(visibleRange&&added>0){
+      chart.timeScale().setVisibleLogicalRange({
+        from:visibleRange.from+added,
+        to:visibleRange.to+added
+      });
+    }
+    if(rows.length===0||added===0)endHistory();
+  }
+  function requestMoreHistory(){
+    if(historyLoading||!initialHistoryLoaded||!hasMoreHistory)return;
+    if(sendBridge({action:"loadMore"}))setHistoryLoading(true);
   }
   function normalizeBar(bar){return {time:Math.floor(Number(bar.time)),open:Number(bar.open),high:Number(bar.high),low:Number(bar.low),close:Number(bar.close)};}
   function mergeBars(oldBar,newBar){return {time:newBar.time,open:oldBar.open,high:Math.max(oldBar.high,newBar.high),low:Math.min(oldBar.low,newBar.low),close:newBar.close};}
@@ -110,8 +172,10 @@
   }
   function resetMarketData(){
     candles.clear();liveCandle=null;candleSeries.setData([]);smaSeries.setData([]);emaSeries.setData([]);
+    initialHistoryLoaded=false;historyLoading=false;hasMoreHistory=true;autoLoadArmed=false;
     $("last-price").textContent="—";$("price-time").textContent="ожидание потока";$("candle-count").textContent="0";$("update-state").textContent="—";
     $("data-state").textContent="ОЖИДАНИЕ";$("data-state").classList.remove("live");emptyNode.classList.remove("hidden");
+    setHistoryLoading(false);
   }
   function escapeHtml(value){return String(value).replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));}
   function setTool(tool){
@@ -141,6 +205,16 @@
       }
     }
   });
+  chart.timeScale().subscribeVisibleLogicalRangeChange(range=>{
+    if(!autoLoadArmed||!range||!initialHistoryLoaded||historyLoading||!hasMoreHistory)return;
+    if(range.from<=2){
+      autoLoadArmed=false;
+      requestMoreHistory();
+    }
+  });
+  chartNode.addEventListener("wheel",()=>{autoLoadArmed=true;},{passive:true});
+  chartNode.addEventListener("pointerdown",()=>{autoLoadArmed=true;});
+  $("load-history-button").addEventListener("click",requestMoreHistory);
   $("timeframes").addEventListener("click",event=>{const button=event.target.closest(".tf-button");if(button)setPeriod(button.dataset.period);});
   $("asset-select").addEventListener("change",event=>setAsset(event.target.value));
   $("sma-toggle").addEventListener("change",updateIndicators);
@@ -162,5 +236,6 @@
   disconnectButton.addEventListener("click",()=>{sendBridge({action:"disconnect"});brokerConnected=false;disconnectButton.disabled=true;resetMarketData();});
   window.addEventListener("beforeunload",()=>{if(socket&&socket.readyState===WebSocket.OPEN){socket.send(JSON.stringify({action:"disconnect"}));socket.close();}});
   $("symbol-state").textContent=activeAsset;$("period-state").textContent=periodNames[activePeriod];
+  setHistoryLoading(false);
   openBridge();
 })();
