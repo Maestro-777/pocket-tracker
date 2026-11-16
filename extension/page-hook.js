@@ -371,7 +371,11 @@
     if (!data || data.channel !== CHANNEL || data.type !== "COMMAND") return;
     if (data.command === "SUBSCRIBE") commandSubscribe(data.args || {});
     if (data.command === "OPEN_ORDER") commandOpenOrder(data.args || {});
-    if (data.command === "REQUEST_STATUS") reportStatus(true);
+    if (data.command === "REQUEST_STATUS") {
+      reportStatus(true);
+      const rec = latestDemoSocket();
+      if (rec) sendRaw(rec, "updateOpenedDeals");
+    }
   }
 
   window.addEventListener("message", handleCommand, true);
