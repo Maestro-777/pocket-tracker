@@ -23,7 +23,7 @@
     try { return new URL(url, location.href).hostname.toLowerCase(); } catch (_) { return ""; }
   }
   function isDemoHost(host) {
-    return DEMO_HOSTS.has(host) || host.indexOf("demo-") === 0 || host.indexOf("try-demo-") === 0;
+    return DEMO_HOSTS.has(host);
   }
   function visibleAccountMode() {
     const realSelectors = [
