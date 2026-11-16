@@ -78,7 +78,7 @@ async function refresh() {
       node.textContent = signal.direction + " · " + (signal.asset || "инструмент") +
         " · RSI " + Number(signal.rsi).toFixed(1);
       node.className = String(signal.direction).toLowerCase();
-      $("last-signal-time").textContent = "Свеча: " + new Date(Number(signal.candleTime || signal.createdAt) * 1000).toLocaleTimeString();
+      $("last-signal-time").textContent = "Свеча: " + new Date(Number(signal.createdAt || Number(signal.candleTime) * 1000)).toLocaleTimeString();
     } else {
       $("last-signal").textContent = "Пока сигналов нет";
       $("last-signal").className = "";
