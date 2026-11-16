@@ -11,12 +11,14 @@ import asyncio
 import json
 import logging
 import re
+import ssl
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 from typing import Any
 
+import certifi
 import websockets
 from websockets.exceptions import ConnectionClosed
 
@@ -270,6 +272,12 @@ class PocketBridge:
         )
 
         last_error = "Не удалось подключиться."
+        # Keep hostname and certificate verification enabled. Merge the OS trust
+        # store with certifi's maintained Mozilla CA bundle; this helps Python
+        # installations whose CA bundle is missing or outdated without disabling TLS.
+        tls_context = ssl.create_default_context()
+        tls_context.load_verify_locations(cafile=certifi.where())
+
         for url in servers:
             try:
                 # The broker's WebSocket handshake is origin-sensitive. This local
@@ -277,6 +285,7 @@ class PocketBridge:
                 self.broker = await websockets.connect(
                     url,
                     origin="https://pocketoption.com",
+                    ssl=tls_context,
                     ping_interval=None,
                     close_timeout=5,
                     open_timeout=10,
@@ -298,8 +307,18 @@ class PocketBridge:
                 if self.auth_error:
                     last_error = self.auth_error
                 await self.close_broker()
+            except ssl.SSLCertVerificationError as exc:
+                host = url.split("/")[2]
+                last_error = (
+                    f"Проверка TLS-сертификата {host} не прошла: "
+                    f"{exc.verify_message} (код {exc.verify_code})."
+                )
+                log.warning("TLS certificate validation failed for %s: %s", host, exc.verify_message)
+                await self.close_broker()
             except Exception as exc:
-                last_error = f"Не удалось открыть WebSocket ({type(exc).__name__})."
+                host = url.split("/")[2]
+                last_error = f"Не удалось открыть WebSocket {host} ({type(exc).__name__}: {exc})."
+                log.warning("WebSocket connection failed for %s: %s", host, exc)
                 await self.close_broker()
 
         await self.status(
