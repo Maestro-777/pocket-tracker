@@ -10,7 +10,7 @@ const DEMO_URLS=[
  "wss://try-demo-eu.po.market/socket.io/?EIO=4&transport=websocket"
 ];
 const state={connected:false,authenticated:false,demoVerified:false,account:"unknown",autoTrading:false,
- asset:"EURUSD_otc",period:5,expiry:15,price:null,candleCount:0,rsi:null,lastSignal:null,status:"Расширение готово.",
+ asset:"EURUSD_otc",period:5,expiry:15,price:null,lastTickAt:0,assetIds:{},assetSymbols:{},assetDigits:{},candleCount:0,rsi:null,lastSignal:null,status:"Расширение готово.",
  candles:[],current:null,ws:null,ssid:null,uid:null,orderPending:false,executionUncertain:false,lastSignalId:null,amount:1};
 let pingTimer=null,orderTimer=null;
 function publish(message){state.status=message;chrome.runtime.sendMessage({type:"LOG",message}).catch(()=>{});chrome.runtime.sendMessage({type:"STATE"}).catch(()=>{});}
@@ -59,8 +59,16 @@ function handleFrame(raw){
   if(!state.demoVerified){state.autoTrading=false;publish("DEMO не подтверждён сервером. Торговля заблокирована.");return;}
   publish("DEMO подтверждён сервером. Подписываюсь на "+state.asset+" · 5 секунд.");
   try{event("changeSymbol",{asset:state.asset,period:5});event("subfor",state.asset);event("loadHistoryPeriod",{asset:state.asset,index:Date.now(),offset:300,period:5,time:Math.floor(Date.now()/1000)});}catch(e){publish("Не удалось подписаться на инструмент: "+e.message);}
+ }else if(name==="updateAssets"){
+  const rows=Array.isArray(data)?data:(Array.isArray(data?.assets)?data.assets:[]);
+  for(const row of rows){
+   let id,symbol,digits,active=true;
+   if(Array.isArray(row)){id=row[0];symbol=row[1];digits=row[4];active=row.length>14?Boolean(row[14]):true;}
+   else if(row&&typeof row==="object"){id=row.id??row.assetId;symbol=row.asset??row.symbol;digits=row.digits;active=row.active??row.available??true;}
+   if(typeof symbol==="string"&&active){const n=Number(id);if(Number.isInteger(n)){state.assetIds[symbol]=n;state.assetSymbols[String(n)]=symbol;}const d=Number(digits);if(Number.isInteger(d)&&d>=0&&d<=12)state.assetDigits[symbol]=d;}
+  }
  }else if(name==="updateStream"){
-  for(const tick of collectTicks(data))if(tick.asset===state.asset)onTick(tick.time,tick.price);
+  for(const tick of collectTicks(data)){const symbol=state.assetSymbols[tick.asset]||tick.asset;if(symbol===state.asset)onTick(tick.time,tick.price);}
  }else if(name==="loadHistoryPeriodFast"){
   // Historical data is currently diagnostic only; live signal calculation starts from received ticks.
   publish("Исторический ответ получен. Накопление живых 5-секундных свечей…");
@@ -90,7 +98,7 @@ function collectTicks(v,hint=null,out=[]){
 }
 function onTick(time,price){
  if(!state.demoVerified||!Number.isFinite(price)||price<=0)return;
- state.price=price;const start=Math.floor(time/5)*5;
+ state.price=price;state.lastTickAt=Date.now();const start=Math.floor(time/5)*5;
  if(!state.current||state.current.time!==start){
   if(state.current){state.candles.push(state.current);if(state.candles.length>300)state.candles.shift();state.candleCount=state.candles.length;evaluate();}
   state.current={time:start,open:price,high:price,low:price,close:price};
@@ -125,7 +133,7 @@ function evaluate(){
 async function placeOrder(direction,amount,source){
  if(!["CALL","PUT"].includes(direction))return {ok:false,message:"Неизвестное направление."};
  if(!Number.isFinite(amount)||amount<1||amount>50000)return {ok:false,message:"Сумма должна быть от 1 до 50000."};
- if(!state.authenticated||!state.demoVerified||!state.ws||state.ws.readyState!==WebSocket.OPEN)return {ok:false,message:"Сделки доступны только при подключённом и подтверждённом DEMO."};
+ if(!state.authenticated||!state.demoVerified||!state.ws||state.ws.readyState!==WebSocket.OPEN)return {ok:false,message:"Сделки доступны только при подключённом и подтверждённом DEMO."};\n if(!state.lastTickAt||Date.now()-state.lastTickAt>10000)return {ok:false,message:"Нет свежей котировки по выбранному инструменту. Сделка заблокирована."};
  if(state.executionUncertain||state.orderPending)return {ok:false,message:"Предыдущий ордер ещё не подтверждён. Повторная отправка заблокирована."};
  state.orderPending=true;state.amount=amount;
  const requestId=Date.now();
