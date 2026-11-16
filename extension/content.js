@@ -499,8 +499,9 @@
     } else if (data.type === "OPEN_DEALS") {
       const deals = Array.isArray(data.deals) ? data.deals : [];
       const open = deals.filter(function(d){return d.closeTimestamp == null || d.closeTimestamp === 0 || d.closeTimestamp === "";});
-      state.activeDealCount = open.length;
-      state.activeOrder = open.length > 0;
+      const brokerCount = Number(data.activeDealCount);
+      state.activeDealCount = Number.isFinite(brokerCount) ? Math.max(open.length, brokerCount) : open.length;
+      state.activeOrder = state.activeDealCount > 0;
       if (open.length > 0) {
         state.orderPending = false;
         state.executionUncertain = false;
