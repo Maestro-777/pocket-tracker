@@ -29,22 +29,27 @@ async function getMonitor() {
 }
 function showAccount(accountState, executionState) {
   const type = accountState?.account || "unknown";
-  const verified = accountState?.demo_verified === true && executionState?.can_trade === true && current.tracker.length > 0;
-  const autoReady = verified && executionState?.can_auto_trade === true;
-  $("account-state").textContent = type === "demo"
-    ? (verified ? "DEMO · сервер подтвердил тип счёта" : "DEMO указан, но серверное подтверждение отсутствует")
-    : type === "real" ? "REAL · торговля заблокирована" : "Тип счёта не подтверждён";
-  $("account-state").className = verified ? "safe" : "blocked";
-  $("execution-state").textContent = !verified
-    ? "Fail-closed: ручные и автоматические ордера заблокированы."
-    : autoReady
-      ? "Ручные сделки доступны · автоторговля работает на таймфрейме 5 секунд."
-      : "Ручные сделки доступны · для автоторговли выбери таймфрейм 5 секунд.";
-  current.canTrade = verified;
-  current.canAutoTrade = autoReady;
+  const accountVerified = accountState?.demo_verified === true && current.tracker.length > 0;
+  const manualReady = accountVerified && executionState?.can_trade === true;
   current.autoTrading = executionState?.auto_trading === true;
-  $("call-trade").disabled = !verified;
-  $("put-trade").disabled = !verified;
+  const autoReady = accountVerified && (executionState?.can_auto_trade === true || current.autoTrading);
+  $("account-state").textContent = type === "demo"
+    ? (accountVerified ? "DEMO · сервер подтвердил тип счёта" : "DEMO указан, но серверное подтверждение отсутствует")
+    : type === "real" ? "REAL · торговля заблокирована" : "Тип счёта не подтверждён";
+  $("account-state").className = accountVerified ? "safe" : "blocked";
+  $("execution-state").textContent = !accountVerified
+    ? "Fail-closed: ручные и автоматические ордера заблокированы."
+    : current.autoTrading
+      ? "Автоторговля включена · можно остановить в любой момент."
+      : manualReady && executionState?.can_auto_trade === true
+        ? "Ручные сделки и автоторговля доступны на DEMO."
+        : manualReady
+          ? "Ручные сделки доступны · для автоторговли выбери таймфрейм 5 секунд."
+          : "Ожидание свежих котировок или закрытия открытой сделки.";
+  current.canTrade = manualReady;
+  current.canAutoTrade = autoReady;
+  $("call-trade").disabled = !manualReady;
+  $("put-trade").disabled = !manualReady;
   $("auto-toggle").disabled = !autoReady;
   $("auto-toggle").textContent = current.autoTrading ? "Остановить автоторговлю" : "Включить автоторговлю";
   $("auto-toggle").classList.toggle("active", current.autoTrading);
