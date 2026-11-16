@@ -1,24 +1,65 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pocket Tracker</title><link rel="stylesheet" href="popup.css"></head>
-<body><main>
-<header><div><small>POCKET OPTION</small><h1>Pocket Tracker</h1></div><span id="lamp" class="lamp"></span></header>
-<section class="panel"><h2>Подключение DEMO</h2>
-<label>Полное Socket.IO auth-сообщение<textarea id="authMessage" rows="4" spellcheck="false" autocomplete="off" placeholder='42["auth",{"sessionToken":"…","uid":"…","lang":"ru","currentUrl":"cabinet/demo-quick-high-low","isChart":1}]'></textarea></label>
-<button id="connect" class="primary">Подключиться к DEMO</button>
-<p class="hint">Вставляй всю строку, начиная с 42. Токен используется только в памяти расширения, не сохраняется в настройках и не выводится в журнал. Только DEMO-сервер.</p>
-</section>
-<section class="panel"><h2>Рынок и стратегия</h2>
-<label>Инструмент<input id="asset" value="EURUSD_otc"></label>
-<div class="stats"><div><small>Счёт</small><strong id="account">Не проверен</strong></div><div><small>Котировка</small><strong id="price">—</strong></div><div><small>Свечей</small><strong id="candles">0</strong></div><div><small>RSI</small><strong id="rsi">—</strong></div></div>
-<p id="signal" class="signal">Ожидание сигнала</p>
-<div class="conditions">BB(20, 2) · RSI(14)<br>PUT: RSI 77–83 · верхняя BB<br>CALL: RSI 18–23 · нижняя BB<br>Свеча 5 секунд · экспирация 15 секунд</div>
-</section>
-<section class="panel"><h2>Торговля</h2>
-<label>Сумма сделки<input id="amount" type="number" min="1" max="50000" step="1" value="1"></label>
-<div class="buttons"><button id="call" class="call">CALL</button><button id="put" class="put">PUT</button></div>
-<label class="toggle"><input id="auto" type="checkbox"><span>Автоматически открывать сигналы</span></label>
-<p id="tradeState" class="hint">Торговля заблокирована до подтверждения DEMO.</p>
-</section>
-<section class="panel"><h2>Журнал</h2><div id="log" class="log">Расширение готово.</div></section>
-<footer>v2.0.0 · DEMO only · Auth message</footer>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pocket Tracker</title><link rel="stylesheet" href="popup.css">
+</head>
+<body><main class="app">
+  <header class="top">
+    <div class="brand-mark">PT</div><div class="brand"><div class="eyebrow">POCKET OPTION</div><h1>Pocket Tracker</h1><div class="version">v3.0 · page-session mode</div></div>
+    <span id="connectionLamp" class="lamp"></span>
+  </header>
+  <section class="status-card">
+    <div class="status-line"><span id="accountBadge" class="badge unknown">Счёт не подтверждён</span><span id="socketCount" class="muted">WS: 0</span></div>
+    <p id="statusText" class="status-text">Открой авторизованный DEMO-терминал Pocket Option.</p>
+    <button id="subscribe" class="button secondary block">Подключить текущий актив</button>
+  </section>
+  <section class="metrics">
+    <div class="metric"><span>Инструмент</span><strong id="assetValue">—</strong></div>
+    <div class="metric"><span>Котировка</span><strong id="priceValue">—</strong></div>
+    <div class="metric"><span>Свечи 5с</span><strong id="candleValue">0</strong></div>
+    <div class="metric"><span>RSI(14)</span><strong id="rsiValue">—</strong></div>
+  </section>
+  <section class="signal-card">
+    <div class="section-heading"><span>ПОСЛЕДНИЙ СИГНАЛ</span><span id="bbValue" class="muted">BB: — / —</span></div>
+    <div id="signalValue" class="signal-value">Ожидание сигнала</div>
+    <div id="signalMeta" class="signal-meta">Проверка выполняется по закрытию 5-секундной свечи</div>
+  </section>
+  <section class="card">
+    <div class="section-heading">НАСТРОЙКИ РЫНКА</div>
+    <label class="field"><span>Инструмент (AUTO — брать с графика)</span><input id="assetInput" list="assetOptions" value="AUTO" spellcheck="false"><datalist id="assetOptions"></datalist></label>
+    <div class="two-col">
+      <label class="field"><span>Сумма DEMO</span><input id="amountInput" type="number" min="1" max="50000" step="1" value="1"></label>
+      <label class="field"><span>Допуск BB (пункты)</span><input id="distanceInput" type="number" min="0" max="20" step="0.1" value="1"></label>
+    </div>
+    <div class="two-col">
+      <label class="field"><span>BB период</span><input id="bbPeriodInput" type="number" min="2" max="200" value="20"></label>
+      <label class="field"><span>BB отклонение</span><input id="bbDeviationInput" type="number" min="0.1" max="5" step="0.1" value="2"></label>
+    </div>
+    <div class="two-col">
+      <label class="field"><span>RSI период</span><input id="rsiPeriodInput" type="number" min="2" max="100" value="14"></label>
+      <label class="field"><span>Экспирация</span><input value="15 секунд" disabled></label>
+    </div>
+    <div class="range-grid">
+      <label class="field"><span>PUT RSI от</span><input id="putMinInput" type="number" min="0" max="100" value="77"></label>
+      <label class="field"><span>до</span><input id="putMaxInput" type="number" min="0" max="100" value="83"></label>
+      <label class="field"><span>CALL RSI от</span><input id="callMinInput" type="number" min="0" max="100" value="18"></label>
+      <label class="field"><span>до</span><input id="callMaxInput" type="number" min="0" max="100" value="23"></label>
+    </div>
+    <button id="saveConfig" class="button secondary block">Сохранить настройки</button>
+    <div class="strategy-note">Анализ: свечи 5 секунд · BB(20, 2) · RSI Wilder(14) · экспирация 15 секунд. Вход только по закрытой свече.</div>
+  </section>
+  <section class="card">
+    <div class="section-heading">УПРАВЛЕНИЕ</div>
+    <div class="toggle-row"><div><strong>Поиск сигналов</strong><small>Считать сигналы, не открывая сделки</small></div><input id="signalToggle" type="checkbox"></div>
+    <div class="toggle-row"><div><strong>Автооткрытие DEMO</strong><small>Открывать сделки после подтверждённого сигнала</small></div><input id="autoToggle" type="checkbox"></div>
+    <div class="trade-buttons"><button id="callButton" class="button call" disabled>CALL</button><button id="putButton" class="button put" disabled>PUT</button></div>
+    <p id="tradeStatus" class="strategy-note">Сделки заблокированы до подтверждения DEMO.</p>
+  </section>
+  <section class="card journal-card">
+    <div class="section-heading"><span>ЖУРНАЛ СОБЫТИЙ</span><span id="historyValue" class="muted">История: 0</span></div>
+    <div id="journal" class="journal"><div class="empty">Пока нет событий.</div></div>
+  </section>
+  <footer>Без отдельной авторизации и сервера Pobot · DEMO only</footer>
 </main><script src="popup.js"></script></body></html>
