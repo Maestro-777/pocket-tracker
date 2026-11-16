@@ -361,7 +361,7 @@ class PocketBridge:
             await self.reset_history()
             if self.authenticated:
                 await self.subscribe_broker()
-            await self.send_browser("executionState", auto_trading=self.auto_trading, can_trade=self.can_trade(), amount=self.auto_trade_amount)
+            await self.send_browser("executionState", auto_trading=self.auto_trading, can_trade=self.can_trade(), can_auto_trade=self.can_auto_trade(), amount=self.auto_trade_amount)
         elif action == "strategyConfig":
             config = command.get("config") if isinstance(command.get("config"), dict) else {}
             try:
@@ -399,7 +399,7 @@ class PocketBridge:
                 return
             if enabled and not self.can_auto_trade():
                 await self.status("Автоторговля не включена: требуется подтверждённый DEMO-счёт и доступный торговый инструмент.", "warning")
-                await self.send_browser("executionState", auto_trading=False, can_trade=False, can_auto_trade=False)
+                await self.send_browser("executionState", auto_trading=False, can_trade=False, can_auto_trade=False, can_auto_trade=False)
                 return
             self.auto_trade_amount = amount
             self.auto_trading = enabled
@@ -557,7 +557,7 @@ class PocketBridge:
             "accountState", account="unknown", authenticated=False, demo_verified=False,
         )
         await self.send_browser(
-            "executionState", auto_trading=False, can_trade=False,
+            "executionState", auto_trading=False, can_trade=False, can_auto_trade=False,
             amount=self.auto_trade_amount,
         )
 
@@ -911,7 +911,7 @@ class PocketBridge:
             await self.send_browser("openedDeals", deals=deals, synchronized=synchronized)
             await self.send_browser(
                 "executionState", auto_trading=self.auto_trading,
-                can_trade=self.can_trade(), amount=self.auto_trade_amount,
+                can_trade=self.can_trade(), can_auto_trade=self.can_auto_trade(), amount=self.auto_trade_amount,
             )
         elif name == "updateAssets":
             rows = data if isinstance(data, list) else data.get("assets", []) if isinstance(data, dict) else []
@@ -948,7 +948,7 @@ class PocketBridge:
                 await self.send_browser("assets", symbols=sorted(set(symbols)))
                 await self.send_browser(
                     "executionState", auto_trading=self.auto_trading,
-                    can_trade=self.can_trade(), amount=self.auto_trade_amount,
+                    can_trade=self.can_trade(), can_auto_trade=self.can_auto_trade(), amount=self.auto_trade_amount,
                 )
 
     async def subscribe_broker(self) -> None:
@@ -1045,7 +1045,7 @@ class PocketBridge:
         )
         await self.send_browser(
             "executionState", auto_trading=self.auto_trading,
-            can_trade=self.can_trade(), amount=self.auto_trade_amount,
+            can_trade=self.can_trade(), can_auto_trade=self.can_auto_trade(), amount=self.auto_trade_amount,
         )
 
     async def place_order(
@@ -1111,7 +1111,7 @@ class PocketBridge:
                 )
                 await self.send_browser(
                     "executionState", auto_trading=False,
-                    can_trade=self.can_trade(), amount=self.auto_trade_amount,
+                    can_trade=self.can_trade(), can_auto_trade=self.can_auto_trade(), amount=self.auto_trade_amount,
                 )
                 return
             if pending["success"]:
@@ -1146,7 +1146,7 @@ class PocketBridge:
             self.order_busy = False
             await self.send_browser(
                 "executionState", auto_trading=self.auto_trading,
-                can_trade=self.can_trade(), amount=self.auto_trade_amount,
+                can_trade=self.can_trade(), can_auto_trade=self.can_auto_trade(), amount=self.auto_trade_amount,
             )
 
     async def handle_tick(self, asset: str, stamp: int, price: float) -> None:
@@ -1165,7 +1165,7 @@ class PocketBridge:
         if not was_trade_ready and self.can_trade():
             await self.send_browser(
                 "executionState", auto_trading=self.auto_trading,
-                can_trade=self.can_trade(), amount=self.auto_trade_amount,
+                can_trade=self.can_trade(), can_auto_trade=self.can_auto_trade(), amount=self.auto_trade_amount,
             )
         start = stamp // self.period * self.period
         if self.current_bar is not None and start > self.current_bar["time"]:
