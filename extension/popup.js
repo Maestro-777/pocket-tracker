@@ -11,20 +11,45 @@ const BROKER_URLS = [
 
 const $ = id => document.getElementById(id);
 let current = { tracker: [], broker: [] };
+let trackerDiagnostic = "";
 
 function setStatus(name, state, message) {
   $(name + "-dot").className = "dot " + state;
   $(name + "-status").textContent = message;
 }
 
-async function pingTabs(tabs) {
+async function pingTab(tab, allowInjection = false) {
+  if (tab.id == null) return null;
+  try {
+    const reply = await chrome.tabs.sendMessage(tab.id, { type: "PT_PING" });
+    if (reply && reply.ok) return { tab, reply };
+  } catch (error) {
+    trackerDiagnostic = error && error.message ? error.message : String(error);
+  }
+
+  // If the static content script was not injected (for example, the extension
+  // was updated while the tab remained open), inject it once and retry.
+  if (allowInjection) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"]
+      });
+      await new Promise(resolve => setTimeout(resolve, 150));
+      const reply = await chrome.tabs.sendMessage(tab.id, { type: "PT_PING" });
+      if (reply && reply.ok) return { tab, reply, injected: true };
+    } catch (error) {
+      trackerDiagnostic = error && error.message ? error.message : String(error);
+    }
+  }
+  return null;
+}
+
+async function pingTabs(tabs, allowInjection = false) {
   const found = [];
   for (const tab of tabs) {
-    if (tab.id == null) continue;
-    try {
-      const reply = await chrome.tabs.sendMessage(tab.id, { type: "PT_PING" });
-      if (reply && reply.ok) found.push({ tab, reply });
-    } catch (_) {}
+    const result = await pingTab(tab, allowInjection);
+    if (result) found.push(result);
   }
   return found;
 }
@@ -50,20 +75,24 @@ function showLastSignal(brokerResults) {
 async function refresh() {
   $("refresh").disabled = true;
   $("refresh").textContent = "Проверяем…";
+  trackerDiagnostic = "";
   try {
     const [trackerTabs, brokerTabs] = await Promise.all([
       chrome.tabs.query({ url: TRACKER_URLS }),
       chrome.tabs.query({ url: BROKER_URLS })
     ]);
-    const [tracker, broker] = await Promise.all([
-      pingTabs(trackerTabs),
-      pingTabs(brokerTabs)
-    ]);
+    // Try normal messaging first, then inject the content script only into
+    // matching local Tracker tabs that did not answer.
+    const tracker = await pingTabs(trackerTabs, true);
+    const broker = await pingTabs(brokerTabs);
     current = { tracker, broker };
 
     setStatus("tracker", tracker.length ? "ok" : (trackerTabs.length ? "warn" : "bad"),
-      tracker.length ? "Подключён · вкладка отвечает" :
-      trackerTabs.length ? "Вкладка найдена, но скрипт не отвечает" : "Не найдена вкладка localhost / 127.0.0.1");
+      tracker.length
+        ? "Подключён · вкладка отвечает" + (tracker.some(item => item.injected) ? " (скрипт восстановлен)" : "")
+        : trackerTabs.length
+          ? "Вкладка найдена, скрипт не запустился: " + (trackerDiagnostic || "нет ответа")
+          : "Не найдена вкладка localhost / 127.0.0.1");
     setStatus("broker", broker.length ? "ok" : (brokerTabs.length ? "warn" : "bad"),
       broker.length ? "Подключён · " + broker.length + " вкладка(и)" :
       brokerTabs.length ? "Вкладка найдена, но скрипт не отвечает" : "Открой сайт Pocket Option");
