@@ -13,10 +13,10 @@
   const colorPalette = ["#f1c46a","#55adff","#d98af0","#22c997","#f08b96"];
 
   const indicatorCatalog = [
-    {id:"sma",name:"Simple Moving Average",short:"SMA",category:"trend",panel:"overlay",description:"Простая скользящая средняя цены закрытия.",color:"#f1c46a",params:[{id:"period",label:"Период",default:20,min:1,max:500}]},
-    {id:"ema",name:"Exponential Moving Average",short:"EMA",category:"trend",panel:"overlay",description:"Экспоненциальная средняя с большим весом новых цен.",color:"#55adff",params:[{id:"period",label:"Период",default:50,min:1,max:500}]},
-    {id:"wma",name:"Weighted Moving Average",short:"WMA",category:"trend",panel:"overlay",description:"Взвешенная скользящая средняя.",color:"#b69cf5",params:[{id:"period",label:"Период",default:20,min:1,max:500}]},
-    {id:"dema",name:"Double Exponential Moving Average",short:"DEMA",category:"trend",panel:"overlay",description:"Двойная экспоненциальная средняя.",color:"#7bd0cb",params:[{id:"period",label:"Период",default:20,min:1,max:500}]},
+    {id:"sma",name:"Simple Moving Average",short:"SMA",category:"trend",panel:"overlay",description:"Простая скользящая средняя с выбором источника цены.",color:"#f1c46a",params:[{id:"period",label:"Период",default:20,min:1,max:500},{id:"source",label:"Источник цены",type:"select",default:"close",options:[["close","Close"],["open","Open"],["hl2","HL2"],["hlc3","HLC3"],["ohlc4","OHLC4"]]}]},
+    {id:"ema",name:"Exponential Moving Average",short:"EMA",category:"trend",panel:"overlay",description:"Экспоненциальная средняя с выбором источника цены.",color:"#55adff",params:[{id:"period",label:"Период",default:50,min:1,max:500},{id:"source",label:"Источник цены",type:"select",default:"close",options:[["close","Close"],["open","Open"],["hl2","HL2"],["hlc3","HLC3"],["ohlc4","OHLC4"]]}]},
+    {id:"wma",name:"Weighted Moving Average",short:"WMA",category:"trend",panel:"overlay",description:"Взвешенная скользящая средняя с выбором источника цены.",color:"#b69cf5",params:[{id:"period",label:"Период",default:20,min:1,max:500},{id:"source",label:"Источник цены",type:"select",default:"close",options:[["close","Close"],["open","Open"],["hl2","HL2"],["hlc3","HLC3"],["ohlc4","OHLC4"]]}]},
+    {id:"dema",name:"Double Exponential Moving Average",short:"DEMA",category:"trend",panel:"overlay",description:"Двойная экспоненциальная средняя с выбором источника цены.",color:"#7bd0cb",params:[{id:"period",label:"Период",default:20,min:1,max:500},{id:"source",label:"Источник цены",type:"select",default:"close",options:[["close","Close"],["open","Open"],["hl2","HL2"],["hlc3","HLC3"],["ohlc4","OHLC4"]]}]},
     {id:"bollinger",name:"Bollinger Bands",short:"BB",category:"volatility",panel:"overlay",description:"SMA и полосы на основе стандартного отклонения.",color:"#e2b45c",params:[{id:"period",label:"Период",default:20,min:2,max:500},{id:"multiplier",label:"Отклонение",default:2,min:0.1,max:10,step:0.1},{id:"source",label:"Источник цены",type:"select",default:"close",options:[["close","Close"],["open","Open"],["hl2","HL2"],["hlc3","HLC3"],["ohlc4","OHLC4"]]}]},
     {id:"keltner",name:"Keltner Channels",short:"Keltner",category:"volatility",panel:"overlay",description:"Канал вокруг EMA с шириной на основе ATR.",color:"#65b9b0",params:[{id:"period",label:"Период",default:20,min:2,max:500},{id:"multiplier",label:"Множитель ATR",default:1.5,min:0.1,max:10,step:0.1}]},
     {id:"donchian",name:"Donchian Channels",short:"Donchian",category:"trend",panel:"overlay",description:"Максимум и минимум заданного окна свечей.",color:"#88a9e8",params:[{id:"period",label:"Период",default:20,min:2,max:500}]},
@@ -722,7 +722,7 @@
     indicatorRefreshTimer = setTimeout(() => {
       indicatorRefreshTimer = null;
       runIndicatorCalculation();
-    }, 350);
+    }, 650);
   }
 
   function runIndicatorCalculation() {
@@ -964,6 +964,7 @@
     $("tool-hint").textContent = "Все пользовательские рисунки удалены";
   });
   function shiftVisibleBars(direction) {
+    if (direction < 0) autoLoadArmed = true;
     const scale = chart.timeScale();
     const range = scale.getVisibleLogicalRange();
     if (!range) return;
