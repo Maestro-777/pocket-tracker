@@ -507,7 +507,10 @@ async def main() -> None:
     log.info("Локальный WebSocket мост: ws://%s:%s", WS_HOST, WS_PORT)
     log.info("Мост принимает подключения только с этого компьютера.")
     try:
-        async with websockets.serve(websocket_handler, WS_HOST, WS_PORT, max_size=2_000_000):
+        async with websockets.serve(
+            websocket_handler, WS_HOST, WS_PORT, max_size=2_000_000,
+            origins=["http://127.0.0.1:8000", "http://localhost:8000"],
+        ):
             await asyncio.Future()
     finally:
         http_server.shutdown()
