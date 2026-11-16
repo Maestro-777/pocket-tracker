@@ -14,7 +14,7 @@ const state={connected:false,authenticated:false,demoVerified:false,account:"unk
  candles:[],current:null,ws:null,ssid:null,uid:null,authPayload:null,orderPending:false,activeOrder:false,executionUncertain:false,lastSignalId:null,amount:1};
 let pingTimer=null,orderTimer=null;
 function publish(message){state.status=message;chrome.runtime.sendMessage({type:"LOG",message}).catch(()=>{});chrome.runtime.sendMessage({type:"STATE"}).catch(()=>{});}
-function snapshot(){return {...state,ws:undefined,ssid:undefined,uid:undefined,candles:undefined,current:undefined};}
+function snapshot(){return {...state,ws:undefined,ssid:undefined,uid:undefined,authPayload:undefined,candles:undefined,current:undefined};}
 function event(name,data){if(!state.ws||state.ws.readyState!==WebSocket.OPEN)throw Error("Нет соединения с DEMO-сервером");state.ws.send("42"+JSON.stringify(data===undefined?[name]:[name,data]));}
 function stopTimers(){if(pingTimer)clearInterval(pingTimer);pingTimer=null;if(orderTimer)clearTimeout(orderTimer);orderTimer=null;}
 function resetConnection(){stopTimers();state.connected=false;state.authenticated=false;state.demoVerified=false;state.account="unknown";state.autoTrading=false;state.orderPending=false;state.executionUncertain=false;state.ws=null;}
