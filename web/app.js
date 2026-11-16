@@ -317,7 +317,7 @@
     const button = $("load-history-button");
     button.disabled = loading || !initialHistoryLoaded || !hasMoreHistory;
     if (loading) {
-      button.textContent = requestKind === "older" ? "Загрузка ещё…" : "Загружаю месяц…";
+      button.textContent = requestKind === "older" ? "Загрузка ещё…" : "Загружаю 7 дней…";
     } else if (hasMoreHistory && initialHistoryLoaded) {
       button.textContent = "Загрузить ещё";
     } else if (!hasMoreHistory && initialHistoryLoaded) {
