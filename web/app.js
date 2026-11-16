@@ -58,6 +58,7 @@
   let priceLines = [];
   let drawingSeries = [];
   let candles = new Map();
+  let sortedBarsCache = null;
   let liveCandle = null;
   let brokerConnected = false;
   let historyLoading = false;
@@ -245,6 +246,7 @@
       const cutoff = Math.floor(Date.now() / 1000) - 7 * 86400;
       const received = Array.isArray(message.candles) ? message.candles : [];
       candles = new Map(received.filter(bar => Number(bar.time) >= cutoff).map(bar => [Number(bar.time), normalizeBar(bar)]));
+      sortedBarsCache = null;
       if (liveCandle) {
         candles.set(liveCandle.time, candles.has(liveCandle.time)
           ? mergeBars(candles.get(liveCandle.time), liveCandle)
@@ -289,6 +291,7 @@
       if (!bar || !Number.isFinite(bar.time)) return;
       liveCandle = bar;
       candles.set(bar.time, candles.has(bar.time) ? mergeBars(candles.get(bar.time), bar) : bar);
+      sortedBarsCache = null;
       candleSeries.update(toChartCandle(bar));
       scheduleIndicatorCalculation();
       $("candle-count").textContent = candles.size.toLocaleString("ru-RU");
@@ -349,6 +352,7 @@
       candles.set(liveCandle.time, current ? mergeBars(current, liveCandle) : normalizeBar(liveCandle));
     }
     const added = candles.size - previousSize;
+    if (added > 0) sortedBarsCache = null;
     paintCandles(false);
     $("candle-count").textContent = candles.size.toLocaleString("ru-RU");
     if (visibleRange && added > 0) {
@@ -390,9 +394,12 @@
   }
 
   function sortedBars() {
-    return Array.from(candles.values())
-      .filter(bar => Number.isFinite(bar.time) && Number.isFinite(bar.close))
-      .sort((a,b) => a.time - b.time);
+    if (!sortedBarsCache) {
+      sortedBarsCache = Array.from(candles.values())
+        .filter(bar => Number.isFinite(bar.time) && Number.isFinite(bar.close))
+        .sort((a,b) => a.time - b.time);
+    }
+    return sortedBarsCache;
   }
 
   function paintCandles(fit) {
@@ -438,6 +445,7 @@
 
   function resetMarketData() {
     candles.clear();
+    sortedBarsCache = null;
     liveCandle = null;
     candleSeries.setData([]);
     initialHistoryLoaded = false;
