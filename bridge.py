@@ -220,6 +220,9 @@ class PocketBridge:
         self.period = 300
         self.latest_tick_time: int | None = None
         self.current_bar: dict[str, Any] | None = None
+        self.last_live_emit = 0.0
+        self.pending_live_price: float | None = None
+        self.live_emit_task: asyncio.Task | None = None
         self.history_requested = False
         self.history_cursor: int | None = None
         self.history_request_kind: str | None = None
@@ -282,6 +285,10 @@ class PocketBridge:
             self.period = period
             self.current_bar = None
             self.latest_tick_time = None
+            self.pending_live_price = None
+            if self.live_emit_task and self.live_emit_task is not asyncio.current_task():
+                self.live_emit_task.cancel()
+                self.live_emit_task = None
             await self.reset_history()
             if self.authenticated:
                 await self.subscribe_broker()
@@ -725,6 +732,23 @@ class PocketBridge:
         await self.send_broker_event("subfor", self.asset)
         await self.request_history("initial")
 
+    async def flush_live_update(self, delay: float = 0.0) -> None:
+        try:
+            if delay > 0:
+                await asyncio.sleep(delay)
+            if self.current_bar is None or self.pending_live_price is None:
+                return
+            self.last_live_emit = time.monotonic()
+            await self.send_browser(
+                "candle", candle=self.current_bar, asset=self.asset,
+                price=self.pending_live_price,
+            )
+        except asyncio.CancelledError:
+            raise
+        finally:
+            if self.live_emit_task is asyncio.current_task():
+                self.live_emit_task = None
+
     async def handle_tick(self, asset: str, stamp: int, price: float) -> None:
         if asset != self.asset:
             return
@@ -741,9 +765,15 @@ class PocketBridge:
             self.current_bar["close"] = price
         else:
             return
-        await self.send_browser(
-            "candle", candle=self.current_bar, asset=self.asset, price=price
-        )
+        self.pending_live_price = price
+        elapsed = time.monotonic() - self.last_live_emit
+        if elapsed >= 0.1:
+            if self.live_emit_task and self.live_emit_task is not asyncio.current_task():
+                self.live_emit_task.cancel()
+                self.live_emit_task = None
+            await self.flush_live_update()
+        elif self.live_emit_task is None:
+            self.live_emit_task = asyncio.create_task(self.flush_live_update(0.1 - elapsed))
 
 
 async def websocket_handler(browser: Any, path: str | None = None) -> None:
