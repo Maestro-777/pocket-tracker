@@ -501,7 +501,18 @@
 
     window.WebSocket = function(url, protocols) {
         const ws = protocols ? new OriginalWebSocket(url, protocols) : new OriginalWebSocket(url);
-        window.__po_ws = ws;
+        const wsUrl = String(url || '');
+        const isPoMarketSocket = /\.po\.market(?:[/:?#]|$)/i.test(wsUrl);
+        let wsRecord = null;
+        if (isPoMarketSocket) {
+            const records = window.__po_wsConnections || (window.__po_wsConnections = []);
+            wsRecord = { ws: ws, url: wsUrl, lastDataAt: 0 };
+            records.push(wsRecord);
+            if (!window.__po_ws || window.__po_ws.readyState !== 1) {
+                window.__po_ws = ws;
+                window.__po_wsUrl = wsUrl;
+            }
+        }
 
         // Перехват исходящих сообщений - учим raw-имена активов (BNBUSD_otc и т.п.)
         try {
@@ -534,8 +545,21 @@
         } catch(e) {}
 
         // ── Core message handler ──────────────────────────────────────
+        let pendingEventForSocket = null;
         function _onMsg(event) {
             try {
+                if (wsRecord) {
+                    const now = Date.now();
+                    wsRecord.lastDataAt = now;
+                    const active = window.__po_ws;
+                    const records = window.__po_wsConnections || [];
+                    const activeRecord = records.find(function(r) { return r.ws === active; });
+                    if (!active || active.readyState !== 1 || active === ws ||
+                        !activeRecord || now - (activeRecord.lastDataAt || 0) > 3000) {
+                        window.__po_ws = ws;
+                        window.__po_wsUrl = wsUrl;
+                    }
+                }
                 // RAW diagnostic - first 5 messages always, then every 50th
                 if (!window._posRawCount) window._posRawCount = 0;
                 window._posRawCount++;
@@ -561,7 +585,7 @@
                                 console.log('[PocketOption Signal] NEW EVENT TYPE:', eventName, parsed.length > 1 ? JSON.stringify(parsed[1]).substring(0,100) : '');
                             }
                             if (payload && payload._placeholder === true) {
-                                window._posPendingEvent = eventName;
+                                pendingEventForSocket = eventName;
                             } else if (payload !== undefined) {
                                 handlePOEvent(eventName, payload);
                             }
@@ -572,8 +596,8 @@
 
                 // Binary: ArrayBuffer or Blob
                 const processBinary = (buffer) => {
-                    const pendingEvent = window._posPendingEvent || 'unknown';
-                    window._posPendingEvent = null;
+                    const pendingEvent = pendingEventForSocket || 'unknown';
+                    pendingEventForSocket = null;
                     let parsed;
                     try { parsed = decodePOBinary(buffer); } catch(e) {
                         if (!window._posDecErr) window._posDecErr = 0;
@@ -601,6 +625,23 @@
 
         // 1) addEventListener - catches messages if Socket.IO uses dispatchEvent
         ws.addEventListener('message', _onMsg);
+        if (wsRecord) {
+            ws.addEventListener('close', function() {
+                const records = window.__po_wsConnections || [];
+                const index = records.indexOf(wsRecord);
+                if (index >= 0) records.splice(index, 1);
+                if (window.__po_ws === ws) {
+                    const candidates = records.filter(function(r) {
+                        return r.ws && r.ws.readyState === 1;
+                    }).sort(function(a, b) {
+                        return (b.lastDataAt || 0) - (a.lastDataAt || 0);
+                    });
+                    const next = candidates.length ? candidates[0] : null;
+                    window.__po_ws = next ? next.ws : null;
+                    window.__po_wsUrl = next ? next.url : '';
+                }
+            });
+        }
 
         // 2) Intercept onmessage setter - catches messages if Socket.IO sets ws.onmessage directly
         let _origOnMessage = null;
@@ -655,6 +696,15 @@
                             }, '*');
                         }
                     } catch (_) {}
+                }
+                return;
+            }
+
+            if (eventName === 'updateAssets') {
+                ingestAssetsCatalog(payload);
+                const catalogCore = window.__poCore;
+                if (catalogCore && catalogCore.isRunning && catalogCore.config?.multiPairTrading) {
+                    catalogCore._refreshMultiPairs(true);
                 }
                 return;
             }
@@ -1036,9 +1086,18 @@
     }
 
     function getActivePoSocket() {
-        const ws = window.__po_ws;
-        if (ws && ws.readyState === 1) return ws;
-        return null;
+        const records = window.__po_wsConnections || [];
+        const active = window.__po_ws;
+        if (active && active.readyState === 1 && records.some(function(r) { return r.ws === active; })) return active;
+        const candidates = records.filter(function(r) {
+            return r.ws && r.ws.readyState === 1;
+        }).sort(function(a, b) {
+            return (b.lastDataAt || 0) - (a.lastDataAt || 0);
+        });
+        if (!candidates.length) return null;
+        window.__po_ws = candidates[0].ws;
+        window.__po_wsUrl = candidates[0].url;
+        return window.__po_ws;
     }
 
     function requestAssetHistory(assetNorm, periodSec) {
@@ -1930,20 +1989,19 @@
     };
     const PROFILE_STEPS = Object.keys(ANALYSIS_PROFILES).map(Number).sort(function(a, b) { return a - b; });
 
-    function getAnalysisProfile(expirationSec) {
+    function getAnalysisProfile(expirationSec, timeframeSec) {
         const exp = Math.max(3, parseInt(expirationSec, 10) || 60);
-        const candleMs = exp * 1000;
+        const candleSec = Math.max(3, parseInt(timeframeSec, 10) || exp);
+        const candleMs = candleSec * 1000;
         let step = PROFILE_STEPS[0];
         for (let i = 0; i < PROFILE_STEPS.length; i++) {
-            if (exp >= PROFILE_STEPS[i]) step = PROFILE_STEPS[i];
+            if (candleSec >= PROFILE_STEPS[i]) step = PROFILE_STEPS[i];
         }
         const base = ANALYSIS_PROFILES[step];
-        // Совместимость: используется как запасной порог, когда список
-        // индикаторов ещё неизвестен (реальный прогрев считает _requiredCandles)
-        const minCandles = exp <= 5
+        const minCandles = candleSec <= 5
             ? Math.max(base.rsiPeriod, base.smaSlow, base.bbPeriod, base.stochK + base.stochD, base.trendPeriod) + 3
             : Math.max(base.rsiPeriod, base.smaSlow, base.bbPeriod, base.macdSlow + base.macdSig, base.stochK + base.stochD) + 2;
-        return Object.assign({ exp, candleMs, minCandles }, base);
+        return Object.assign({ exp, candleSec, candleMs, minCandles }, base);
     }
 
     function buildCandlesFromTicks(ticks, candleMs) {
@@ -3041,7 +3099,7 @@
             this._watchResults();
             if (this.config?.multiPairTrading) this._startMultiPairTrading();
             const exp = parseInt(this.config?.expiration, 10) || 60;
-            const prof = getAnalysisProfile(exp);
+            const prof = getAnalysisProfile(exp, this._analysisTimeframeSeconds());
             const bet = capBetToBalance(parseFloat(this.config?.baseBet) || 1);
             this._lastAppliedExp = readPlatformExpirationSeconds();
             this._lastAppliedBet = bet;
@@ -3060,7 +3118,7 @@
                 const inds = self._indicatorList().join('+') || (self.config.indicator || 'RSI');
                 const fm = String(self.config.filterMode || 'ALL').toUpperCase();
                 const cm = getConfirmMode(self.config);
-                self.log('🤖 Запущен | ' + inds + ' | ' + fm + ' | подтв:' + cm + ' | MM:' + (self.config.moneyManagement || 'fixed') + ' | $' + bet + ' | Exp:' + exp + 's | Свечи:' + prof.exp + 's' + note);
+                self.log('🤖 Запущен | ' + inds + ' | ' + fm + ' | подтв:' + cm + ' | MM:' + (self.config.moneyManagement || 'fixed') + ' | $' + bet + ' | Exp:' + exp + 's | Свечи:' + prof.candleSec + 's' + note);
                 self._maybeRequestHistory(true);
                 if (self._domAsset) subscribeSentiment(self._domAsset);
                 if (self.config.chartOverlay) {
@@ -3069,18 +3127,27 @@
             });
         }
 
+        _analysisTimeframeSeconds() {
+            const configured = parseInt(this.config?.analysisTimeframeSeconds, 10);
+            if (isFinite(configured) && configured >= 3) return configured;
+            const chartPeriod = parseInt(window.__poChartPeriodSec, 10);
+            if (isFinite(chartPeriod) && chartPeriod >= 3) return chartPeriod;
+            return parseInt(this.config?.expiration, 10) || 60;
+        }
+
         _maybeRequestHistory(force) {
             const asset = this._wsAsset || this._domAsset;
             if (!asset) return;
             const exp = parseInt(this.config?.expiration, 10) || 60;
+            const profile = getAnalysisProfile(exp, this._analysisTimeframeSeconds());
             const ctx = this._getAnalysisContext(asset);
             if (ctx.ready && !force) return;
             const now = Date.now();
             if (!force && this._historyReqAt && (now - this._historyReqAt) < 25000) return;
             this._historyReqAt = now;
-            const ok = requestAssetHistory(asset, exp);
+            const ok = requestAssetHistory(asset, profile.candleSec);
             if (ok) {
-                this.log('📥 Запрос прошлых свечей у PO (' + toPoAssetId(asset) + ', ' + exp + 's)...');
+                this.log('📥 Запрос прошлых свечей у PO (' + toPoAssetId(asset) + ', свечи ' + profile.candleSec + 's; экспирация ' + exp + 's)...');
             }
         }
 
@@ -3162,7 +3229,7 @@
         _resolveScanAsset() {
             this._syncAssetFromDOM();
             const exp = parseInt(this.config?.expiration, 10) || 60;
-            const profile = getAnalysisProfile(exp);
+            const profile = getAnalysisProfile(exp, this._analysisTimeframeSeconds());
             const minTicks = Math.max(40, profile.minCandles * 4);
             const dom = this._domAsset;
             const tickKeys = Object.keys(this._ticks);
@@ -3284,7 +3351,7 @@
 
         _getAnalysisContext(asset) {
             const exp = parseInt(this.config?.expiration, 10) || 60;
-            const profile = getAnalysisProfile(exp);
+            const profile = getAnalysisProfile(exp, this._analysisTimeframeSeconds());
             const ticks = this._getTicksForAsset(asset);
             const real = getRealCandles(this, asset, profile.candleMs);
             const all = buildCandles(ticks, profile.candleMs, real);
@@ -3313,7 +3380,7 @@
                 candleCount: candles.length,
                 tickCount: ticks.length,
                 minRequired,
-                candleSec: profile.exp,
+                candleSec: profile.candleSec,
                 htf
             };
         }
@@ -3797,7 +3864,14 @@
         _refreshMultiPairs(force) {
             if (!this.isRunning || !this.config?.multiPairTrading) return;
             const ws = getActivePoSocket();
-            if (!ws) return;
+            if (!ws) {
+                const waitNow = Date.now();
+                if (!this._multiWaitLogAt || waitNow - this._multiWaitLogAt > 10000) {
+                    this._multiWaitLogAt = waitNow;
+                    this.log('⏳ Мульти-пары: ожидаю активное WebSocket-соединение Pocket Option (.po.market).');
+                }
+                return;
+            }
             if (this._multiSocket !== ws) {
                 this._multiSocket = ws;
                 this._multiSubscribed = new Set();
@@ -3822,7 +3896,7 @@
             });
             this._multiPairs = next;
             const exp = parseInt(this.config?.expiration, 10) || 60;
-            const profile = getAnalysisProfile(exp);
+            const profile = getAnalysisProfile(exp, this._analysisTimeframeSeconds());
             let subscribed = 0;
             for (const [asset, item] of next) {
                 if (this._multiSubscribed.has(asset)) continue;
@@ -3831,7 +3905,7 @@
                 try {
                     // This is the same per-symbol subscription pattern used by 1.1.7_0.
                     ws.send('42["subfor",' + JSON.stringify(raw) + ']');
-                    ws.send('42["changeSymbol",' + JSON.stringify({ asset: raw, period: profile.exp }) + ']');
+                    ws.send('42["changeSymbol",' + JSON.stringify({ asset: raw, period: profile.candleSec }) + ']');
                     this._multiSubscribed.add(asset);
                     subscribed++;
                 } catch (_) {}
@@ -3878,18 +3952,30 @@
 
             let openCount = this._multiOpenByAsset ? this._multiOpenByAsset.size : 0;
             let reservedThisCycle = 0;
-            if (openCount >= maxOpen) return;
+            let tickPairs = 0;
+            let readyPairs = 0;
+            let signalCount = 0;
+            if (openCount >= maxOpen) {
+                if (!this._multiDiagAt || now - this._multiDiagAt > 15000) {
+                    this._multiDiagAt = now;
+                    this.log('📊 Мульти-скан: пар ' + this._multiPairs.size + ' | открыто/ожидает ' + openCount + '/' + maxOpen + ' | лимит одновременных сделок достигнут.');
+                }
+                return;
+            }
             for (const [asset, item] of this._multiPairs) {
                 if (openCount >= maxOpen) break;
                 if (item.profit < minProfit || this._multiOpenByAsset.has(asset)) continue;
                 const ticks = this._getTicksForAsset(asset);
                 const lastTickAt = this._priceTickTs[asset] || 0;
                 if (!ticks.length || !lastTickAt || now - lastTickAt > 15000) continue;
+                tickPairs++;
 
                 const ctx = this._getAnalysisContext(asset);
                 if (!ctx || !ctx.ready || !ctx.candles || !ctx.candles.length) continue;
+                readyPairs++;
                 const sig = this._buildScanState(asset, ctx);
                 if (!sig || (sig.direction !== 'UP' && sig.direction !== 'DOWN')) continue;
+                signalCount++;
                 const barTs = ctx.candles[ctx.candles.length - 1].ts || 0;
                 if (!barTs || this._multiLastEntryBar[asset] === barTs) continue;
 
@@ -3962,6 +4048,14 @@
                 } catch (err) {
                     this.log('⚠️ [' + asset + '] ошибка отправки ордера: ' + (err && err.message ? err.message : 'WebSocket'));
                 }
+            }
+            if (!this._multiDiagAt || now - this._multiDiagAt > 15000) {
+                this._multiDiagAt = now;
+                this.log('📊 Мульти-скан: пар ' + this._multiPairs.size +
+                    ' | с котировками ' + tickPairs +
+                    ' | прогреты ' + readyPairs +
+                    ' | сигналы ' + signalCount +
+                    ' | открыто/ожидает ' + this._multiOpenByAsset.size + '/' + maxOpen);
             }
         }
 
@@ -4113,7 +4207,7 @@
                     priceCount: 0,
                     tickCount: 0,
                     minRequired: prof.minCandles,
-                    candleSec: prof.exp,
+                    candleSec: prof.candleSec,
                     ready: false
                 }});
                 return;
