@@ -3901,6 +3901,10 @@
             const includeOtc = predictiveOnly ? true : this.config.includeOtc !== false;
             const catalog = window.__poAssetCatalog || {};
             const next = new Map();
+            // Collect the full OTC catalog for the Predictive asset selector.
+            // This must be local to each refresh; an undeclared array aborts the
+            // refresh before subscriptions and the asset list can be published.
+            const availablePredictiveAssets = [];
             Object.keys(catalog).forEach((key) => {
                 const item = catalog[key];
                 if (!item || !item.active || !isFxCurrencyPair(item.symbol || key)) return;
