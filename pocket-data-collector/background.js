@@ -68,7 +68,7 @@ function mergeCandle(oldBar,newBar) {
       high:Math.max(oldBar.high,newBar.high),low:Math.min(oldBar.low,newBar.low),
       close:useNewClose?newBar.close:oldBar.close,closeTime:useNewClose?newBar.closeTime:oldBar.closeTime,
       ticks:(oldBar.ticks||0)+(newBar.ticks||0),
-      source:oldBar.source==="history"||oldBar.source==="history+tick-stream"?"history+tick-stream":"tick-stream"};
+      source:oldBar.source==="history"||oldBar.source==="history+tick-stream"||oldBar.source==="history-ticks"?"history+tick-stream":"tick-stream"};
   }
   return {...newBar,ticks:Math.max(oldBar.ticks||0,newBar.ticks||0)};
 }
@@ -157,7 +157,7 @@ async function storeHistory(tabId,payload) {
         time=epochMs(row.time??row.t??row.ts);
         price=Number(row.price??row.p??row.close??row.c);
       }
-      if(time&&price>0)historicalTicks.push({asset,time,price});
+      if(time&&price>0)historicalTicks.push({asset,time,price,historical:true});
     }
     if(historicalTicks.length){
       await storeTicks(tabId,historicalTicks);
