@@ -53,7 +53,7 @@
     // Only compare complete, time-contiguous historical windows that do not overlap the current pattern.
     for(let i=length;i<=end-length;i++){
       const start=i-length;
-      if(!continuous(start,length)){skippedGaps++;continue;}
+      if(!continuous(start,length)||candles[i].time-candles[i-1].time!==step){skippedGaps++;continue;}
       validWindows++;
       const candidate=features.slice(start,i);
       const similarity=score(query,candidate);
