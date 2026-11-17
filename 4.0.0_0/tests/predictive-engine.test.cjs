@@ -15,6 +15,7 @@ function makeEngine(options = {}) {
     __listeners: listeners
   };
   window.window = window;
+  window.top = window;
   vm.runInNewContext(source, { window, console, Date, Math, Map, Set, Object, Array, Number, String, JSON });
   const Engine = window.PT4PredictiveEngine;
   const engine = new Engine(options);
