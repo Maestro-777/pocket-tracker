@@ -183,3 +183,29 @@ test('ignores out-of-order and duplicate timestamps', () => {
   assert.equal(tick(engine, 'EURGBP_otc', 900, 0.87), null);
   assert.equal(engine.series.get('EURGBP_OTC').length, 1);
 });
+
+
+test('routes quotes and predictive state through one elected frame across all_frames', () => {
+  const root = path.join(__dirname, '..');
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+  const mainWorld = manifest.content_scripts.find(x => x.world === 'MAIN');
+  assert.equal(mainWorld.all_frames, true);
+  assert.deepEqual(mainWorld.js.slice(0, 2), ['predictive-engine.js', 'inject.js']);
+
+  const injector = fs.readFileSync(path.join(root, 'inject.js'), 'utf8');
+  const content = fs.readFileSync(path.join(root, 'content.js'), 'utf8');
+  const background = fs.readFileSync(path.join(root, 'background.js'), 'utf8');
+  const engine = fs.readFileSync(path.join(root, 'predictive-engine.js'), 'utf8');
+
+  assert.match(injector, /PT4_PREDICTIVE_TICK_RELAY/);
+  assert.match(injector, /PT4_PREDICTIVE_TICK/);
+  assert.match(injector, /if \(this\.predictiveConfig\.enabled\) claimPrimaryEngine\(\)/);
+  assert.match(engine, /data\.type !== 'PT4_PREDICTIVE_TICK'/);
+  assert.doesNotMatch(engine, /data\.type !== 'POROBOT_WS_PRICE'/);
+  assert.match(content, /POROBOT_PREDICTIVE_UPDATE/);
+  assert.match(content, /POROBOT_PREDICTIVE_EVENT/);
+  assert.match(content, /PT4_PREDICTIVE_CONFIG_BROADCAST/);
+  assert.match(content, /PT4_PREDICTIVE_RESTORE_BROADCAST/);
+  assert.match(background, /PT4_PREDICTIVE_CONFIG_BROADCAST/);
+  assert.match(background, /PT4_PREDICTIVE_RESTORE_BROADCAST/);
+});
