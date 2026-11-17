@@ -4291,7 +4291,7 @@ function runLocalStrategyTester(payload = {}, catalog = []) {
       assets: assets.length,
       skippedCombinations: skipped,
       payoutUnknown,
-      precision: 'OHLC · EMA14 · локально',
+      precision: 'OHLC · EMA14 · payout snapshot',
       message: results.length
         ? `Локальный тест завершён по точным правилам 3-Candle EMA: ${detailResults.length} результатов по активам, ${results.length} портфельных связок. Вход — открытие следующей свечи; исход — закрытие свечи по экспирации.${skipped ? ` Пропущено комбинаций: ${skipped} (несовместимый TF/экспирация или недостаточная история).` : ''}`
         : `Нет сделок для выбранной матрицы. Проверьте, что история содержит достаточно закрытых свечей, выбран TF стратегии и экспирация кратна TF свечи.`
