@@ -1,0 +1,39 @@
+{
+   "action": {
+      "default_icon": {
+         "128": "icons/icon_128.png",
+         "16": "icons/icon_16.png",
+         "32": "icons/icon_32.png",
+         "48": "icons/icon_48.png"
+      },
+      "default_title": "PocketOption AI Scalper Robot"
+   },
+   "background": {
+      "service_worker": "background.js"
+   },
+   "content_scripts": [ {
+      "all_frames": false,
+      "js": [ "po-tap.js" ],
+      "matches": [ "*://*.pocketoption.com/*", "*://*.po.trade/*", "*://*.pocket-broker.com/*" ],
+      "run_at": "document_start",
+      "world": "MAIN"
+   }, {
+      "js": [ "pocket-socket.js" ],
+      "matches": [ "*://*.pocketoption.com/*", "*://*.po.trade/*", "*://*.pocket-broker.com/*" ],
+      "run_at": "document_idle"
+   } ],
+   "description": "AI CALL/PUT signals for PocketOption's real-market binary options with one-click auto-trade on the terminal.",
+   "host_permissions": [ "https://signalbots.ai/*", "*://*.pocketoption.com/*", "*://*.po.trade/*", "*://*.pocket-broker.com/*" ],
+   "icons": {
+      "128": "icons/icon_128.png",
+      "16": "icons/icon_16.png",
+      "32": "icons/icon_32.png",
+      "48": "icons/icon_48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAph84ybyEkKzhZnV5zWYBWjA/TNEqe6mmOIOWwDSnjwaGThrWvLmuiLOxpoTxYwjbQq+VUwfQSSlkMEhJM+3mwCrzZv/QffsTYA7yPHd7pdSoWWlWop90CFEPTaeJNlBtjXB/6iNE0GZyC2LftF74a47nVh9JzVxbg1VLRSx1VxJ2HdasiHzhZVXEkCAOcZ1Jh+oiGj0TdRvUo9Nf/HsY1AA6AlVqXg9NUejPBmXBsIrZPpQECZOhF4QPjxQaON0mQ/SP+97fnOVIOMb2fHQU9GRz4iL39Nw8QWAVaWwB87vmSBzigXhMhjAaBwr3gtUALSeuHTrD6i71hFn6nvkSNwIDAQAB",
+   "manifest_version": 3,
+   "name": "PocketOption AI Scalper Robot",
+   "permissions": [ "storage", "scripting" ],
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "2.4.9"
+}
