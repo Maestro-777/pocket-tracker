@@ -3570,16 +3570,16 @@
         if(message.eventType==='invalid')appendLog('Predictive: прогноз '+message.payload.asset+' помечен недействительным (запоздалая котировка).');
         if(message.state){
             pt4Predictive.state=message.state;
-            if(pt4Predictive.saveTimer)clearTimeout(pt4Predictive.saveTimer);
-            pt4Predictive.saveTimer=setTimeout(function(){
+            if(!pt4Predictive.saveTimer)pt4Predictive.saveTimer=setTimeout(function(){
+                pt4Predictive.saveTimer=null;
                 try{chrome.storage.local.set({pt4PredictiveState:pt4Predictive.state});}catch(_){}
-            },1800);
+            },2500);
         }
         renderPredictivePanel();
     }
     function handlePredictiveForecast(forecast) {
         if(!forecast||!forecast.asset||!forecast.horizons)return;
-        pt4Predictive.latest[forecast.asset]=forecast;
+        pt4Predictive.latest[forecast.asset]=forecast; pt4Predictive.lastAsset=forecast.asset;
         var select=document.getElementById('pt4-asset'), selected=select.value;
         if(!Array.from(select.options).some(function(o){return o.value===forecast.asset;})){
             var opt=document.createElement('option');opt.value=forecast.asset;opt.textContent=forecast.asset;select.appendChild(opt);
@@ -3594,7 +3594,7 @@
     function renderPredictivePanel() {
         var cfg=pt4Predictive.config||pt4DefaultConfig(), select=document.getElementById('pt4-asset');
         if(!select)return;
-        var asset=select.value==='*'?(Object.keys(pt4Predictive.latest).slice(-1)[0]||''):select.value;
+        var asset=select.value==='*'?(pt4Predictive.lastAsset||Object.keys(pt4Predictive.latest).slice(-1)[0]||''):select.value;
         var forecast=pt4Predictive.latest[asset], horizon=parseInt(document.getElementById('pt4-horizon').value,10)||60;
         var row=forecast&&forecast.horizons&&forecast.horizons[horizon];
         document.getElementById('pt4-feed-status').textContent=forecast?'OTC · ПОТОК АКТИВЕН':'ОЖИДАНИЕ OTC';
