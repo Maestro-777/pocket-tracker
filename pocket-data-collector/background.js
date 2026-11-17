@@ -148,12 +148,21 @@ async function queryCandles({asset,limit=10000,period=5}) {
   const filtered=all.filter(c=>(!asset||c.asset===asset)&&(!period||c.period===period)).sort((a,b)=>a.time-b.time);
   return filtered.slice(-Math.max(1,Math.min(100000,Number(limit)||10000)));
 }
-async function getCounts() {
+async function getDbStats(asset=null) {
   const database=await db();
-  return new Promise((resolve,reject)=>{
-    const req=database.transaction(STORE).objectStore(STORE).count();
-    req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
+  const all=await new Promise((resolve,reject)=>{
+    const req=database.transaction(STORE).objectStore(STORE).getAll();
+    req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);
   });
+  const pair=normAsset(asset);
+  const pairRows=pair?all.filter(c=>c.asset===pair&&c.period===5):[];
+  const assets=[...new Set(all.map(c=>c.asset).filter(Boolean))].sort();
+  return {
+    total:all.length,
+    pair5:pairRows.length,
+    assets:assets.length,
+    byPeriod:all.reduce((a,c)=>(a[c.period]=(a[c.period]||0)+1,a),{})
+  };
 }
 function getStatus(tabId) {
   const s=getState(tabId);
@@ -214,14 +223,23 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
     }
     if(msg.type==="PDC_GET_STATUS"){
       if(tabId==null)return {ok:false};
-      const status=getStatus(tabId);status.storedCandles=await getCounts();return {ok:true,...status};
+      const status=getStatus(tabId);
+      const stats=await getDbStats(status.pair);
+      status.storedCandles=stats.total;
+      status.pairCandles=stats.pair5;
+      status.assetCount=stats.assets;
+      status.byPeriod=stats.byPeriod;
+      return {ok:true,...status};
     }
     if(msg.type==="PDC_GET_CANDLES"){
       const candles=await queryCandles(msg);
       return {ok:true,candles};
     }
     if(msg.type==="PDC_EXPORT"){
-      return {ok:true,candles:await queryCandles({limit:msg.limit||100000,period:0,asset:msg.asset||null})};
+      return {ok:true,candles:await queryCandles({limit:msg.limit||100000,period:msg.period??0,asset:msg.asset||null})};
+    }
+    if(msg.type==="PDC_DB_STATS"){
+      return {ok:true,...await getDbStats(msg.asset||null)};
     }
     return {ok:false,error:"Unknown request"};
   })().then(reply).catch(error=>reply({ok:false,error:String(error?.message||error)}));
