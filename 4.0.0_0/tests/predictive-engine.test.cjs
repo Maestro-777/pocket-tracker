@@ -100,6 +100,22 @@ test('marks a forecast invalid when the first available quote is too late', () =
   assert.equal(invalid.status, 'INVALID_LATE_TICK');
 });
 
+
+test('manual pair filter stops other OTC forecasts and invalidates their pending records', () => {
+  const { engine } = makeEngine({ minSamples: 30 });
+  for (let i = 1; i <= 40; i++) {
+    tick(engine, 'EURUSD_otc', i * 1000, 1.1 + i * 0.00001);
+    tick(engine, 'GBPUSD_otc', i * 1000, 1.25 + i * 0.00001);
+  }
+  assert.ok(engine.getPending().some(x => x.asset === 'GBPUSD_OTC'));
+  engine.setAssetFilter('selected', 'EURUSD_OTC');
+  assert.equal(engine.series.has('GBPUSD_OTC'), false);
+  assert.equal(engine.getPending().some(x => x.asset === 'GBPUSD_OTC'), false);
+  assert.ok(engine.getHistory().some(x => x.asset === 'GBPUSD_OTC' && x.status === 'INVALID_FILTER_CHANGED'));
+  assert.equal(tick(engine, 'GBPUSD_otc', 41000, 1.26), null);
+  assert.equal(engine.forecast('GBPUSD_OTC'), null);
+});
+
 test('exports and restores pending forecasts, price history and model statistics', () => {
   const first = makeEngine({ minSamples: 30 });
   for (let i = 1; i <= 40; i++) tick(first.engine, 'AUDUSD_otc', i * 1000, 0.65 + i * 0.00001);
