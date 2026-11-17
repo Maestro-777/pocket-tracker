@@ -4088,6 +4088,7 @@
                     if (!stillPending) return;
                     self._multiPendingByRequestId.delete(requestKey);
                     if (self._multiOpenByAsset.get(signal.asset) === 'req:' + requestKey) self._multiOpenByAsset.delete(signal.asset);
+                    delete self._predictiveLastTradeAt[cooldownKey];
                     self.log('⚠️ Predictive [' + signal.asset + ']: платформа не подтвердила открытие ордера за 15 секунд.');
                 }, 15000);
                 this._post('POROBOT_PREDICTIVE_TRADE_OPEN', { trade });
@@ -4275,6 +4276,7 @@
             if (!trade) return false;
             this._multiPendingByRequestId.delete(requestId);
             this._multiOpenByAsset.delete(trade.asset);
+            if (trade.source === 'predictive' && this._predictiveLastTradeAt) delete this._predictiveLastTradeAt[trade.asset + '|' + trade.expiration];
             this.log('⚠️ Ордер отклонён [' + trade.asset + ']: ' + String(data.error || 'ошибка платформы'));
             return true;
         }
