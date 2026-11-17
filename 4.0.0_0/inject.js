@@ -4061,7 +4061,7 @@
             if (!ws) return;
             const rawAsset = item.raw || toPoAssetId(signal.asset);
             if (!rawAsset) return;
-            const tradeDirection = this._getTradeDirection(signal.direction);
+            const tradeDirection = signal.direction; // Predictive module is independent from the existing REVERS setting.
             const requestId = ++this._multiRequestId;
             const payload = {
                 asset: rawAsset, amount,
