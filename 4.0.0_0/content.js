@@ -3630,18 +3630,18 @@
         if(source==='combined' && indicator && indicator.direction && dir.indexOf(indicator.direction)===0)sourceText='Совпадение индикаторов и прогноза';
         else if(source==='combined' && indicator && indicator.direction && dir!=='—' && indicator.direction!==dir.replace(/ .*/,''))sourceText='КОНФЛИКТ · вход запрещён';
         document.getElementById('pt4-signal-status').textContent=sourceText+(eligible?' · порог пройден':' · нет допуска');
-        renderPredictiveChart(forecast);
+        renderPredictiveChart(forecast,cfg.model);
         renderPredictiveModels(forecast,horizon,asset);
         renderPredictiveLastResult(asset,horizon);
     }
-    function renderPredictiveChart(forecast) {
+    function renderPredictiveChart(forecast,model) {
         var canvas=document.getElementById('pt4-chart');if(!canvas)return;
         var ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
         ctx.clearRect(0,0,w,h);ctx.strokeStyle='rgba(255,255,255,.10)';ctx.lineWidth=1;
         for(var i=1;i<5;i++){var y=i*h/5;ctx.beginPath();ctx.moveTo(30,y);ctx.lineTo(w-12,y);ctx.stroke();}
         if(!forecast){ctx.fillStyle='#9ca3af';ctx.font='20px sans-serif';ctx.fillText('Ожидание котировок OTC…',35,h/2);return;}
         var points=[{x:0,y:forecast.currentPrice}];
-        [60,120,180,240,300].forEach(function(sec){var r=forecast.horizons[sec];if(r)points.push({x:sec,y:r.price});});
+        [60,120,180,240,300].forEach(function(sec){var r=forecast.horizons[sec];if(r){var target=model&&model!=='auto'&&r.models[model]!=null?r.models[model]:r.price;points.push({x:sec,y:target});}});
         var vals=points.map(p=>p.y),min=Math.min.apply(null,vals),max=Math.max.apply(null,vals),pad=(max-min)*.18||Math.abs(max)*.00001||1;
         min-=pad;max+=pad;
         function px(x){return 30+(w-48)*x/300;}function py(y){return h-24-(h-48)*(y-min)/(max-min);}
