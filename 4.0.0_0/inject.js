@@ -4007,7 +4007,8 @@
             if (id != null && this._multiTradesById) this._multiTradesById.delete(String(id));
             this._multiOpenByAsset.delete(trade.asset);
             const net = parseFloat(deal.profit ?? 0);
-            const result = net > 0 ? 'WIN' : (net < 0 ? 'LOSE' : 'DRAW');
+            const status = String(deal.status || deal.result || deal.state || '').toLowerCase();
+            const result = status === 'draw' || status === 'equal' ? 'DRAW' : (net > 0 ? 'WIN' : 'LOSE');
             const profit = result === 'WIN' ? net : (result === 'LOSE' ? -trade.amount : 0);
             this._post('POROBOT_MULTI_TRADE_RESULT', { trade: {
                 id: id == null ? null : String(id),
