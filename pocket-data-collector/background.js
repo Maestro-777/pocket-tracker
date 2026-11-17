@@ -109,8 +109,8 @@ function detectLayout(rows) {
     const a=Number(r[1]),b=Number(r[2]),c=Number(r[3]),d=Number(r[4]);
     if(![a,b,c,d].every(Number.isFinite)||Math.min(a,b,c,d)<=0)continue;
     checked++;const hi=Math.max(a,b,c,d),lo=Math.min(a,b,c,d);
-    if(b===hi&&c===lo)ohlc++;
-    if(c===hi&&d===lo)ochl++;
+    if(b>=hi&&c<=lo)ohlc++;
+    if(c>=hi&&d<=lo)ochl++;
   }
   if(ohlc>0&&ohlc>=ochl)return {o:1,h:2,l:3,c:4};
   if(ochl>0)return {o:1,h:3,l:4,c:2};
