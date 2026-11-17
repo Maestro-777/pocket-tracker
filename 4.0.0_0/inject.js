@@ -3052,6 +3052,8 @@
             this._lastRejectKey=''; this._lastRejectAt=0; this._ohlcLogged=false;
             this._lastEntryBar=0;
             this._loopTimer=null; this._resultObserver=null;
+            this._reverseWinCount=0;
+            this._reverseMode=false;
         }
 
         _hasTerminal() {
@@ -3075,6 +3077,8 @@
 
         start(config) {
             this.config = config||{};
+            this._reverseWinCount = 0;
+            this._reverseMode = false;
             this.money = new MoneyManager(mmConfigFrom(this.config));
             this._lastResult=null; this._lastSignal=null; this._lastSignalTime=0;
             this._lastResultAt=0; this._resultIds=new Set(); this._pendingTrades=[]; this._wsResultSeen=false;
@@ -3499,8 +3503,9 @@
                 return; // без id дубль можно отличить только по времени
             }
             const result=d.result||(d.profit>0?'WIN':'LOSE');
-            if (result === 'DRAW') { this._settlePending(); return; }
+            if (result === 'DRAW') { this._recordReverseResult('DRAW'); this._settlePending(); return; }
             if (result !== 'WIN' && result !== 'LOSE') return;
+            this._recordReverseResult(result);
             this._lastResultAt = now;
             const profit=parseFloat(d.profit||0);
             this._lastResult=result;
@@ -3919,6 +3924,31 @@
             }
         }
 
+        _getTradeDirection(signalDirection) {
+            if (signalDirection !== 'UP' && signalDirection !== 'DOWN') return signalDirection;
+            return this.config?.reverseEnabled && this._reverseMode
+                ? (signalDirection === 'UP' ? 'DOWN' : 'UP')
+                : signalDirection;
+        }
+
+        _recordReverseResult(result) {
+            if (!this.config?.reverseEnabled) return;
+            if (result === 'LOSE' || result === 'DRAW') { this._reverseWinCount = 0; return; }
+            if (result !== 'WIN') return;
+            const raw = parseInt(this.config.reverseWins, 10);
+            const threshold = isFinite(raw) ? Math.max(1, Math.min(20, raw)) : 3;
+            this._reverseWinCount++;
+            if (this._reverseWinCount >= threshold) {
+                this._reverseWinCount = 0;
+                this._reverseMode = !this._reverseMode;
+                this.log('🔁 REVERS: серия из ' + threshold + ' побед — режим ' +
+                    (this._reverseMode ? 'ВКЛЮЧЁН (против сигнала)' : 'ВЫКЛЮЧЕН (по сигналу)') + '.');
+            } else {
+                this.log('🔁 REVERS: побед подряд ' + this._reverseWinCount + '/' + threshold +
+                    (this._reverseMode ? ' · противоположное направление' : ''));
+            }
+        }
+
         _scanMultiPairs() {
             if (!this.isRunning || !isPrimarySignalFrame()) return;
             const now = Date.now();
@@ -4019,12 +4049,13 @@
                 }
                 const ws = getActivePoSocket();
                 if (!ws) continue;
+                const tradeDirection = this._getTradeDirection(sig.direction);
                 const requestId = ++this._multiRequestId;
                 const rawAsset = item.raw || toPoAssetId(asset);
                 const payload = {
                     asset: rawAsset,
                     amount: amount,
-                    action: sig.direction === 'UP' ? 'call' : 'put',
+                    action: tradeDirection === 'UP' ? 'call' : 'put',
                     isDemo: accountType === 'demo' ? 1 : 0,
                     requestId: requestId,
                     optionType: 100,
@@ -4035,7 +4066,9 @@
                     const trade = {
                         requestId: String(requestId),
                         asset: asset,
-                        direction: sig.direction,
+                        direction: tradeDirection,
+                        signalDirection: sig.direction,
+                        reversed: tradeDirection !== sig.direction,
                         amount: amount,
                         expiration: expSec,
                         payout: item.profit,
@@ -4047,7 +4080,9 @@
                     openCount++;
                     reservedThisCycle += amount;
                     this._post('POROBOT_MULTI_TRADE_OPEN', { trade: trade });
-                    this.log('🤖 Мульти-сделка [' + asset + '] ' + (sig.direction === 'UP' ? 'CALL' : 'PUT') + ' $' + amount.toFixed(2) + ' | выплата ' + item.profit + '% | ' + expSec + 'с');
+                    this.log('🤖 Мульти-сделка [' + asset + '] ' + (tradeDirection === 'UP' ? 'CALL' : 'PUT') +
+                        (tradeDirection !== sig.direction ? ' · REVERS' : '') + ' $' + amount.toFixed(2) +
+                        ' | выплата ' + item.profit + '% | ' + expSec + 'с');
                 } catch (err) {
                     this.log('⚠️ [' + asset + '] ошибка отправки ордера: ' + (err && err.message ? err.message : 'WebSocket'));
                 }
@@ -4112,10 +4147,13 @@
             const status = String(deal.status || deal.result || deal.state || '').toLowerCase();
             const result = status === 'draw' || status === 'equal' ? 'DRAW' : (status === 'win' || net > 0 ? 'WIN' : 'LOSE');
             const profit = result === 'WIN' ? net : (result === 'LOSE' ? -trade.amount : 0);
+            this._recordReverseResult(result);
             this._post('POROBOT_MULTI_TRADE_RESULT', { trade: {
                 id: id == null ? null : String(id),
                 asset: trade.asset,
                 direction: trade.direction,
+                signalDirection: trade.signalDirection || trade.direction,
+                reversed: !!trade.reversed,
                 amount: trade.amount,
                 result: result,
                 profit: profit,
@@ -4284,9 +4322,11 @@
                 const exp = parseInt(this.config?.expiration, 10) || 60;
                 this._tradeBusy = true;
                 this._tradeBusySince = Date.now();
-                executeTrade(sig.direction, bet, exp).then(function(ok) {
+                const tradeDirection = this._getTradeDirection(sig.direction);
+                executeTrade(tradeDirection, bet, exp).then(function(ok) {
                     if (ok) self._addPending(1, exp);
-                    self.log(ok ? '🤖 Авто-сделка: ' + (sig.direction==='UP'?'CALL':'PUT') + ' $' + bet + ' | ' + exp + 'с'
+                    self.log(ok ? '🤖 Авто-сделка: ' + (tradeDirection==='UP'?'CALL':'PUT') +
+                        (tradeDirection !== sig.direction ? ' · REVERS' : '') + ' $' + bet + ' | ' + exp + 'с'
                         : '⚠️ Авто-сделка не удалась - проверьте экспирацию/кнопки PO');
                 }).finally(function() {
                     self._tradeBusy = false;
@@ -4377,10 +4417,12 @@
                             break;
                         }
                         const s = fresh[i];
-                        const ok = await executeTrade(s.direction, bet, expiration);
+                        const tradeDirection = self._getTradeDirection(s.direction);
+                        const ok = await executeTrade(tradeDirection, bet, expiration);
                         if (ok) self._addPending(1, expiration);
                         self.log(ok
-                            ? '🤖 Авто-сделка [' + s.id + ']: ' + (s.direction === 'UP' ? 'CALL' : 'PUT') + ' $' + bet + ' | ' + expiration + 'с'
+                            ? '🤖 Авто-сделка [' + s.id + ']: ' + (tradeDirection === 'UP' ? 'CALL' : 'PUT') +
+                                (tradeDirection !== s.direction ? ' · REVERS' : '') + ' $' + bet + ' | ' + expiration + 'с'
                             : '⚠️ Авто-сделка [' + s.id + '] не удалась');
                         if (i < fresh.length - 1) await sleep(400);
                     }
@@ -4407,6 +4449,17 @@
             if (d.cmd === 'PATCH_CONFIG' && d.patch) {
                 if (!window.__poCore.config) window.__poCore.config = {};
                 Object.assign(window.__poCore.config, d.patch);
+                if (Object.prototype.hasOwnProperty.call(d.patch, 'reverseEnabled')) {
+                    window.__poCore._reverseWinCount = 0;
+                    if (!d.patch.reverseEnabled) window.__poCore._reverseMode = false;
+                    window.__poCore.log(d.patch.reverseEnabled
+                        ? '🔁 REVERS включён. Порог побед: ' + (parseInt(window.__poCore.config.reverseWins, 10) || 3)
+                        : '🔁 REVERS выключен; сделки идут по исходным сигналам.');
+                }
+                if (Object.prototype.hasOwnProperty.call(d.patch, 'reverseWins')) {
+                    window.__poCore._reverseWinCount = 0;
+                    window.__poCore.log('🔁 REVERS: новый порог — ' + (parseInt(d.patch.reverseWins, 10) || 3) + ' побед подряд.');
+                }
                 if (Object.prototype.hasOwnProperty.call(d.patch, 'multiPairTrading')) {
                     if (d.patch.multiPairTrading) window.__poCore._startMultiPairTrading();
                     else window.__poCore.log('⏸ Мульти-пары выключены; уже открытые сделки продолжают отслеживаться.');
