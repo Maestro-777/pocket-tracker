@@ -3900,10 +3900,11 @@
                 if (!item || !item.active || !isFxCurrencyPair(item.symbol || key)) return;
                 if (!includeOtc && /_OTC$/i.test(String(item.symbol || key))) return;
                 const normalized = normalizeAssetName(item.symbol || key);
-                if (predictiveOnly && this.predictiveConfig.assetMode === 'selected' && this.predictiveConfig.selectedAsset && this.predictiveConfig.selectedAsset !== '*' && normalized !== normalizeAssetName(this.predictiveConfig.selectedAsset)) return;
                 if (predictiveOnly && !/_OTC$/i.test(normalized)) return;
+                if (predictiveOnly) availablePredictiveAssets.push(normalized);
+                if (predictiveOnly && this.predictiveConfig.assetMode === 'selected' && this.predictiveConfig.selectedAsset && this.predictiveConfig.selectedAsset !== '*' && normalized !== normalizeAssetName(this.predictiveConfig.selectedAsset)) return;
                 const payout = parseFloat(item.profit);
-                if (!isFinite(payout) || payout < minProfit) return;
+                if (!predictiveOnly && (!isFinite(payout) || payout < minProfit)) return;
                 next.set(normalized, {
                     symbol: normalized,
                     raw: item.raw || toPoAssetId(item.symbol || key),
@@ -3930,7 +3931,7 @@
             }
             const now = Date.now();
             if (predictiveOnly) {
-                this._post('POROBOT_PREDICTIVE_ASSETS', { assets: Array.from(next.keys()) });
+                this._post('POROBOT_PREDICTIVE_ASSETS', { assets: availablePredictiveAssets.sort() });
                 if (force || subscribed || now - (this._predictivePairsLogAt || 0) > 15000) {
                     this._predictivePairsLogAt = now;
                     this.log('🔮 Predictive OTC: ' + next.size + ' активных OTC-пар | новых подписок: ' + subscribed);
