@@ -548,6 +548,7 @@
         let pendingEventForSocket = null;
         function _onMsg(event) {
             try {
+                if (!isPoMarketSocket) return;
                 if (wsRecord) {
                     const now = Date.now();
                     wsRecord.lastDataAt = now;
@@ -705,6 +706,24 @@
                 const catalogCore = window.__poCore;
                 if (catalogCore && catalogCore.isRunning && catalogCore.config?.multiPairTrading) {
                     catalogCore._refreshMultiPairs(true);
+                }
+                return;
+            }
+
+            if (eventName === 'updateCharts') {
+                const rows = Array.isArray(payload) ? payload : [payload];
+                for (let i = 0; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (!row) continue;
+                    if (row.chart_id || row.chartId) window.__poChartId = String(row.chart_id || row.chartId);
+                    let settings = row.settings;
+                    if (typeof settings === 'string') {
+                        try { settings = JSON.parse(settings); } catch (_) { settings = null; }
+                    }
+                    if (!settings || typeof settings !== 'object') continue;
+                    if (settings.chartId) window.__poChartId = String(settings.chartId);
+                    const period = parseInt(settings.chartPeriod || settings.fastTimeframe || 0, 10);
+                    if (period > 0) window.__poChartPeriodSec = period;
                 }
                 return;
             }
@@ -4196,7 +4215,7 @@
 
             if (!scanAsset) {
                 const exp = parseInt(this.config?.expiration, 10) || 60;
-                const prof = getAnalysisProfile(exp);
+                const prof = getAnalysisProfile(exp, this._analysisTimeframeSeconds());
                 this._post('POROBOT_SCAN', { scan: {
                     asset: this._domAsset || '-',
                     filterMode: mode,
