@@ -4010,7 +4010,7 @@
             }
             const signal = {
                 asset, direction, model, horizonSeconds: horizon, confidence,
-                confidenceSamples: cfg.model === 'auto' ? row.confidenceSamples : undefined,
+                confidenceSamples: cfg.model === 'auto' ? row.confidenceSamples : (row.modelConfidenceSamples && row.modelConfidenceSamples[model] || 0),
                 currentPrice: forecast.currentPrice,
                 predictedPrice: row.models[model],
                 timestamp: forecast.timestamp, sourceMode: cfg.sourceMode
