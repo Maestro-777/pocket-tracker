@@ -55,6 +55,9 @@
   }
 
   function detectLayout(rows) {
+    if (rows.some(r => r && !Array.isArray(r) && typeof r === "object" &&
+      (r.open != null || r.o != null) && (r.high != null || r.h != null) &&
+      (r.low != null || r.l != null) && (r.close != null || r.c != null))) return { objectRows:true };
     let ohlc = 0, ochl = 0;
     for (const r of rows.slice(0, 50)) {
       if (!Array.isArray(r) || r.length < 5) continue;
@@ -84,7 +87,7 @@
     const asset = normalizeAsset(data.asset), out = [];
     for (const row of rows) {
       let c;
-      if (Array.isArray(row) && row.length >= 5) {
+      if (Array.isArray(row) && row.length >= 5 && !layout.objectRows) {
         const t = epochMs(row[0]);
         c = { time: t, open:Number(row[layout.open]), high:Number(row[layout.high]),
           low:Number(row[layout.low]), close:Number(row[layout.close]), volume:0 };
