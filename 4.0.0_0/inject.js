@@ -2010,7 +2010,7 @@
 
     function parsePeriodSeconds(value) {
         const raw = String(value == null ? '' : value).trim().toUpperCase();
-        const match = raw.match(/^([SMH])\\s*(\\d+)$/);
+        const match = raw.match(/^([SMH])\s*(\d+)$/);
         if (match) {
             const n = parseInt(match[2], 10);
             return n * (match[1] === 'S' ? 1 : match[1] === 'M' ? 60 : 3600);
