@@ -14,7 +14,7 @@
 
   class PredictiveEngine {
     constructor(options = {}) {
-      this.options = Object.assign({ enabled: true, minSamples: 80, maxTicks: 12000, maxForecasts: 3000, confidenceFloor: 0.52 }, options);
+      this.options = Object.assign({ enabled: true, minSamples: 80, maxTicks: 12000, maxForecasts: 3000, confidenceFloor: 0.52, forecastIntervalMs: 1000, minEvaluationSamples: 20 }, options);
       this.series = new Map();
       this.pending = new Map();
       this.history = [];
@@ -105,17 +105,21 @@
     }
     _statKey(asset,horizon,model){return asset+'|'+horizon+'|'+model;}
     _score(model,horizon,asset) {
-      if(asset) { const st=this.stats.get(this._statKey(asset,horizon,model)); return st&&st.n ? st.loss/st.n : Infinity; }
-      let total=0,n=0; for(const [k,st] of this.stats) if(k.endsWith('|'+horizon+'|'+model)&&st.n){total+=st.loss;n+=st.n;}
-      return n?total/n:Infinity;
+      if(asset) { const st=this.stats.get(this._statKey(asset,horizon,model)); return st&&st.n ? 1-(st.wins/st.n) : Infinity; }
+      let wins=0,n=0; for(const [k,st] of this.stats) if(k.endsWith('|'+horizon+'|'+model)&&st.n){wins+=st.wins;n+=st.n;}
+      return n?1-(wins/n):Infinity;
     }
     forecast(asset, now = Date.now()) {
       const s=this.series.get(asset); if(!s || s.length<this.options.minSamples) return null;
+      const previous=this.lastForecastAt.get(asset)||0;
+      if(now-previous<this.options.forecastIntervalMs) return null;
+      this.lastForecastAt.set(asset,now);
       const current=s[s.length-1].p, horizons={};
       for(const horizon of HORIZONS) {
         const {predictions,ranked}=this._allPredictions(s,horizon);
-        const best=ranked.sort((a,b)=>this._score(a.id,horizon,asset)-this._score(b.id,horizon,asset))[0];
-        const selected=best && Number.isFinite(this._score(best.id,horizon,asset)) ? best.id : 'ensemble';
+        const eligible=ranked.filter(x=>{const st=this.stats.get(this._statKey(asset,horizon,x.id));return st&&st.n>=this.options.minEvaluationSamples;});
+        const best=eligible.sort((a,b)=>this._score(a.id,horizon,asset)-this._score(b.id,horizon,asset))[0];
+        const selected=best ? best.id : 'ensemble';
         const target=predictions[selected] ?? predictions.ensemble ?? current;
         const delta=(target-current)/current;
         const vol=this._features(s).vol*Math.sqrt(horizon/1000);
@@ -158,6 +162,12 @@
   }
 
   root.PT4PredictiveEngine = PredictiveEngine;
+  root.addEventListener('message', event => {
+    const d=event.data;
+    if(!d || d.type!=='PT4_PREDICTIVE_CONFIG') return;
+    if(d.config && typeof d.config.enabled==='boolean') root.__pt4PredictiveEngine.options.enabled=d.config.enabled;
+    if(d.config && Number.isFinite(Number(d.config.minSamples))) root.__pt4PredictiveEngine.options.minSamples=clamp(Number(d.config.minSamples),30,2000);
+  });
   root.__pt4PredictiveEngine = root.__pt4PredictiveEngine || new PredictiveEngine();
   // inject.js already publishes each raw Pocket Option tick through this same-page message.
   root.addEventListener('message', event => {
