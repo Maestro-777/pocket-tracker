@@ -85,10 +85,10 @@ $("detectSignal").addEventListener("click",async()=>{
   try{
     const candles=await getData();
     if(candles.length<100){
-      $("signalResult").textContent="Для оценки исходов на экспирации 10 секунд пока мало истории. Продолжайте собирать 5-секундные свечи.";
+      $("signalResult").textContent="Для оценки исходов на экспирации 15 секунд пока мало истории. Продолжайте собирать 5-секундные свечи.";
       return;
     }
-    const expirySec=Math.max(1,Math.min(300,Number($("expirySec").value)||10));
+    const expirySec=Math.max(1,Math.min(300,Number($("expirySec").value)||15));
     const minSamples=Math.max(5,Math.min(200,Number($("minSamples").value)||20));
     const r=PocketCollectorEngine.evaluateExpiry(candles,{expirySec,minSamples,threshold:Number($("threshold").value)});
     if(r.status!=="ready"){
