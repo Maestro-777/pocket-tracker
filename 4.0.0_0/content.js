@@ -902,6 +902,7 @@
     <button class="pos-tab active" data-tab="trading" data-i18n="tab_signals">Сигналы</button>
     <button class="pos-tab" data-tab="journal" data-i18n="tab_journal">Журнал</button>
     <button class="pos-tab" data-tab="stats" data-i18n="tab_stats">Аналитика</button>
+    <button class="pos-tab" data-tab="predictive">ПРОГНОЗ</button>
     <button class="pos-tab" data-tab="settings" data-i18n="tab_settings">Настройки</button>
   </div>
 
@@ -1138,6 +1139,45 @@
     </div>
   </div>
 
+  <!-- PREDICTIVE ENGINE TAB -->
+  <div class="pos-tc" id="pos-tab-predictive">
+    <div class="pt4-card">
+      <div class="pt4-heading"><strong>Predictive Chart Engine</strong><span id="pt4-feed-status" class="pt4-status">ОЖИДАНИЕ OTC</span></div>
+      <div class="pt4-controls">
+        <label>Пара<select id="pt4-asset" class="pt4-input"><option value="*">Все OTC · последний актив</option></select></label>
+        <label>Экспирация<select id="pt4-horizon" class="pt4-input"><option value="60">1 мин</option><option value="120">2 мин</option><option value="180">3 мин</option><option value="240">4 мин</option><option value="300">5 мин</option></select></label>
+        <label>Источник сигналов<select id="pt4-source" class="pt4-input"><option value="formula">Predictive Formula</option><option value="indicators">Только индикаторы</option><option value="combined">Комбинированный</option></select></label>
+        <label>Модель<select id="pt4-model" class="pt4-input"><option value="auto">Автовыбор</option><option value="linear">Линейная</option><option value="exponential">Экспоненциальная</option><option value="polynomial">Полиномиальная</option><option value="momentum">Momentum</option><option value="cyclical">Циклическая</option><option value="ensemble">Комбинированная</option></select></label>
+      </div>
+      <div class="pt4-controls pt4-controls-3">
+        <label>Мин. уверенность <strong id="pt4-confidence-value">52%</strong><input id="pt4-confidence" class="pt4-input" type="range" min="50" max="95" step="1" value="52"></label>
+        <label>Счёт<select id="pt4-account" class="pt4-input"><option value="demo">DEMO</option><option value="real">REAL</option></select></label>
+        <label>Ставка ($)<input id="pt4-stake" class="pt4-input" type="number" min="1" max="100000" step="0.5" value="1"></label>
+      </div>
+      <div class="pt4-controls pt4-controls-2">
+        <label>Макс. одновременных сделок<input id="pt4-max-trades" class="pt4-input" type="number" min="1" max="20" step="1" value="1"></label>
+        <label class="pt4-check"><input id="pt4-auto-trade" type="checkbox"> Автоторговля по прогнозу</label>
+      </div>
+      <div class="pt4-actions"><button id="pt4-save" type="button">СОХРАНИТЬ НАСТРОЙКИ</button><span id="pt4-signal-status">Сигналы не активны</span></div>
+    </div>
+    <div class="pt4-card">
+      <div class="pt4-heading"><strong id="pt4-current-asset">Ожидание котировок</strong><span id="pt4-issued-at">—</span></div>
+      <div class="pt4-quote-grid">
+        <div><small>ТЕКУЩАЯ ЦЕНА</small><b id="pt4-current-price">—</b></div>
+        <div><small>ПРОГНОЗ</small><b id="pt4-target-price">—</b></div>
+        <div><small>НАПРАВЛЕНИЕ</small><b id="pt4-direction">—</b></div>
+        <div><small>УВЕРЕННОСТЬ</small><b id="pt4-confidence-out">—</b></div>
+      </div>
+      <canvas id="pt4-chart" width="680" height="240" aria-label="График прогнозной траектории"></canvas>
+      <div id="pt4-chart-legend" class="pt4-legend">Прогнозные точки фиксируются при выпуске и не перерисовываются задним числом.</div>
+    </div>
+    <div class="pt4-card">
+      <div class="pt4-heading"><strong>Модели и независимая статистика</strong><span id="pt4-sample-count">0 проверок</span></div>
+      <div class="pt4-table-wrap"><table class="pt4-table"><thead><tr><th>Модель</th><th>Цена</th><th>Напр.</th><th>Точность</th><th>N</th></tr></thead><tbody id="pt4-model-rows"><tr><td colspan="5">Ожидание первых прогнозов</td></tr></tbody></table></div>
+      <div class="pt4-footnote">Точность считается только по завершённым прогнозам. При недостаточной выборке значение не показывается.</div>
+    </div>
+  </div>
+
   <!-- SETTINGS TAB -->
   <div class="pos-tc" id="pos-tab-settings">
     <div class="qbs">
@@ -1264,8 +1304,10 @@
                 tab.classList.add('active');
                 document.getElementById('pos-tab-' + tab.dataset.tab).classList.add('active');
                 if (tab.dataset.tab === 'stats') { renderAssetStats(); renderIndStats(); }
+                if (tab.dataset.tab === 'predictive') renderPredictivePanel();
             });
         });
+        initPredictiveUI();
         document.getElementById('pos-min-btn').addEventListener('click', function() {
             var p = document.getElementById('pos-panel');
             p.classList.toggle('minimized');
@@ -3453,11 +3495,174 @@
         checkAutoTradeGuards();
     }
 
+
+    // ── PREDICTIVE ENGINE UI / STORAGE ────────────────────────────────
+    var pt4Predictive = { latest: {}, state: null, config: null, saveTimer: null, lastIndicator: null, restored: false };
+    var PT4_MODEL_NAMES = { linear:'Линейная', exponential:'Экспоненциальная', polynomial:'Полиномиальная', momentum:'Momentum', cyclical:'Циклическая', ensemble:'Ансамбль' };
+    function pt4DefaultConfig() {
+        return { enabled:true, sourceMode:'formula', assetMode:'all', selectedAsset:'*', horizonSeconds:60, model:'auto',
+            confidenceFloor:0.52, autoTrade:false, accountMode:'demo', stake:1, maxConcurrentTrades:1 };
+    }
+    function pt4ReadConfig() {
+        var c = pt4Predictive.config || pt4DefaultConfig();
+        return {
+            enabled:true, sourceMode:document.getElementById('pt4-source').value,
+            assetMode:'all', selectedAsset:document.getElementById('pt4-asset').value || '*',
+            horizonSeconds:parseInt(document.getElementById('pt4-horizon').value,10)||60,
+            model:document.getElementById('pt4-model').value,
+            confidenceFloor:(parseInt(document.getElementById('pt4-confidence').value,10)||52)/100,
+            autoTrade:document.getElementById('pt4-auto-trade').checked,
+            accountMode:document.getElementById('pt4-account').value,
+            stake:Math.max(1,Math.min(100000,Number(document.getElementById('pt4-stake').value)||1)),
+            maxConcurrentTrades:Math.max(1,Math.min(20,parseInt(document.getElementById('pt4-max-trades').value,10)||1))
+        };
+    }
+    function pt4ApplyConfig(c) {
+        var v=Object.assign(pt4DefaultConfig(),c||{}); pt4Predictive.config=v;
+        document.getElementById('pt4-source').value=v.sourceMode;
+        document.getElementById('pt4-horizon').value=String(v.horizonSeconds);
+        document.getElementById('pt4-model').value=v.model;
+        document.getElementById('pt4-confidence').value=Math.round(v.confidenceFloor*100);
+        document.getElementById('pt4-confidence-value').textContent=Math.round(v.confidenceFloor*100)+'%';
+        document.getElementById('pt4-auto-trade').checked=!!v.autoTrade;
+        document.getElementById('pt4-account').value=v.accountMode;
+        document.getElementById('pt4-stake').value=v.stake;
+        document.getElementById('pt4-max-trades').value=v.maxConcurrentTrades;
+        var asset=document.getElementById('pt4-asset');
+        if(v.selectedAsset && asset.querySelector('option[value="'+CSS.escape(v.selectedAsset)+'"]')) asset.value=v.selectedAsset;
+        window.postMessage({type:'PT4_PREDICTIVE_CONFIG',config:{
+            enabled:true, confidenceFloor:v.confidenceFloor, minEvaluationSamples:30,
+            predictive:v
+        }},'*');
+    }
+    function initPredictiveUI() {
+        var ids=['pt4-source','pt4-horizon','pt4-model','pt4-confidence','pt4-auto-trade','pt4-account','pt4-stake','pt4-max-trades','pt4-asset'];
+        ids.forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('change',function(){pt4Predictive.config=pt4ReadConfig();});});
+        document.getElementById('pt4-confidence').addEventListener('input',function(){document.getElementById('pt4-confidence-value').textContent=this.value+'%';});
+        document.getElementById('pt4-save').addEventListener('click',savePredictiveConfig);
+        try { chrome.storage.local.get(['pt4PredictiveConfig'],function(data){if(data&&data.pt4PredictiveConfig)pt4ApplyConfig(data.pt4PredictiveConfig);else pt4ApplyConfig(pt4DefaultConfig());}); }
+        catch(_) { pt4ApplyConfig(pt4DefaultConfig()); }
+        window.postMessage({type:'PT4_PREDICTIVE_HELLO'},'*');
+    }
+    function savePredictiveConfig() {
+        var c=pt4ReadConfig();
+        if(c.autoTrade && (!Number.isFinite(c.stake)||c.stake<=0)){appendLog('Predictive: некорректная ставка.');return;}
+        pt4Predictive.config=c;
+        try { chrome.storage.local.set({pt4PredictiveConfig:c},function(){
+            window.postMessage({type:'PT4_PREDICTIVE_CONFIG',config:{enabled:true,confidenceFloor:c.confidenceFloor,minEvaluationSamples:30,predictive:c}},'*');
+            document.getElementById('pt4-signal-status').textContent=c.autoTrade?'Автоторговля включена в настройках':'Автоторговля выключена';
+            appendLog('Predictive: настройки сохранены.');
+        }); } catch(_) { appendLog('Predictive: не удалось сохранить настройки.'); }
+    }
+    function restorePredictiveState() {
+        if(pt4Predictive.restored)return;
+        pt4Predictive.restored=true;
+        try { chrome.storage.local.get(['pt4PredictiveState','pt4PredictiveConfig'],function(data){
+            if(data&&data.pt4PredictiveState)window.postMessage({type:'PT4_PREDICTIVE_RESTORE',state:data.pt4PredictiveState},'*');
+            if(data&&data.pt4PredictiveConfig)pt4ApplyConfig(data.pt4PredictiveConfig);
+        }); } catch(_) {}
+    }
+    function handlePredictiveEvent(message) {
+        if(!message||!message.eventType)return;
+        if(message.eventType==='forecast')handlePredictiveForecast(message.payload);
+        if(message.eventType==='settled')appendLog('Predictive: проверен '+message.payload.asset+' · '+message.payload.horizon+'с · '+message.payload.actualDirection);
+        if(message.eventType==='invalid')appendLog('Predictive: прогноз '+message.payload.asset+' помечен недействительным (запоздалая котировка).');
+        if(message.state){
+            pt4Predictive.state=message.state;
+            if(pt4Predictive.saveTimer)clearTimeout(pt4Predictive.saveTimer);
+            pt4Predictive.saveTimer=setTimeout(function(){
+                try{chrome.storage.local.set({pt4PredictiveState:pt4Predictive.state});}catch(_){}
+            },1800);
+        }
+        renderPredictivePanel();
+    }
+    function handlePredictiveForecast(forecast) {
+        if(!forecast||!forecast.asset||!forecast.horizons)return;
+        pt4Predictive.latest[forecast.asset]=forecast;
+        var select=document.getElementById('pt4-asset'), selected=select.value;
+        if(!Array.from(select.options).some(function(o){return o.value===forecast.asset;})){
+            var opt=document.createElement('option');opt.value=forecast.asset;opt.textContent=forecast.asset;select.appendChild(opt);
+        }
+        if(selected && selected!=='*') select.value=selected;
+        renderPredictivePanel();
+    }
+    function pt4FormatPrice(value) {
+        if(!Number.isFinite(Number(value)))return '—';
+        return Number(value).toPrecision(7);
+    }
+    function renderPredictivePanel() {
+        var cfg=pt4Predictive.config||pt4DefaultConfig(), select=document.getElementById('pt4-asset');
+        if(!select)return;
+        var asset=select.value==='*'?(Object.keys(pt4Predictive.latest).slice(-1)[0]||''):select.value;
+        var forecast=pt4Predictive.latest[asset], horizon=parseInt(document.getElementById('pt4-horizon').value,10)||60;
+        var row=forecast&&forecast.horizons&&forecast.horizons[horizon];
+        document.getElementById('pt4-feed-status').textContent=forecast?'OTC · ПОТОК АКТИВЕН':'ОЖИДАНИЕ OTC';
+        document.getElementById('pt4-current-asset').textContent=asset||'Ожидание котировок';
+        document.getElementById('pt4-issued-at').textContent=forecast?new Date(forecast.timestamp).toLocaleTimeString():'—';
+        document.getElementById('pt4-current-price').textContent=forecast?pt4FormatPrice(forecast.currentPrice):'—';
+        var target=row?row.price:null;
+        if(row && cfg.model!=='auto' && row.models[cfg.model]!=null)target=row.models[cfg.model];
+        document.getElementById('pt4-target-price').textContent=target==null?'—':pt4FormatPrice(target);
+        var dir=target==null?'—':target>forecast.currentPrice?'UP ▲':target<forecast.currentPrice?'DOWN ▼':'DRAW';
+        var dirEl=document.getElementById('pt4-direction');dirEl.textContent=dir;dirEl.className=dir.indexOf('UP')===0?'pt4-up':dir.indexOf('DOWN')===0?'pt4-down':'';
+        var confidence=row?(cfg.model==='auto'?row.confidence:0.5):null;
+        document.getElementById('pt4-confidence-out').textContent=confidence==null?'—':Math.round(confidence*100)+'%'+(row&&row.confidenceCalibrated?' · статистика':' · нет выборки');
+        var eligible=!!(row&&row.eligible&&row.confidence>=cfg.confidenceFloor&&dir!=='DRAW');
+        var source=cfg.sourceMode;
+        var indicator=this && pt4Predictive.lastIndicator;
+        var sourceText=source==='indicators'?'Используются только индикаторы':source==='combined'?'Ожидание совпадения направлений':'Predictive Formula';
+        if(source==='combined' && indicator && indicator.direction && dir.indexOf(indicator.direction)===0)sourceText='Совпадение индикаторов и прогноза';
+        else if(source==='combined' && indicator && indicator.direction && dir!=='—' && indicator.direction!==dir.replace(/ .*/,''))sourceText='КОНФЛИКТ · вход запрещён';
+        document.getElementById('pt4-signal-status').textContent=sourceText+(eligible?' · порог пройден':' · нет допуска');
+        renderPredictiveChart(forecast);
+        renderPredictiveModels(forecast,horizon,asset);
+    }
+    function renderPredictiveChart(forecast) {
+        var canvas=document.getElementById('pt4-chart');if(!canvas)return;
+        var ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
+        ctx.clearRect(0,0,w,h);ctx.strokeStyle='rgba(255,255,255,.10)';ctx.lineWidth=1;
+        for(var i=1;i<5;i++){var y=i*h/5;ctx.beginPath();ctx.moveTo(30,y);ctx.lineTo(w-12,y);ctx.stroke();}
+        if(!forecast){ctx.fillStyle='#9ca3af';ctx.font='20px sans-serif';ctx.fillText('Ожидание котировок OTC…',35,h/2);return;}
+        var points=[{x:0,y:forecast.currentPrice}];
+        [60,120,180,240,300].forEach(function(sec){var r=forecast.horizons[sec];if(r)points.push({x:sec,y:r.price});});
+        var vals=points.map(p=>p.y),min=Math.min.apply(null,vals),max=Math.max.apply(null,vals),pad=(max-min)*.18||Math.abs(max)*.00001||1;
+        min-=pad;max+=pad;
+        function px(x){return 30+(w-48)*x/300;}function py(y){return h-24-(h-48)*(y-min)/(max-min);}
+        ctx.strokeStyle='#d4af37';ctx.lineWidth=3;ctx.beginPath();
+        points.forEach(function(p,i){if(i===0)ctx.moveTo(px(p.x),py(p.y));else ctx.lineTo(px(p.x),py(p.y));});ctx.stroke();
+        points.forEach(function(p,i){ctx.beginPath();ctx.arc(px(p.x),py(p.y),i?5:7,0,Math.PI*2);ctx.fillStyle=i?'#d4af37':'#f8fafc';ctx.fill();});
+        ctx.fillStyle='#9ca3af';ctx.font='15px sans-serif';ctx.fillText('NOW',20,h-5);
+        [60,120,180,240,300].forEach(function(sec){ctx.fillText((sec/60)+'m',px(sec)-12,h-5);});
+    }
+    function renderPredictiveModels(forecast,horizon,asset) {
+        var tbody=document.getElementById('pt4-model-rows');if(!tbody)return;
+        tbody.innerHTML='';var models=['linear','exponential','polynomial','momentum','cyclical','ensemble'];
+        var statsMap={};var stats=pt4Predictive.state&&pt4Predictive.state.stats||[];
+        stats.forEach(function(pair){if(Array.isArray(pair)&&pair[0])statsMap[pair[0]]=pair[1];});
+        var decisiveTotal=0;
+        models.forEach(function(model){
+            var tr=document.createElement('tr'),pred=forecast&&forecast.horizons[horizon]&&forecast.horizons[horizon].models[model];
+            var stat=statsMap[asset+'|'+horizon+'|'+model],n=stat?stat.decisive:0;
+            decisiveTotal=Math.max(decisiveTotal,n);
+            var accuracy=n>=30?Math.round(stat.wins/n*100)+'%':'Недостаточно данных';
+            var direction=pred==null?'—':pred>forecast.currentPrice?'▲':pred<forecast.currentPrice?'▼':'—';
+            [PT4_MODEL_NAMES[model],pred==null?'—':pt4FormatPrice(pred),direction,accuracy,String(n)].forEach(function(v){var td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
+            tbody.appendChild(tr);
+        });
+        document.getElementById('pt4-sample-count').textContent=decisiveTotal+' проверок на модель';
+    }
+
     // ── MESSAGE RELAY ────────────────────────────────────────────────
     if (IS_TOP) {
         window.addEventListener('message', function(e) {
             var msgType = e.data && e.data.type;
-            if (msgType === 'POROBOT_LOG') {
+            } else if (msgType === 'POROBOT_PREDICTIVE_EVENT') {
+                handlePredictiveEvent(e.data);
+            } else if (msgType === 'PT4_PREDICTIVE_READY') {
+                restorePredictiveState();
+            } else if (msgType === 'POROBOT_PREDICTIVE_UPDATE') {
+                handlePredictiveForecast(e.data.forecast);
+            } else if (msgType === 'POROBOT_LOG') {
                 appendLog(e.data.message);
                 try { chrome.runtime.sendMessage({ type: 'POROBOT_LOG', message: e.data.message }); } catch(_) {}
             } else if (msgType === 'POROBOT_STATS') {
