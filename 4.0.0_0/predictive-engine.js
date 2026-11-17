@@ -120,6 +120,7 @@
       if (!series) { series = []; this.series.set(asset, series); }
       const last = series[series.length - 1];
       if (last && timestamp <= last.t) return null;
+      if (last && timestamp - last.t > 30000) { series.length = 0; this.lastForecastAt.delete(asset); }
       series.push({ t: timestamp, p: price });
       if (series.length > this.options.maxTicks) series.splice(0, series.length - this.options.maxTicks);
       this._settle(asset, timestamp, price);
@@ -168,7 +169,8 @@
       const hmx = mean(hx), hmy = mean(hy);
       const hden = mean(hx.map(x => (x - hmx) ** 2));
       const recentSlope = hden ? mean(hx.map((x, i) => (x - hmx) * (hy[i] - hmy))) / hden : slope;
-      const acceleration = clamp((recentSlope - slope) / Math.max(1, horizonSeconds), -features.volatility * 2, features.volatility * 2);
+      const accelerationLimit = Math.max(1e-10, features.volatility * 2 / Math.max(1, horizonSeconds));
+      const acceleration = clamp((recentSlope - slope) / Math.max(1, horizonSeconds), -accelerationLimit, accelerationLimit);
       const projected = slope * horizonSeconds + 0.5 * acceleration * horizonSeconds * horizonSeconds;
       return p * Math.exp(clamp(projected, -0.05, 0.05));
     }
@@ -326,7 +328,13 @@
           models: Object.assign({}, predictions), modelDirections, modelProbabilities
         });
       }
-      while (this.pending.size > this.options.maxForecasts) this.pending.delete(this.pending.keys().next().value);
+      while (this.pending.size > this.options.maxForecasts) {
+        const oldestId = this.pending.keys().next().value;
+        const dropped = this.pending.get(oldestId);
+        this.pending.delete(oldestId);
+        if (dropped) this.history.push(Object.assign({}, dropped, { status: 'INVALID_CAPACITY', invalidReason: 'pending_capacity' }));
+        if (this.history.length > this.options.maxForecasts) this.history.shift();
+      }
       const result = { asset, timestamp: now, currentPrice: current, horizons };
       this.emit('forecast', result);
       try { if (root.__poCore && typeof root.__poCore.onPredictiveForecast === 'function') root.__poCore.onPredictiveForecast(result); } catch (_) {}
@@ -339,6 +347,7 @@
         if (delay > this.options.maxSettlementDelayMs) {
           const invalid = Object.assign({}, forecast, { status: 'INVALID_LATE_TICK', settledAt: timestamp, delayMs: delay });
           this.history.push(invalid);
+          if (this.history.length > this.options.maxForecasts) this.history.shift();
           this.pending.delete(id);
           this.emit('invalid', invalid);
           continue;
