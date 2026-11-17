@@ -4293,6 +4293,13 @@
             if (d.cmd === 'PATCH_CONFIG' && d.patch) {
                 if (!window.__poCore.config) window.__poCore.config = {};
                 Object.assign(window.__poCore.config, d.patch);
+                if (Object.prototype.hasOwnProperty.call(d.patch, 'multiPairTrading')) {
+                    if (d.patch.multiPairTrading) window.__poCore._startMultiPairTrading();
+                    else window.__poCore.log('⏸ Мульти-пары выключены; уже открытые сделки продолжают отслеживаться.');
+                } else if (window.__poCore.isRunning && window.__poCore.config.multiPairTrading &&
+                    (Object.prototype.hasOwnProperty.call(d.patch, 'minProfit') || Object.prototype.hasOwnProperty.call(d.patch, 'includeOtc'))) {
+                    window.__poCore._refreshMultiPairs(true);
+                }
                 // Смена системы ММ или её параметров на ходу: раньше менялся только config,
                 // а MoneyManager считал по настройкам старта (мартингейл «не включался»).
                 if (window.__poCore.money && MM_PATCH_KEYS.some(function(k) { return Object.prototype.hasOwnProperty.call(d.patch, k); })) {
