@@ -1,6 +1,6 @@
 const SUPPORT_URL = 'https://github.com/Maestro-777/pocket-tracker/issues';
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
-const BUILD = 'expansion-local-1.0.1-schema2';
+const BUILD = 'expansion-local-1.0.2-schema2';
 const LEGAL_KEY = 'expLocalLegalConsent';
 const TICKETS_KEY = 'expLocalTradeTickets';
 const STRATEGIES_KEY = 'expLocalStrategies';
