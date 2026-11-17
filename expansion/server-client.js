@@ -1,6 +1,6 @@
 const SUPPORT_URL = 'https://github.com/Maestro-777/pocket-tracker/issues';
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
-const BUILD = 'expansion-local-1.0.2-schema2';
+const BUILD = 'expansion-local-1.0.3-audit1';
 const LEGAL_KEY = 'expLocalLegalConsent';
 const TICKETS_KEY = 'expLocalTradeTickets';
 const STRATEGIES_KEY = 'expLocalStrategies';
@@ -18,7 +18,7 @@ const entitlement = () => ({
   expiresAt: null,
   limits: { maxAssets: null, maxDailyTrades: null, maxDevices: null },
   features: {
-    ai: true, strategyBuilder: true, autoTrading: true, realTrading: true,
+    ai: false, strategyBuilder: true, autoTrading: true, realTrading: true,
     basicStrategies: true, premiumStrategies: true, strategyTester: true,
     remoteControl: false
   },
