@@ -126,7 +126,15 @@ export async function consumeTradeExecutionTicket(ticket) {
   if (!record || record.expiresAt < Date.now()) return { ok: false, error: 'Локальный билет сделки недействителен или истёк.' };
   delete tickets[String(ticket)];
   await chrome.storage.local.set({ [TICKETS_KEY]: tickets });
-  return { ok: true, permit: { ok: true, consumedAt: nowIso(), localOnly: true } };
+  const p = record.payload || {};
+  const rawAction = String(p.action || '').toLowerCase();
+  const action = ['put', 'sell'].includes(rawAction) ? 'put' : ['call', 'buy'].includes(rawAction) ? 'call' : rawAction;
+  return { ok: true, permit: {
+    ok: true, asset: String(p.asset || ''), action,
+    amount: Number(p.amount), duration: Number(p.duration),
+    requestId: String(p.requestId || ''), strategyId: p.strategyId || null,
+    source: p.source || null, consumedAt: nowIso(), localOnly: true
+  } };
 }
 
 export async function reportTrade(payload = {}) {

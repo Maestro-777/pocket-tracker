@@ -4153,50 +4153,32 @@
       || message.includes('connection reset');
   }
 
-  async function consumeExecutionTicket(ticket) {
+  async function consumeExecutionTicket(ticket, executionDeadlineMs = null) {
     const value = String(ticket || '').trim();
-    if (value.length < 32) throw new Error('Сервер не выдал разрешение на исполнение сделки');
-    let lastError = null;
-    const timeouts = [18000, 12000];
-    for (let attempt = 0; attempt < timeouts.length; attempt += 1) {
-      const controller = new AbortController();
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        try { controller.abort('TRADE_TICKET_TIMEOUT'); } catch { controller.abort(); }
-      }, timeouts[attempt]);
-      try {
-        const response = await fetch('https://api.pockettraderobot.online/api/v1/trading/consume', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({ ticket: value }),
-          cache: 'no-store',
-          credentials: 'omit',
-          signal: controller.signal
-        });
-        const raw = await response.text().catch(() => '');
-        let data = {};
-        try { data = raw ? JSON.parse(raw) : {}; } catch { data = { detail: raw.slice(0, 300) }; }
-        if (!response.ok || data.ok !== true) {
-          const error = new Error(executionTicketErrorText(data, response.status));
-          error.status = response.status;
-          throw error;
-        }
-        return data;
-      } catch (error) {
-        lastError = error;
-        const retryable = timedOut || isRetryableTicketError(error);
-        if (retryable && attempt + 1 < timeouts.length) {
-          await new Promise((resolve) => setTimeout(resolve, 250));
-          continue;
-        }
-        if (retryable) throw new Error('TRADE_TICKET_TIMEOUT: сервер не подтвердил разрешение вовремя; сделка не открыта');
-        throw error;
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-    throw lastError || new Error('TRADE_TICKET_UNAVAILABLE');
+    if (value.length < 32) throw new Error('Локальное разрешение на сделку отсутствует');
+    const requestId = crypto.randomUUID();
+    const result = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        window.removeEventListener('message', onResponse);
+        reject(new Error('LOCAL_TICKET_CONSUME_TIMEOUT'));
+      }, 15000);
+      const onResponse = (event) => {
+        if (event.source !== window) return;
+        const message = event.data;
+        if (!message || message[MARKER] !== 'CONTENT_LOCAL_TICKET_RESULT' || message.requestId !== requestId) return;
+        clearTimeout(timeout);
+        window.removeEventListener('message', onResponse);
+        if (!message.ok || !message.permit) reject(new Error(message.error || 'LOCAL_TICKET_REJECTED'));
+        else resolve(message.permit);
+      };
+      window.addEventListener('message', onResponse);
+      window.postMessage({
+        [MARKER]: 'PAGE_CONSUME_LOCAL_TICKET',
+        requestId, ticket: value,
+        executionDeadlineMs: Number(executionDeadlineMs) || null
+      }, '*');
+    });
+    return result;
   }
 
   function payoutFreshnessBonus(updatedAt) {
@@ -4321,7 +4303,7 @@
     let duration;
     let permitRequestId;
     try {
-      permit = await consumeExecutionTicket(payload?.executionTicket);
+      permit = await consumeExecutionTicket(payload?.executionTicket, payload?.executionDeadlineMs);
       if (permit?.ok !== true) throw new Error('Сервер вернул некорректное разрешение сделки');
       asset = validateAsset(permit.asset);
       action = permit.action === 'put' ? 'put' : permit.action === 'call' ? 'call' : null;

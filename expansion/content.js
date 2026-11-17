@@ -809,8 +809,8 @@
   const pocketMarketSnapshots = new Map();
   const cacheBridgeSnapshots = new Map();
   const cacheBridgeControl = {
-    enabled: true,
-    baseUrl: 'https://cache.pockettraderobot.online',
+    enabled: false,
+    baseUrl: 'local://cache-disabled',
     online: false,
     lastAttemptAt: 0,
     lastSuccessAt: 0,
@@ -7758,6 +7758,29 @@
     if (event.source !== window) return;
     const message = event.data;
     if (!message || !message[MARKER]) return;
+
+    if (message[MARKER] === 'PAGE_CONSUME_LOCAL_TICKET' && message.requestId && message.ticket) {
+      void safeRuntimeMessage({
+        type: 'PT_CONSUME_TRADE_TICKET',
+        payload: { ticket: message.ticket, executionDeadlineMs: message.executionDeadlineMs }
+      }, 20000).then((result) => {
+        window.postMessage({
+          [MARKER]: 'CONTENT_LOCAL_TICKET_RESULT',
+          requestId: message.requestId,
+          ok: Boolean(result?.ok && result?.permit),
+          permit: result?.permit || null,
+          error: result?.error || null
+        }, '*');
+      }).catch((error) => {
+        window.postMessage({
+          [MARKER]: 'CONTENT_LOCAL_TICKET_RESULT',
+          requestId: message.requestId,
+          ok: false,
+          error: String(error?.message || error)
+        }, '*');
+      });
+      return;
+    }
 
     if (message[MARKER] === 'PAGE_OFFICIAL_AUTH' && message.auth) {
       void safeRuntimeMessage({ type: 'PT_POCKET_PARTNERS_CAPTURE_AUTH', payload: message.auth }, 5000).catch(() => null);
