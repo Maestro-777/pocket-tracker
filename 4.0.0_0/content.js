@@ -3504,10 +3504,10 @@
             confidenceFloor:0.52, autoTrade:false, accountMode:'demo', stake:1, maxConcurrentTrades:1 };
     }
     function pt4ReadConfig() {
-        var c = pt4Predictive.config || pt4DefaultConfig();
+        var selectedAsset = document.getElementById('pt4-asset').value || '*';
         return {
             enabled:true, sourceMode:document.getElementById('pt4-source').value,
-            assetMode:'all', selectedAsset:document.getElementById('pt4-asset').value || '*',
+            assetMode:selectedAsset === '*' ? 'all' : 'selected', selectedAsset:selectedAsset,
             horizonSeconds:parseInt(document.getElementById('pt4-horizon').value,10)||60,
             model:document.getElementById('pt4-model').value,
             confidenceFloor:(parseInt(document.getElementById('pt4-confidence').value,10)||52)/100,
@@ -3660,6 +3660,10 @@
             if (msgType === 'POROBOT_SCAN') {
                 pt4Predictive.lastIndicator = e.data.scan || null;
                 renderPredictivePanel();
+            } else if (msgType === 'POROBOT_PREDICTIVE_ASSETS') {
+                var assetSelect = document.getElementById('pt4-asset'), keepAsset = assetSelect && assetSelect.value;
+                (e.data.assets || []).forEach(function(assetName){ if(!assetSelect || Array.from(assetSelect.options).some(function(o){return o.value===assetName;}))return; var option=document.createElement('option');option.value=assetName;option.textContent=assetName;assetSelect.appendChild(option); });
+                if(assetSelect && keepAsset && Array.from(assetSelect.options).some(function(o){return o.value===keepAsset;}))assetSelect.value=keepAsset;
             } else if (msgType === 'POROBOT_PREDICTIVE_SIGNAL') {
                 var ps = e.data.signal || {};
                 appendLog('🧠 Predictive [' + (ps.asset || '?') + '] ' + (ps.direction || '—') + ' · ' + (ps.model || '') + ' · ' + Math.round((ps.confidence || 0) * 100) + '% · ' + (ps.horizonSeconds || 0) + 'с');
