@@ -9,3 +9,48 @@ $("analyze").addEventListener("click",()=>{if(!imported.length){$("result").text
 $("export").addEventListener("click",()=>{if(!lastReport){$("result").textContent="Сначала выполните анализ.";return;}const blob=new Blob([JSON.stringify({settings:settings(),report:lastReport},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="pattern-lab-report.json";a.click();URL.revokeObjectURL(a.href);});
 chrome.storage.local.get("patternLabSettings",r=>{const s=r.patternLabSettings;if(!s)return;$("threshold").value=s.threshold??80;$("thresholdOut").textContent=$("threshold").value+"%";$("lookback").value=s.lookback??8;$("minSamples").value=s.minSamples??30;$("payout").value=s.payout??90;$("crossAsset").checked=s.crossAsset??true;$("paper").checked=true;});
 window.addEventListener("beforeunload",()=>chrome.storage.local.set({patternLabSettings:settings()}));
+async function getActiveTabStatus(){
+  try{
+    const tabs=await chrome.tabs.query({active:true,currentWindow:true});
+    if(!tabs[0]?.id)return null;
+    return await chrome.tabs.sendMessage(tabs[0].id,{type:"PPL_GET_STATUS"});
+  }catch(_){return null;}
+}
+async function refreshLiveStatus(){
+  const s=await getActiveTabStatus();
+  const pill=document.querySelector("header .pill");
+  if(!s){
+    pill.textContent="● ОТКРОЙТЕ POCKET OPTION";
+    pill.className="pill offline";
+    $("liveStatus").textContent="Откройте авторизованную вкладку Pocket Option и обновите её после установки расширения.";
+    return;
+  }
+  pill.textContent=s.connected?"● СОЕДИНЕНИЕ ОБНАРУЖЕНО":"● ОЖИДАНИЕ ПОТОКА";
+  pill.className="pill "+(s.connected?"online":"offline");
+  $("liveStatus").textContent=
+    "Сокетов: "+s.sockets+" · событий: "+s.events+" · тиков: "+s.ticks+
+    " · свечей в базе: "+(s.storedCandles||0)+
+    (s.lastError?" · "+s.lastError:"");
+  if(s.storedCandles!=null)$("history").textContent=Number(s.storedCandles).toLocaleString("ru-RU");
+  if(s.assets!=null)$("coverage").textContent="Каталог: "+s.assets;
+}
+$("liveAnalyze").addEventListener("click",async()=>{
+  try{
+    const tabs=await chrome.tabs.query({active:true,currentWindow:true});
+    if(!tabs[0]?.id)throw Error("Нет активной вкладки");
+    const data=await chrome.tabs.sendMessage(tabs[0].id,{type:"PPL_GET_CANDLES"});
+    if(!data?.ok)throw Error(data?.error||"Не удалось прочитать базу");
+    const candles=(data.candles||[]).filter(c=>c.period===5).sort((a,b)=>a.time-b.time);
+    if(!candles.length)throw Error("Пока нет 5-секундных свечей. Оставьте график открытым.");
+    lastReport=PatternLabEngine.analyze(candles,settings());
+    const r=lastReport;
+    $("matches").textContent=r.matchCount??r.matches??"—";
+    $("similarity").textContent=r.similarity==null?"—":(r.similarity*100).toFixed(1)+"%";
+    $("winrate").textContent=r.best?(r.best.winRate*100).toFixed(1)+"%":"—";
+    $("result").textContent=r.status==="ready"
+      ?("Live-история: "+candles.length+" свечей. Лучший горизонт: "+r.best.horizon+" свечей ("+(r.best.horizon*5)+" сек). Направление: "+r.best.direction+". Исходов: "+r.best.count+". "+r.note)
+      :("Live-история: "+candles.length+" свечей. "+r.message);
+  }catch(err){$("result").textContent=err.message;}
+});
+refreshLiveStatus();
+setInterval(refreshLiveStatus,2500);
