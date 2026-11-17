@@ -148,7 +148,7 @@
     function isFxCurrencyPair(symbol) {
         const raw = String(symbol || '').toUpperCase().replace(/_?OTC$/i, '').replace(/[^A-Z]/g, '');
         if (raw.length !== 6) return false;
-        const currencies = new Set(['USD','EUR','GBP','JPY','CHF','CAD','AUD','NZD','CNY','HKD','SGD','TRY','ZAR','MXN','NOK','SEK','PLN','THB','INR','IDR','BRL','KRW','CZK','HUF','ILS','DKK']);
+        const currencies = new Set(['USD','EUR','GBP','JPY','CHF','CAD','AUD','NZD','CNY','HKD','SGD','TRY','ZAR','MXN','NOK','SEK','PLN','THB','INR','IDR','BRL','KRW','CZK','HUF','ILS','DKK','AED','RUB','UZS','KZT','PHP','MYR','SAR','QAR','KWD','BHD','OMR','EGP','PKR','BDT','VND','TWD','COP','CLP','PEN','ARS','UYU','NGN','KES','GHS','MAD','UAH','RON','BGN','RSD','HRK','ISK','GEL','AZN','AMD','ALL','MKD','MDL','BYN','XOF','XAF','XCD','JOD','LBP','LKR','NPR','MUR','BWP','NAD','UGX','TZS','ZMW']);
         return currencies.has(raw.slice(0, 3)) && currencies.has(raw.slice(3, 6));
     }
 
