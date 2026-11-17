@@ -247,20 +247,25 @@
         const direction = signDirection(target, current, this.options.drawEpsilon * current);
         const confidence = this._confidence(asset, horizon, selected, target, current, features);
         const forecastId = asset + '|' + horizon + '|' + now;
-        const modelDirections = {};
-        for (const id of Object.keys(predictions)) modelDirections[id] = signDirection(predictions[id], current, this.options.drawEpsilon * current);
+        const modelDirections = {}, modelProbabilities = {};
+        const horizonNoise = Math.max(1e-8, features.volatility * Math.sqrt(horizon));
+        for (const id of Object.keys(predictions)) {
+          const modelMove = Math.log(predictions[id] / current);
+          modelDirections[id] = signDirection(predictions[id], current, this.options.drawEpsilon * current);
+          modelProbabilities[id] = 1 / (1 + Math.exp(-clamp(2 * modelMove / horizonNoise, -20, 20)));
+        }
         const row = {
           horizonSeconds: horizon, price: target, direction, model: selected,
           confidence: confidence.value, confidenceSamples: confidence.samples,
-          confidenceCalibrated: confidence.calibrated,
+          confidenceCalibrated: false, confidenceEvidenceBased: confidence.calibrated,
           eligible: confidence.value >= this.options.confidenceFloor,
-          models: Object.assign({}, predictions), modelDirections
+          models: Object.assign({}, predictions), modelDirections, modelProbabilities
         };
         horizons[horizon] = row;
         this.pending.set(forecastId, {
           id: forecastId, asset, horizon, issuedAt: now, dueAt: now + horizon*1000,
           entry: current, predicted: target, direction, model: selected,
-          models: Object.assign({}, predictions), modelDirections
+          models: Object.assign({}, predictions), modelDirections, modelProbabilities
         });
       }
       while (this.pending.size > this.options.maxForecasts) this.pending.delete(this.pending.keys().next().value);
@@ -293,8 +298,9 @@
             stat.decisive++;
             const correct = predictedDirection === actualDirection;
             if (correct) stat.wins++; else stat.losses++;
-            const probability = predictedDirection === 'DRAW' ? 0.5 : (predictedDirection === actualDirection ? 1 : 0);
-            stat.brier += (probability - 1) ** 2;
+            const probabilityUp = forecast.modelProbabilities[model];
+            const actualUp = actualDirection === 'UP' ? 1 : 0;
+            stat.brier += (probabilityUp - actualUp) ** 2;
           }
           stat.mae += Math.abs(price - forecast.models[model]) / forecast.entry;
           modelResults[model] = {
@@ -322,7 +328,7 @@
           draws: st.draws, accuracy: st.decisive ? st.wins/st.decisive : null,
           meanAbsoluteError: st.n ? st.mae/st.n : null,
           brierScore: st.decisive ? st.brier/st.decisive : null,
-          confidenceCalibrated: st.decisive >= this.options.minEvaluationSamples
+          confidenceCalibrated: false, confidenceEvidenceBased: st.decisive >= this.options.minEvaluationSamples
         });
       }
       return rows;
