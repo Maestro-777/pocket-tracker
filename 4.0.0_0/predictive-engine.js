@@ -36,7 +36,7 @@
     constructor(options = {}) {
       this.options = Object.assign({
         enabled: true, minSamples: 80, maxTicks: 12000, maxForecasts: 10000,
-        confidenceFloor: 0.52, forecastIntervalMs: 5000,
+        confidenceFloor: 0.60, forecastIntervalMs: 5000,
         minEvaluationSamples: 30, maxSettlementDelayMs: 15000,
         maxProjectionVolatility: 4, drawEpsilon: 1e-10
       }, options);
@@ -415,7 +415,7 @@
       const allowed = ['enabled','minSamples','confidenceFloor','forecastIntervalMs','minEvaluationSamples','maxSettlementDelayMs'];
       for (const key of allowed) if (Object.prototype.hasOwnProperty.call(next, key)) this.options[key] = next[key];
       this.options.minSamples = clamp(Number(this.options.minSamples)||80, 30, 2000);
-      this.options.confidenceFloor = clamp(Number(this.options.confidenceFloor)||0.52, 0.5, 0.95);
+      this.options.confidenceFloor = clamp(Number(this.options.confidenceFloor)||0.60, 0.5, 0.95);
       this.emit('config', Object.assign({}, this.options));
     }
   }
