@@ -1012,6 +1012,7 @@
             <span class="pos-switch-ui" aria-hidden="true"><span class="pos-switch-knob"></span></span>
           </span>
         </label>
+        <div class="pos-risk-hint">Для одновременных сделок используется фиксированная базовая ставка. Прогрессивный мани-менеджмент в этом режиме не применяется.</div>
       </div>
       <label class="pos-toggle-row pos-risk-enable-row" for="pos-risk-enable">
         <span data-i18n="risk_enable">Ограничить Take Profit / Take Loss</span>
