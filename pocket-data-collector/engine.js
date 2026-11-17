@@ -72,7 +72,7 @@
       if(end<length*2+2)continue;
       const qStart=end-length;
       if(!isContinuous(candles,qStart,length,step))continue;
-      const query=features.slice(qStart),last=candles[end-1];
+      const query=features.slice(qStart);
       let up=0,down=0,flat=0,valid=0,skipped=0;
       for(let start=0;start+length<qStart;start++){
         if(!isContinuous(candles,start,length,step)){skipped++;continue;}
@@ -103,7 +103,7 @@
     const edge=chosen.winRate-.5;
     const signal=chosen.winRate>=.58?chosen.direction:"WAIT";
     return {status:"ready",expirySec,minSamples,threshold:threshold*100,chosen,signal,
-      queryTime:last.time,results,disclaimer:"Историческая частота на похожих участках не гарантирует будущий результат и не является вероятностью выигрыша."};
+      queryTime:candles[end-1]?.time,results,disclaimer:"Историческая частота на похожих участках не гарантирует будущий результат и не является вероятностью выигрыша."};
   }
   globalThis.PocketCollectorEngine={heikinAshi,vectorize,findSimilar,evaluateExpiry};
 })();
