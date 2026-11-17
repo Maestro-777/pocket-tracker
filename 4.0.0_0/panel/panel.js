@@ -53,7 +53,7 @@ async function startBot() {
   if(!tabId){appendLog('Откройте вкладку Pocket Option.');return;}
   if(!['demo','real'].includes(accountState.mode)){appendLog('Запуск заблокирован: тип счёта не определён.');return;}
   if(accountState.mode==='real'&&!window.confirm('Обнаружен REAL-счёт. Это реальные финансовые операции. Продолжить запуск автоторговли?'))return;
-  const config=await saveSettings(); config.accountMode=accountState.mode;
+  const config=await saveSettings(); config.accountMode=accountState.mode; config.realTradeConfirmed=accountState.mode==='real';
   try { await chrome.runtime.sendMessage({type:'POROBOT_START',config,tabId}); setRunning(true); appendLog('Бот запущен · '+accountState.mode.toUpperCase()); }
   catch(e){appendLog('Ошибка: '+e.message);}
 }
