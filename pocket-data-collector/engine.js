@@ -35,23 +35,37 @@
     const length=Math.max(4,Math.min(50,Number(opts.patternLength)||8));
     const limit=Math.max(1,Math.min(50,Number(opts.resultLimit)||10));
     const threshold=clamp((Number(opts.threshold)||80)/100,.5,.99);
-    if(candles.length<length*3)return {status:"warming",message:"Нужно больше свечей для поиска сходств.",matches:[],count:candles.length};
+    if(candles.length<length*2+1)return {status:"warming",message:"Для такого паттерна пока мало свечей.",matches:[],count:candles.length,patternLength:length,validWindows:0};
     const features=vectorize(candles),end=features.length;
-    const query=features.slice(end-length);
+    const queryStart=end-length,query=features.slice(queryStart);
+    const step=Number(candles.at(-1)?.period||5)*1000;
+    const continuous=(start,size)=> {
+      for(let j=start+1;j<start+size;j++){
+        if(candles[j].time-candles[j-1].time!==step)return false;
+      }
+      return true;
+    };
+    if(!continuous(queryStart,length)){
+      return {status:"gaps",message:"В последних свечах есть пропуски по времени. Дождитесь непрерывного участка или уменьшите длину паттерна.",matches:[],count:candles.length,patternLength:length,validWindows:0};
+    }
     const matches=[];
-    // Historical windows end before the current query and do not overlap it.
+    let validWindows=0,skippedGaps=0;
+    // Only compare complete, time-contiguous historical windows that do not overlap the current pattern.
     for(let i=length;i<=end-length;i++){
-      const candidate=features.slice(i-length,i);
+      const start=i-length;
+      if(!continuous(start,length)){skippedGaps++;continue;}
+      validWindows++;
+      const candidate=features.slice(start,i);
       const similarity=score(query,candidate);
       if(similarity>=threshold){
         const previous=candles[i-1]?.close,next=candles[i]?.close;
-        matches.push({index:i-length,time:candles[i-length]?.time,similarity,
+        matches.push({index:start,time:candles[start]?.time,similarity,
           nextDirection:next==null||previous==null?"UNKNOWN":next>previous?"UP":next<previous?"DOWN":"FLAT"});
       }
     }
     matches.sort((a,b)=>b.similarity-a.similarity);
     return {status:"ready",count:candles.length,patternLength:length,
-      threshold:threshold*100,totalMatches:matches.length,
+      threshold:threshold*100,validWindows,skippedGaps,totalMatches:matches.length,
       matches:matches.slice(0,limit)};
   }
   globalThis.PocketCollectorEngine={heikinAshi,vectorize,findSimilar};
