@@ -29,6 +29,7 @@ const entitlement = () => ({
 });
 
 const uidFromBridge = bridge => bridge?.account?.uid == null ? null : String(bridge.account.uid);
+const accountModeFromBridge = bridge => bridge?.account?.isDemo === true || String(bridge?.account?.mode || '').toUpperCase() === 'DEMO' ? 'DEMO' : 'REAL';
 const nowIso = () => new Date().toISOString();
 
 // Serialize read-modify-write operations: MV3 may dispatch concurrent handlers,
@@ -127,6 +128,11 @@ export async function requestTradePermit(payload = {}) {
     const amount = Number(payload.amount);
     const duration = Number(payload.duration);
     const requestId = String(payload.requestId || '').trim();
+    const accountMode = accountModeFromBridge(bridge);
+    const requestedMode = String(payload.accountMode || '').trim().toUpperCase();
+    if (requestedMode && requestedMode !== accountMode) {
+      return { ok: false, allowed: false, reason: 'ACCOUNT_MODE_CHANGED', error: 'Режим счёта изменился. Повторите проверку сделки.' };
+    }
     if (!asset || !action || !Number.isFinite(amount) || amount <= 0 || !Number.isInteger(duration) || duration < 1 || duration > 86400 || !requestId) {
       return { ok: false, allowed: false, reason: 'INVALID_TRADE_PAYLOAD', error: 'Некорректные параметры сделки: проверьте актив, направление, сумму, экспирацию и ID запроса.' };
     }
@@ -138,7 +144,7 @@ export async function requestTradePermit(payload = {}) {
       return { ok: false, allowed: false, reason: 'LOCAL_TICKET_CAPACITY', error: 'Слишком много незавершённых локальных заявок. Повторите попытку через минуту.' };
     }
     const ticket = crypto.randomUUID() + crypto.randomUUID();
-    tickets[ticket] = { createdAt: now, expiresAt: now + 60000, payload: { ...payload, asset, action, amount, duration, requestId, accountUid: uid } };
+    tickets[ticket] = { createdAt: now, expiresAt: now + 60000, payload: { ...payload, asset, action, amount, duration, requestId, accountUid: uid, accountMode } };
     await chrome.storage.local.set({ [TICKETS_KEY]: tickets });
     return { ok: true, allowed: true, reason: 'LOCAL_ALLOWED', executionTicket: ticket, expiresInSeconds: 60, entitlement: entitlement() };
   });
@@ -158,12 +164,13 @@ export async function consumeTradeExecutionTicket(ticket) {
     const p = record.payload || {};
     const bridge = await read('poBridgeState');
     const uid = uidFromBridge(bridge);
+    const accountMode = accountModeFromBridge(bridge);
     const rawAction = String(p.action || '').toLowerCase();
     const action = ['put', 'sell'].includes(rawAction) ? 'put' : ['call', 'buy'].includes(rawAction) ? 'call' : '';
     const amount = Number(p.amount);
     const duration = Number(p.duration);
-    if (!uid || String(p.accountUid || '') !== uid) {
-      return { ok: false, error: 'Аккаунт Pocket Option изменился после проверки допуска. Запросите новый билет.' };
+    if (!uid || String(p.accountUid || '') !== uid || String(p.accountMode || '') !== accountMode) {
+      return { ok: false, error: 'Аккаунт или режим счёта Pocket Option изменился после проверки допуска. Запросите новый билет.' };
     }
     if (!String(p.asset || '').trim() || !action || !Number.isFinite(amount) || amount <= 0 || !Number.isInteger(duration) || duration < 1 || duration > 86400) {
       return { ok: false, error: 'Параметры локального билета сделки повреждены или некорректны.' };
