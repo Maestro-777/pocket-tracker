@@ -1,0 +1,249 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const source = fs.readFileSync(path.join(__dirname, '..', 'predictive-engine.js'), 'utf8');
+
+function makeEngine(options = {}) {
+  const listeners = {}, posted = [];
+  const window = {
+    addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+    postMessage(message) { posted.push(message); },
+    __listeners: listeners
+  };
+  window.window = window;
+  window.top = window;
+  vm.runInNewContext(source, { window, console, Date, Math, Map, Set, Object, Array, Number, String, JSON });
+  const Engine = window.PT4PredictiveEngine;
+  const engine = new Engine(options);
+  return { engine, window, listeners, posted };
+}
+
+function tick(engine, asset, timestamp, price) {
+  return engine.ingest({ asset, timestamp, price });
+}
+
+test('rejects non-OTC quotes and malformed prices', () => {
+  const { engine } = makeEngine();
+  assert.equal(tick(engine, 'EURUSD', 1000, 1.1), null);
+  assert.equal(tick(engine, 'EURUSD_otc', 1000, NaN), null);
+  assert.equal(engine.series.size, 0);
+});
+
+test('creates five immutable-horizon forecasts with all six models', () => {
+  const { engine } = makeEngine({ minSamples: 30 });
+  let forecast;
+  for (let i = 1; i <= 40; i++) {
+    forecast = tick(engine, 'EURUSD_otc', i * 1000, 1.1 + i * 0.00001 + Math.sin(i / 3) * 0.00002);
+  }
+  assert.ok(forecast);
+  assert.deepEqual(Object.keys(forecast.horizons).sort(), ['120','180','240','300','60']);
+  for (const horizon of [60,120,180,240,300]) {
+    const row = forecast.horizons[horizon];
+    for (const model of ['linear','exponential','polynomial','momentum','cyclical','ensemble']) {
+      assert.ok(Number.isFinite(row.models[model]), model + ' must produce a finite price');
+      assert.equal(row.modelConfidence[model], 0.5, model + ' must start with neutral confidence');
+      assert.equal(row.modelEligible[model], false, model + ' must not be eligible before evidence');
+    }
+    assert.equal(row.confidence, 0.5, 'untrained model confidence must remain neutral');
+    assert.equal(row.eligible, false, 'untrained forecast must not pass default confidence floor');
+  }
+  const pending = engine.getPending()[0];
+  const frozen = pending.predicted;
+  for (let i = 41; i <= 45; i++) tick(engine, 'EURUSD_otc', i * 1000, 1.2 + i * 0.00001);
+  assert.equal(engine.getPending().find(x => x.id === pending.id).predicted, frozen);
+});
+
+
+test('selects different empirically validated models per asset and horizon', () => {
+  const { engine } = makeEngine({ minSamples: 30, confidenceFloor: 0.60, minEvaluationSamples: 30 });
+  for (let i = 1; i <= 39; i++) tick(engine, 'EURUSD_otc', i * 1000, 1.1 + i * 0.00001 + Math.sin(i / 3) * 0.00001);
+  const good = { n:30, decisive:30, wins:30, losses:0, draws:0, mae:0.0001, brier:0, lastUpdatedAt:39000 };
+  engine.stats.set('EURUSD_OTC|60|linear', Object.assign({}, good));
+  engine.stats.set('EURUSD_OTC|120|exponential', Object.assign({}, good));
+  const forecast = tick(engine, 'EURUSD_otc', 40000, 1.1004);
+  assert.equal(forecast.horizons[60].model, 'linear');
+  assert.equal(forecast.horizons[120].model, 'exponential');
+  assert.equal(forecast.horizons[60].modelConfidenceSamples.linear, 30);
+  assert.ok(forecast.horizons[60].modelConfidence.linear > 0.60);
+  assert.equal(forecast.horizons[60].modelEligible.linear, true);
+});
+
+test('settles forecasts only at/after expiry and records model outcomes', () => {
+  const { engine, posted } = makeEngine({ minSamples: 30, maxSettlementDelayMs: 15000 });
+  for (let i = 1; i <= 40; i++) tick(engine, 'GBPUSD_otc', i * 1000, 1.25 + i * 0.00001);
+  const first = engine.getPending().find(x => x.horizon === 60);
+  assert.ok(first);
+  let settled = null;
+  engine.onUpdate((type, payload) => { if (type === 'settled' && payload.id === first.id) settled = payload; });
+  tick(engine, 'GBPUSD_otc', first.dueAt, first.entry + 0.0005);
+  assert.ok(settled);
+  assert.equal(settled.status, 'SETTLED');
+  assert.equal(settled.actualDirection, 'UP');
+  assert.equal(settled.modelResults.ensemble.correct, true);
+  assert.ok(posted.some(x => x.type === 'POROBOT_PREDICTIVE_EVENT' && x.eventType === 'settlement_batch'));
+  assert.equal(posted.some(x => x.type === 'POROBOT_PREDICTIVE_EVENT' && x.eventType === 'settled'), false);
+  const stats = engine.getStats('GBPUSD_otc');
+  assert.ok(stats.some(x => x.model === 'ensemble' && x.decisiveSamples === 1));
+});
+
+test('marks a forecast invalid when the first available quote is too late', () => {
+  const { engine } = makeEngine({ minSamples: 30, maxSettlementDelayMs: 15000 });
+  for (let i = 1; i <= 40; i++) tick(engine, 'USDJPY_otc', i * 1000, 150 + i * 0.001);
+  const first = engine.getPending().find(x => x.horizon === 60);
+  let invalid = null;
+  engine.onUpdate((type, payload) => { if (type === 'invalid' && payload.id === first.id) invalid = payload; });
+  tick(engine, 'USDJPY_otc', first.dueAt + 16000, 151);
+  assert.ok(invalid);
+  assert.equal(invalid.status, 'INVALID_LATE_TICK');
+});
+
+
+test('manual pair filter stops other OTC forecasts and invalidates their pending records', () => {
+  const { engine } = makeEngine({ minSamples: 30 });
+  for (let i = 1; i <= 40; i++) {
+    tick(engine, 'EURUSD_otc', i * 1000, 1.1 + i * 0.00001);
+    tick(engine, 'GBPUSD_otc', i * 1000, 1.25 + i * 0.00001);
+  }
+  assert.ok(engine.getPending().some(x => x.asset === 'GBPUSD_OTC'));
+  engine.setAssetFilter('selected', 'EURUSD_OTC');
+  assert.equal(engine.series.has('GBPUSD_OTC'), false);
+  assert.equal(engine.getPending().some(x => x.asset === 'GBPUSD_OTC'), false);
+  assert.ok(engine.getHistory().some(x => x.asset === 'GBPUSD_OTC' && x.status === 'INVALID_FILTER_CHANGED'));
+  assert.equal(tick(engine, 'GBPUSD_otc', 41000, 1.26), null);
+  assert.equal(engine.forecast('GBPUSD_OTC'), null);
+  const restored = makeEngine().engine;
+  assert.equal(restored.restoreState(engine.exportState()), true);
+  assert.equal(restored.assetFilter.mode, 'selected');
+  assert.equal(restored.assetFilter.selectedAsset, 'EURUSD_OTC');
+  assert.equal(tick(restored, 'GBPUSD_otc', 42000, 1.27), null);
+});
+
+test('exports and restores pending forecasts, price history and model statistics', () => {
+  const first = makeEngine({ minSamples: 30 });
+  for (let i = 1; i <= 40; i++) tick(first.engine, 'AUDUSD_otc', i * 1000, 0.65 + i * 0.00001);
+  const snapshot = first.engine.exportState();
+  const second = makeEngine();
+  assert.equal(second.engine.restoreState(snapshot), true);
+  assert.equal(second.engine.getPending().length, first.engine.getPending().length);
+  assert.equal(second.engine.series.get('AUDUSD_OTC').length, 40);
+});
+
+
+test('draw outcomes are tracked separately and excluded from directional accuracy', () => {
+  const { engine } = makeEngine({ minSamples: 30 });
+  for (let i = 1; i <= 30; i++) tick(engine, 'NZDUSD_otc', i * 1000, 0.61 + i * 0.00001);
+  const first = engine.getPending().find(x => x.horizon === 60);
+  tick(engine, 'NZDUSD_otc', first.dueAt, first.entry);
+  const rows = engine.getStats('NZDUSD_otc');
+  assert.ok(rows.filter(x => x.samples > 0).every(x => x.draws === 1 && x.decisiveSamples === 0 && x.accuracy === null));
+});
+
+test('manifest and UI are wired to the existing MAIN-world quote injector', () => {
+  const root = path.join(__dirname, '..');
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+  const main = manifest.content_scripts.find(x => x.world === 'MAIN');
+  assert.ok(main);
+  assert.deepEqual(main.js.slice(0, 2), ['predictive-engine.js', 'inject.js']);
+  const content = fs.readFileSync(path.join(root, 'content.js'), 'utf8');
+  const injector = fs.readFileSync(path.join(root, 'inject.js'), 'utf8');
+  assert.match(content, /data-tab="predictive"/);
+  assert.match(content, /POROBOT_PREDICTIVE_EVENT/);
+  assert.match(injector, /onPredictiveForecast\(forecast\)/);
+  assert.match(injector, /_openPredictiveOrder\(signal, cfg\)/);
+  assert.match(injector, /_refreshMultiPairs\(force, predictiveOnly\)/);
+  assert.match(injector, /POROBOT_PREDICTIVE_ASSETS/);
+  assert.match(injector, /const tradeDirection = signal.direction/);
+  assert.match(injector, /if \(trade.source !== 'predictive'\) this\._recordReverseResult\(result\)/);
+  const predictiveTrade = injector.slice(injector.indexOf('_openPredictiveOrder(signal, cfg)'), injector.indexOf('_scanMultiPairs()'));
+  assert.doesNotMatch(predictiveTrade, /realTradeConfirmed|confirmReal/);
+  assert.match(predictiveTrade, /accountType !== cfg.accountMode/);
+  assert.match(injector, /if \(this\._isPredictiveModeExclusive\(\) \|\| !\(this\.config\?\.autoTrade && frameHasTradeUI\(\)\)\) return;/);
+  assert.match(injector, /if \(!this\.config\.autoTrade \|\| this\._isPredictiveModeExclusive\(\)\) continue;/);
+});
+
+
+test('clears stale model warm-up after a prolonged quote interruption', () => {
+  const { engine, posted } = makeEngine({ minSamples: 30 });
+  for (let i = 1; i <= 30; i++) tick(engine, 'EURCHF_otc', i * 1000, 0.95 + i * 0.00001);
+  assert.equal(engine.series.get('EURCHF_OTC').length, 30);
+  tick(engine, 'EURCHF_otc', 61000, 0.951);
+  assert.equal(engine.series.get('EURCHF_OTC').length, 1);
+  const warmup = posted.filter(x => x.type === 'POROBOT_PREDICTIVE_WARMUP').slice(-1)[0];
+  assert.equal(warmup.samples, 1);
+  assert.equal(warmup.price, 0.951);
+});
+
+test('ignores out-of-order and duplicate timestamps', () => {
+  const { engine } = makeEngine({ minSamples: 30 });
+  assert.ok(tick(engine, 'EURGBP_otc', 1000, 0.85) === null);
+  assert.equal(tick(engine, 'EURGBP_otc', 1000, 0.86), null);
+  assert.equal(tick(engine, 'EURGBP_otc', 900, 0.87), null);
+  assert.equal(engine.series.get('EURGBP_OTC').length, 1);
+});
+
+
+test('routes quotes and predictive state through one elected frame across all_frames', () => {
+  const root = path.join(__dirname, '..');
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+  const mainWorld = manifest.content_scripts.find(x => x.world === 'MAIN');
+  assert.equal(mainWorld.all_frames, true);
+  assert.deepEqual(mainWorld.js.slice(0, 2), ['predictive-engine.js', 'inject.js']);
+
+  const injector = fs.readFileSync(path.join(root, 'inject.js'), 'utf8');
+  const content = fs.readFileSync(path.join(root, 'content.js'), 'utf8');
+  const background = fs.readFileSync(path.join(root, 'background.js'), 'utf8');
+  const engine = fs.readFileSync(path.join(root, 'predictive-engine.js'), 'utf8');
+
+  assert.match(injector, /PT4_PREDICTIVE_TICK_RELAY/);
+  assert.match(injector, /PT4_PREDICTIVE_FRAME_CLAIM/);
+  assert.match(injector, /PT4_PREDICTIVE_TICK/);
+  assert.match(injector, /if \(this\.predictiveConfig\.enabled\) claimPrimaryEngine\(\)/);
+  assert.match(engine, /data\.type !== 'PT4_PREDICTIVE_TICK'/);
+  assert.doesNotMatch(engine, /data\.type !== 'POROBOT_WS_PRICE'/);
+  assert.match(content, /POROBOT_PREDICTIVE_UPDATE/);
+  assert.match(content, /POROBOT_PREDICTIVE_EVENT/);
+  assert.match(content, /PT4_PREDICTIVE_CONFIG_BROADCAST/);
+  assert.match(content, /PT4_PREDICTIVE_RESTORE_BROADCAST/);
+  assert.match(background, /PT4_PREDICTIVE_CONFIG_BROADCAST/);
+  assert.match(background, /PT4_PREDICTIVE_RESTORE_BROADCAST/);
+});
+
+
+test('only coordinator-routed ticks enter the Predictive Engine', () => {
+  const { engine, window, listeners } = makeEngine({ minSamples: 30 });
+  const handlers = listeners.message || [];
+  assert.ok(handlers.length >= 2, 'configuration and quote listeners must be installed');
+  const dispatch = data => handlers.forEach(handler => handler({ source: window, data }));
+  dispatch({ type: 'POROBOT_WS_PRICE', asset: 'EURUSD_OTC', price: 1.1, timestamp: 1000 });
+  assert.equal(engine.series.size, 0, 'raw per-frame WebSocket events must not create local histories');
+  dispatch({ type: 'PT4_PREDICTIVE_TICK', tick: { asset: 'EURUSD_OTC', price: 1.1, timestamp: 1000 } });
+  assert.equal(engine.series.get('EURUSD_OTC').length, 1, 'the elected owner ingests the routed tick');
+});
+
+
+test('Predictive quote/statistics owner is the top frame and trade forecast is relayed separately', () => {
+  const root = path.join(__dirname, '..');
+  const engine = fs.readFileSync(path.join(root, 'predictive-engine.js'), 'utf8');
+  const injector = fs.readFileSync(path.join(root, 'inject.js'), 'utf8');
+  assert.match(engine, /root !== root\.top/);
+  assert.doesNotMatch(engine, /root\.__poCore\.onPredictiveForecast\(result\)/);
+  assert.match(injector, /PT4_PREDICTIVE_TRADE_FORECAST/);
+  assert.match(injector, /One stable quote\/statistics owner: the top-frame Predictive Engine/);
+  assert.match(injector, /PT4_PREDICTIVE_TICK_RELAY/);
+});
+
+
+test('Predictive OTC refresh initializes its asset list before catalog iteration', () => {
+  const injector = fs.readFileSync(path.join(__dirname, '..', 'inject.js'), 'utf8');
+  const start = injector.indexOf('_refreshMultiPairs(force, predictiveOnly)');
+  const end = injector.indexOf('_getTradeDirection(', start);
+  assert.ok(start >= 0 && end > start, 'multi-pair refresh method must exist');
+  const method = injector.slice(start, end);
+  assert.match(method, /const availablePredictiveAssets = \[\];/);
+  assert.ok(method.indexOf('const availablePredictiveAssets = [];') < method.indexOf('availablePredictiveAssets.push(normalized)'));
+  assert.ok(method.indexOf('availablePredictiveAssets.push(normalized)') < method.indexOf('POROBOT_PREDICTIVE_ASSETS'));
+});

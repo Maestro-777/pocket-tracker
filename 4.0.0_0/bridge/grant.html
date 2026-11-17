@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>PocketOption Signal — доступ к сайтам</title>
+<link rel="stylesheet" href="grant.css">
+</head>
+<body>
+  <main class="card">
+    <img src="../icons/icon64.png" alt="" width="64" height="64">
+    <h1>PocketOption Signal для Windows</h1>
+    <p>Приложение для Windows подключено. Чтобы бот появлялся на зеркалах Pocket Option,
+       разрешите расширению работать на всех сайтах. Оверлей включается
+       только когда переключатель в приложении стоит в положении ВКЛ.</p>
+    <p class="status">Пока лицензия активна, расширение раз в минуту передаёт на pocketoption-signal.online
+       открытые пары, тип счёта (демо/реальный) и результаты сделок. Firefox спросит об этом отдельно;
+       без согласия бот работает, статистика не отправляется.</p>
+    <button id="grant" type="button">Разрешить доступ</button>
+    <p id="status" class="status"></p>
+  </main>
+  <script src="grant.js"></script>
+</body>
+</html>
