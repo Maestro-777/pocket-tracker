@@ -3911,6 +3911,13 @@
                     }
                     continue;
                 }
+                if (accountType === 'real' && this.config.realTradeConfirmed !== true) {
+                    if (!this._multiRealWarned) {
+                        this._multiRealWarned = true;
+                        this.log('⛔ Мульти-пары на REAL заблокированы: сначала подтвердите запуск реальной торговли в интерфейсе.');
+                    }
+                    continue;
+                }
                 if (!isFinite(amount) || amount <= 0) continue;
                 if (balance != null && balance + 1e-9 < amount) {
                     this.log('⛔ [' + asset + '] недостаточно средств для ставки $' + amount.toFixed(2));
