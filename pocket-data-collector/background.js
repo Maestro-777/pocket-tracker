@@ -100,6 +100,9 @@ async function storeTicks(tabId, ticks) {
   await putMany([...updates.values()]);
 }
 function detectLayout(rows) {
+  if (rows.some(r => r && !Array.isArray(r) && typeof r === "object" &&
+    (r.open != null || r.o != null) && (r.high != null || r.h != null) &&
+    (r.low != null || r.l != null) && (r.close != null || r.c != null))) return {objectRows:true};
   let ohlc=0,ochl=0,checked=0;
   for(const r of rows.slice(0,60)){
     if(!Array.isArray(r)||r.length<5)continue;
@@ -124,7 +127,7 @@ async function storeHistory(payload) {
   const asset=normAsset(data.asset),out=[];
   for(const row of rows){
     let c=null;
-    if(Array.isArray(row)&&row.length>=5){
+    if(Array.isArray(row)&&row.length>=5&&!layout.objectRows){
       c={time:epochMs(row[0]),open:Number(row[layout.o]),high:Number(row[layout.h]),low:Number(row[layout.l]),close:Number(row[layout.c]),ticks:0,source:"history"};
     }else if(row&&typeof row==="object"){
       c={time:epochMs(row.time??row.t??row.ts),open:Number(row.open??row.o),high:Number(row.high??row.h),low:Number(row.low??row.l),close:Number(row.close??row.c),ticks:0,source:"history"};
@@ -156,9 +159,8 @@ function getStatus(tabId) {
   const s=getState(tabId);
   const frames=Object.values(s.frameStates);
   const open=frames.some(x=>x.openSockets>0);
-  const recent=frames.some(x=>Date.now()-x.lastEventAt<20000);
   return {
-    connected:open&&recent,
+    connected:open,
     sockets:frames.reduce((n,x)=>n+(x.openSockets||0),0),
     events:s.events,ticks:s.ticks,pair:s.pair,balance:s.balance,
     balanceSource:s.balanceSource,accountType:s.accountType,
@@ -177,6 +179,8 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
       const f=s.frameStates[key] ||= {openSockets:0,lastEventAt:0};
       if(msg.kind==="SOCKET"){
         f.openSockets=msg.payload?.openSockets ?? (msg.payload?.state==="open"?1:0);
+        f.lastSocketAt=Date.now();
+        s.lastEventAt=f.lastSocketAt;
       }else if(msg.kind==="PAGE_STATE"){
         if(msg.isTop){
           const p=msg.payload||{};
