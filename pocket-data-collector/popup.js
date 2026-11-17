@@ -68,6 +68,25 @@ $("analyze").addEventListener("click",async()=>{
     }
   }catch(e){$("analysis").textContent=e.message;}
 });
+$("detectSignal").addEventListener("click",async()=>{
+  try{
+    const candles=await getData();
+    if(candles.length<100){
+      $("signalResult").textContent="Для оценки исходов на экспирации 10 секунд пока мало истории. Продолжайте собирать 5-секундные свечи.";
+      return;
+    }
+    const expirySec=Math.max(1,Math.min(300,Number($("expirySec").value)||10));
+    const minSamples=Math.max(5,Math.min(200,Number($("minSamples").value)||20));
+    const r=PocketCollectorEngine.evaluateExpiry(candles,{expirySec,minSamples,threshold:Number($("threshold").value)});
+    if(r.status!=="ready"){
+      $("signalResult").textContent=r.message||"Недостаточно данных для сигнала.";
+      return;
+    }
+    const c=r.chosen;
+    const direction=r.signal==="UP"?"ВВЕРХ":r.signal==="DOWN"?"ВНИЗ":"НЕТ СИГНАЛА";
+    $("signalResult").textContent="Результат: "+direction+". Паттерн: "+c.patternLength+" свечей (подобран автоматически). Экспирация: "+r.expirySec+" сек. Исторических аналогов: "+c.samples+"; вверх: "+c.up+", вниз: "+c.down+", без изменения: "+c.flat+". Доля верного направления среди ненулевых исходов: "+(c.winRate*100).toFixed(1)+"%. Порог сходства: "+r.threshold+"%. "+r.disclaimer+" Автоисполнение ордеров пока выключено.";
+  }catch(e){$("signalResult").textContent=e.message;}
+});
 $("exportCsv").addEventListener("click",async()=>{
   try{
     const candles=await getData();
