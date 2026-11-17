@@ -44,6 +44,8 @@ test('creates five immutable-horizon forecasts with all six models', () => {
     const row = forecast.horizons[horizon];
     for (const model of ['linear','exponential','polynomial','momentum','cyclical','ensemble']) {
       assert.ok(Number.isFinite(row.models[model]), model + ' must produce a finite price');
+      assert.equal(row.modelConfidence[model], 0.5, model + ' must start with neutral confidence');
+      assert.equal(row.modelEligible[model], false, model + ' must not be eligible before evidence');
     }
     assert.equal(row.confidence, 0.5, 'untrained model confidence must remain neutral');
     assert.equal(row.eligible, false, 'untrained forecast must not pass default confidence floor');
@@ -89,6 +91,30 @@ test('exports and restores pending forecasts, price history and model statistics
   assert.equal(second.engine.restoreState(snapshot), true);
   assert.equal(second.engine.getPending().length, first.engine.getPending().length);
   assert.equal(second.engine.series.get('AUDUSD_OTC').length, 40);
+});
+
+
+test('draw outcomes are tracked separately and excluded from directional accuracy', () => {
+  const { engine } = makeEngine({ minSamples: 30 });
+  for (let i = 1; i <= 30; i++) tick(engine, 'NZDUSD_otc', i * 1000, 0.61 + i * 0.00001);
+  const first = engine.getPending().find(x => x.horizon === 60);
+  tick(engine, 'NZDUSD_otc', first.dueAt, first.entry);
+  const rows = engine.getStats('NZDUSD_otc');
+  assert.ok(rows.filter(x => x.samples > 0).every(x => x.draws === 1 && x.decisiveSamples === 0 && x.accuracy === null));
+});
+
+test('manifest and UI are wired to the existing MAIN-world quote injector', () => {
+  const root = path.join(__dirname, '..');
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+  const main = manifest.content_scripts.find(x => x.world === 'MAIN');
+  assert.ok(main);
+  assert.deepEqual(main.js.slice(0, 2), ['predictive-engine.js', 'inject.js']);
+  const content = fs.readFileSync(path.join(root, 'content.js'), 'utf8');
+  const injector = fs.readFileSync(path.join(root, 'inject.js'), 'utf8');
+  assert.match(content, /data-tab="predictive"/);
+  assert.match(content, /POROBOT_PREDICTIVE_EVENT/);
+  assert.match(injector, /onPredictiveForecast\(forecast\)/);
+  assert.match(injector, /_openPredictiveOrder\(signal, cfg\)/);
 });
 
 test('ignores out-of-order and duplicate timestamps', () => {
