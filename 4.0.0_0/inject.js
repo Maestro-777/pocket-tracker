@@ -723,7 +723,12 @@
                     if (!settings || typeof settings !== 'object') continue;
                     if (settings.chartId) window.__poChartId = String(settings.chartId);
                     const period = parsePeriodSeconds(settings.chartPeriod || settings.fastTimeframe || settings.period || 0);
-                    if (period > 0) window.__poChartPeriodSec = period;
+                    if (period > 0) {
+                        window.__poChartPeriodSec = period;
+                        if (PosChartOverlay && PosChartOverlay.enabled) {
+                            try { PosChartOverlay.scheduleSync(false); } catch (_) {}
+                        }
+                    }
                 }
                 return;
             }
@@ -735,39 +740,6 @@
 
             if (eventName === 'successopenOrder' && core._handleMultiOpen && core._handleMultiOpen(payload)) return;
             if (eventName === 'failopenOrder' && core._handleMultiFail && core._handleMultiFail(payload)) return;
-
-            // ── updateAssets: полный каталог инструментов (символ ↔ название в UI) ──
-            if (eventName === 'updateAssets') {
-                ingestAssetsCatalog(payload);
-                if (core.isRunning && core.config?.multiPairTrading) core._refreshMultiPairs(true);
-                return;
-            }
-
-            // ── updateCharts: настройки графика (период свечей S5/M1/...) ──
-            if (eventName === 'updateCharts') {
-                const rows = Array.isArray(payload) ? payload : [payload];
-                for (let i = 0; i < rows.length; i++) {
-                    const row = rows[i];
-                    if (!row) continue;
-                    if (row.chart_id || row.chartId) {
-                        window.__poChartId = String(row.chart_id || row.chartId);
-                    }
-                    let settings = row.settings;
-                    if (typeof settings === 'string') {
-                        try { settings = JSON.parse(settings); } catch (_) { settings = null; }
-                    }
-                    if (!settings || typeof settings !== 'object') continue;
-                    if (settings.chartId) window.__poChartId = String(settings.chartId);
-                    const period = parsePeriodSeconds(settings.chartPeriod || settings.fastTimeframe || settings.period || 0);
-                    if (period > 0) {
-                        window.__poChartPeriodSec = period;
-                        if (PosChartOverlay && PosChartOverlay.enabled) {
-                            try { PosChartOverlay.scheduleSync(false); } catch (_) {}
-                        }
-                    }
-                }
-                return;
-            }
 
             // PO отклонил create — стоп-спам; иногда в payload всё же есть id
             if (eventName === 'failindicator/create') {
