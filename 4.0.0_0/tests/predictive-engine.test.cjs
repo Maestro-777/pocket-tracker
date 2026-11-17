@@ -137,6 +137,8 @@ test('manifest and UI are wired to the existing MAIN-world quote injector', () =
   const predictiveTrade = injector.slice(injector.indexOf('_openPredictiveOrder(signal, cfg)'), injector.indexOf('_scanMultiPairs()'));
   assert.doesNotMatch(predictiveTrade, /realTradeConfirmed|confirmReal/);
   assert.match(predictiveTrade, /accountType !== cfg.accountMode/);
+  assert.match(injector, /if \(this\._isPredictiveModeExclusive\(\) \|\| !\(this\.config\?\.autoTrade && frameHasTradeUI\(\)\)\) return;/);
+  assert.match(injector, /if \(!this\.config\.autoTrade \|\| this\._isPredictiveModeExclusive\(\)\) continue;/);
 });
 
 
