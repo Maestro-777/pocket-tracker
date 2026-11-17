@@ -3657,7 +3657,7 @@
     if (IS_TOP) {
         window.addEventListener('message', function(e) {
             var msgType = e.data && e.data.type;
-            } else if (msgType === 'POROBOT_SCAN') {
+            if (msgType === 'POROBOT_SCAN') {
                 pt4Predictive.lastIndicator = e.data.scan || null;
                 renderPredictivePanel();
             } else if (msgType === 'POROBOT_PREDICTIVE_SIGNAL') {
@@ -3665,7 +3665,8 @@
                 appendLog('🧠 Predictive [' + (ps.asset || '?') + '] ' + (ps.direction || '—') + ' · ' + (ps.model || '') + ' · ' + Math.round((ps.confidence || 0) * 100) + '% · ' + (ps.horizonSeconds || 0) + 'с');
             } else if (msgType === 'POROBOT_PREDICTIVE_TRADE_OPEN') {
                 var pt = e.data.trade || {};
-                appendLog('🤖 Predictive trade [' + (pt.asset || '?') + '] ' + (pt.direction || '') + ' · 
+                appendLog('🤖 Predictive trade [' + (pt.asset || '?') + '] ' + (pt.direction || '') + ' · $' + (Number(pt.amount) || 0).toFixed(2));
+            } else if (msgType === 'POROBOT_PREDICTIVE_EVENT') {
                 handlePredictiveEvent(e.data);
             } else if (msgType === 'PT4_PREDICTIVE_READY') {
                 restorePredictiveState();
