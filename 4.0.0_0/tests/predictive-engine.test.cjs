@@ -223,3 +223,15 @@ test('only coordinator-routed ticks enter the Predictive Engine', () => {
   dispatch({ type: 'PT4_PREDICTIVE_TICK', tick: { asset: 'EURUSD_OTC', price: 1.1, timestamp: 1000 } });
   assert.equal(engine.series.get('EURUSD_OTC').length, 1, 'the elected owner ingests the routed tick');
 });
+
+
+test('Predictive quote/statistics owner is the top frame and trade forecast is relayed separately', () => {
+  const root = path.join(__dirname, '..');
+  const engine = fs.readFileSync(path.join(root, 'predictive-engine.js'), 'utf8');
+  const injector = fs.readFileSync(path.join(root, 'inject.js'), 'utf8');
+  assert.match(engine, /root !== root\.top/);
+  assert.doesNotMatch(engine, /root\.__poCore\.onPredictiveForecast\(result\)/);
+  assert.match(injector, /PT4_PREDICTIVE_TRADE_FORECAST/);
+  assert.match(injector, /One stable quote\/statistics owner: the top-frame Predictive Engine/);
+  assert.match(injector, /PT4_PREDICTIVE_TICK_RELAY/);
+});
