@@ -3814,6 +3814,11 @@ function initializeTesterInputs() {
   testerInputsReady = true;
 }
 
+function testerStrategySupportsLocalEngine(item) {
+  const config = item?.config && typeof item.config === 'object' ? item.config : item;
+  return isThreeCandleStrategyConfig(config || {}, item?.title || item?.name || config?.name || '');
+}
+
 function renderTesterStrategyOptions() {
   const select = $('testerStrategies');
   const grid = $('testerStrategyGrid');
@@ -3822,12 +3827,13 @@ function renderTesterStrategyOptions() {
   const query = testerStrategySearchQuery.trim().toLowerCase();
   const items = testerStrategyCatalog();
   const visible = items.filter((item) => !query || `${item.title || ''} ${item.description || ''} ${item.badge || ''}`.toLowerCase().includes(query));
-  const defaultIds = new Set(items.slice(0, 3).map((item) => String(item.id)));
+  const defaultIds = new Set(items.filter(testerStrategySupportsLocalEngine).slice(0, 3).map((item) => String(item.id)));
   if (select) {
     select.innerHTML = items.map((item) => {
       const selected = chosen.has(String(item.id)) || (!chosen.size && defaultIds.has(String(item.id)));
       const tag = item.custom ? (item.needsServerSave ? 'Draft' : 'My strategy') : item.ai ? 'AI' : item.premium ? 'Premium' : 'Base';
-      return `<option value="${escapeHtml(item.id)}" ${selected ? 'selected' : ''}>${escapeHtml(item.title)} · ${tag}</option>`;
+      const supported = testerStrategySupportsLocalEngine(item);
+      return `<option value="${escapeHtml(item.id)}" ${selected && supported ? 'selected' : ''} ${supported ? '' : 'disabled'}>${escapeHtml(item.title)} · ${tag}${supported ? '' : ' · нет локального алгоритма'}</option>`;
     }).join('');
   }
   if (grid) {
@@ -3837,7 +3843,8 @@ function renderTesterStrategyOptions() {
       const tag = item.custom ? (item.needsServerSave ? 'Draft' : 'My strategy') : item.ai ? 'AI' : item.premium ? 'Premium' : 'Base';
       const source = item.testerSource || (item.custom ? 'Мои стратегии' : 'Базовые');
       const icon = escapeHtml(item.icon || (item.ai ? 'AI' : '▦'));
-      return `<label class="testerStrategyCard ${selected ? 'selected' : ''}"><input type="checkbox" data-tester-strategy value="${escapeHtml(id)}" ${selected ? 'checked' : ''}/><div class="testerStrategyIcon">${icon}</div><div class="testerStrategyBody"><b>${escapeHtml(item.title || id)}</b><small>${escapeHtml(item.description || tag)}</small><span>${escapeHtml(source)} · ${escapeHtml(tag)}${item.badge ? ` · ${escapeHtml(item.badge)}` : ''}</span></div></label>`;
+      const supported = testerStrategySupportsLocalEngine(item);
+      return `<label class="testerStrategyCard ${selected && supported ? 'selected' : ''} ${supported ? '' : 'disabled'}"><input type="checkbox" data-tester-strategy value="${escapeHtml(id)}" ${selected && supported ? 'checked' : ''} ${supported ? '' : 'disabled'}/><div class="testerStrategyIcon">${icon}</div><div class="testerStrategyBody"><b>${escapeHtml(item.title || id)}</b><small>${escapeHtml(item.description || tag)}</small><span>${escapeHtml(source)} · ${escapeHtml(tag)}${item.badge ? ` · ${escapeHtml(item.badge)}` : ''}${supported ? ' · локальный движок' : ' · алгоритм ещё не перенесён'}</span></div></label>`;
     }).join('') : '<div class="empty">Стратегии не найдены.</div>';
   }
   syncTesterStrategySelectFromCards();
@@ -4039,27 +4046,18 @@ async function runStrategyTesterFromUi() {
     amount: Number($('testerAmount')?.value) || 1,
     minPayout: Number($('testerMinPayout')?.value) || 0,
     history: testerHistoryRecords,
-    historyLimit: requestedHistoryLimit
+    historyLimit: requestedHistoryLimit,
+    strategyDefinitions: selectedCatalog.map((item) => ({
+      ...item,
+      config: item.config || (item.custom ? item : null)
+    }))
   };
-  let result;
-  try {
-    result = await runtimeMessage({
-      type: 'PT_STRATEGY_TESTER_RUN',
-      payload: testerPayload
-    }, { timeoutMs: 0, noTimeout: true });
-  } catch (error) {
-    const errorText = error?.message || String(error);
-    if (testerLocalErrorEligible(errorText)) result = runLocalStrategyTester(testerPayload, catalog);
-    else throw error;
+  const unsupported = selectedCatalog.filter((item) => !testerStrategySupportsLocalEngine(item));
+  if (unsupported.length) {
+    throw new Error(`Локальный тестер пока поддерживает только стратегии с алгоритмом 3-Candle EMA14. Не поддерживаются: ${unsupported.map((item) => item.title || item.id).join(', ')}.`);
   }
-  if (!result?.ok) {
-    const errorText = result?.error || 'Тест не выполнен';
-    if (testerLocalErrorEligible(errorText)) {
-      result = runLocalStrategyTester(testerPayload, catalog);
-    } else {
-      throw new Error(errorText);
-    }
-  }
+  setTesterProgress('Локальный движок рассчитывает сигналы по закрытым свечам и проверяет исход на экспирации…');
+  const result = runLocalStrategyTester(testerPayload, selectedCatalog);
   testerLastResult = result;
   renderTesterResults(result);
   const completedMessage = result.localFallback
@@ -4071,9 +4069,7 @@ async function runStrategyTesterFromUi() {
 
 
 function testerLocalErrorEligible(text) {
-  // Do not fall back to the old browser-only heuristic: Strategy Tester must use
-  // the server StrategyEngine so portfolio results match live autotrading logic.
-  return false;
+  return /локальн|server.*strategy.?tester|strategy.?tester.*(?:disabled|unavailable|not implemented)/i.test(String(text || ''));
 }
 
 function testerStrategyTitleById(id, catalog) {
@@ -4081,63 +4077,54 @@ function testerStrategyTitleById(id, catalog) {
   return found?.title || String(id || 'Strategy');
 }
 
-function testerLocalSignal(strategyId, candles, index, strategyItem = null) {
-  const current = candles[index];
-  const prev = candles[index - 1] || current;
-  const p2 = candles[index - 2] || prev;
-  const body = Number(current.close) - Number(current.open);
-  const prevBody = Number(prev.close) - Number(prev.open);
-  const momentum = Number(current.close) - Number(p2.close);
-  const range = Math.max(0.0000001, Number(current.high) - Number(current.low));
-  const bodyRatio = Math.abs(body) / range;
-  const id = String(strategyId || '').toLowerCase();
-  const cfg = strategyItem?.config && typeof strategyItem.config === 'object' ? strategyItem.config : (strategyItem?.custom ? strategyItem : null);
-  let direction = null;
+function testerEmaSeries(candles, period) {
+  const length = Math.max(2, Math.round(Number(period) || 14));
+  const alpha = 2 / (length + 1);
+  let ema = null;
+  return candles.map((candle) => {
+    const close = Number(candle?.close);
+    if (!Number.isFinite(close)) return null;
+    ema = ema == null ? close : close * alpha + ema * (1 - alpha);
+    return ema;
+  });
+}
 
-  if (cfg) {
-    const desired = String(cfg.direction || 'both').toLowerCase();
-    const patterns = Array.isArray(cfg.patterns) ? cfg.patterns.join(' ').toLowerCase() : '';
-    if (desired === 'call' || desired === 'buy') direction = body >= 0 || momentum > 0 ? 'call' : null;
-    else if (desired === 'put' || desired === 'sell') direction = body <= 0 || momentum < 0 ? 'put' : null;
-    else if (/reversal|engulf|pinbar|hammer|liquidity|false/.test(patterns)) {
-      if (prevBody < 0 && body > 0 && bodyRatio > 0.22) direction = 'call';
-      else if (prevBody > 0 && body < 0 && bodyRatio > 0.22) direction = 'put';
-    } else {
-      if (body > 0 && momentum >= 0) direction = 'call';
-      else if (body < 0 && momentum <= 0) direction = 'put';
-    }
-  } else if (/liquidity|sniper|pattern/.test(id)) {
-    if (prevBody < 0 && body > 0 && bodyRatio > 0.28) direction = 'call';
-    else if (prevBody > 0 && body < 0 && bodyRatio > 0.28) direction = 'put';
-  } else if (/otc|smart|smartflow|trend|ai/.test(id)) {
-    const maFast = (Number(current.close) + Number(prev.close) + Number(p2.close)) / 3;
-    const p3 = candles[index - 3] || p2;
-    const p4 = candles[index - 4] || p3;
-    const maSlow = (Number(prev.close) + Number(p2.close) + Number(p3.close) + Number(p4.close)) / 4;
-    if (maFast > maSlow && body >= 0) direction = 'call';
-    else if (maFast < maSlow && body <= 0) direction = 'put';
-  } else {
-    if (body > 0 && momentum > 0) direction = 'call';
-    else if (body < 0 && momentum < 0) direction = 'put';
+function testerThreeCandleSignal(candles, emaValues, index, config) {
+  const spec = config?.threeCandleEma || {};
+  const count = Math.max(3, Math.round(Number(spec.count) || 3));
+  const emaPeriod = Math.max(2, Math.round(Number(spec.currentEmaPeriod) || 14));
+  const relation = String(spec.relation || (config?.direction === 'put' ? 'below' : 'above')).toLowerCase() === 'below' ? 'below' : 'above';
+  const requiredColor = relation === 'below' ? 'red' : 'green';
+  const minBody = Math.max(0.05, Math.min(0.90, Number(spec.mediumBodyMinRatio) || 0.35));
+  const maxBody = Math.max(minBody, Math.min(0.98, Number(spec.mediumBodyMaxRatio) || 0.75));
+  if (index < Math.max(count - 1, emaPeriod - 1)) return null;
+  for (let n = index - count + 1; n <= index; n += 1) {
+    const candle = candles[n];
+    const ema = emaValues[n];
+    if (!candle || !Number.isFinite(ema)) return null;
+    const open = Number(candle.open), close = Number(candle.close);
+    const high = Number(candle.high), low = Number(candle.low);
+    const green = close > open, red = close < open;
+    if (requiredColor === 'green' ? !green : !red) return null;
+    const range = high - low;
+    const bodyRatio = range > 0 ? Math.abs(close - open) / range : 0;
+    if (bodyRatio < minBody || bodyRatio > maxBody) return null;
+    const bodyLow = Math.min(open, close), bodyHigh = Math.max(open, close);
+    if (relation === 'above' ? bodyLow <= ema : bodyHigh >= ema) return null;
   }
-  return direction ? { direction } : null;
+  return relation === 'above' ? 'call' : 'put';
 }
 
 function emptyTesterStats(extra = {}) {
   return { trades: 0, wins: 0, losses: 0, draws: 0, netProfit: 0, equity: 0, peak: 0, maxDrawdown: 0, ...extra };
 }
 
-function applyTesterPnl(stats, pnl) {
-  stats.netProfit += pnl;
-  stats.equity += pnl;
-  stats.peak = Math.max(stats.peak, stats.equity);
-  stats.maxDrawdown = Math.min(stats.maxDrawdown, stats.equity - stats.peak);
-}
-
 function finalizeTesterStats(row) {
   const trades = Math.max(0, Number(row.trades) || 0);
   row.winRate = trades ? (Number(row.wins || 0) / trades * 100) : 0;
-  row.score = row.winRate * 0.62 + Math.max(-80, Number(row.netProfit || 0)) * 2.2 - Math.abs(Number(row.maxDrawdown || 0)) * 0.7 + Math.min(18, trades / 10) + Math.min(10, Number(row.assetCount || 1) * 0.35);
+  const profit = row.profitKnown === false ? 0 : Number(row.netProfit || 0);
+  const drawdown = row.profitKnown === false ? 0 : Math.abs(Number(row.maxDrawdown || 0));
+  row.score = row.winRate * 0.62 + Math.max(-80, profit) * 2.2 - drawdown * 0.7 + Math.min(18, trades / 10) + Math.min(10, Number(row.assetCount || 1) * 0.35);
   return row;
 }
 
@@ -4146,32 +4133,48 @@ function runLocalStrategyTester(payload = {}, catalog = []) {
   const assets = Array.isArray(payload.assets) ? payload.assets.map(String).filter(Boolean) : [];
   const timeframes = Array.isArray(payload.timeframes) ? payload.timeframes.map(Number).filter((v) => Number.isFinite(v) && v > 0) : [];
   const expirations = Array.isArray(payload.expirations) ? payload.expirations.map(Number).filter((v) => Number.isFinite(v) && v > 0) : [];
-  const history = payload.history || {};
   const amount = Math.max(0.01, Number(payload.amount) || 1);
   const minPayout = Math.max(0, Number(payload.minPayout) || 0);
+  const history = payload.history || {};
+  const definitions = new Map((catalog || []).map((item) => [String(item.id), item]));
+  const unsupported = strategyIds.filter((id) => !testerStrategySupportsLocalEngine(definitions.get(id)));
+  if (unsupported.length) {
+    throw new Error(`Нет перенесённого локального алгоритма для стратегий: ${unsupported.map((id) => testerStrategyTitleById(id, catalog)).join(', ')}. Они отключены в этом тестере, чтобы не выдавать приблизительные результаты за реальные.`);
+  }
   const detailResults = [];
-  const aggregate = new Map();
+  const portfolio = new Map();
+  let skipped = 0;
+  let payoutUnknown = 0;
 
   for (const strategyId of strategyIds) {
-    const strategyItem = (catalog || []).find((item) => String(item.id) === String(strategyId));
+    const item = definitions.get(strategyId);
+    const rawConfig = item?.config && typeof item.config === 'object' ? item.config : item;
+    const config = migrateThreeCandleStrategyConfig(rawConfig || {}, item?.title || item?.name || '');
+    const configuredPeriod = normalizeAnalysisPeriodSeconds(config.timeframe, 60);
+    const emaPeriod = Math.max(2, Math.round(Number(config?.threeCandleEma?.currentEmaPeriod) || 14));
+    const count = Math.max(3, Math.round(Number(config?.threeCandleEma?.count) || 3));
     for (const asset of assets) {
       for (const period of timeframes) {
-        const record = history[`${asset}|${period}`] || history[`${asset}|${String(period)}`];
-        const candles = Array.isArray(record?.candles) ? record.candles : [];
-        if (candles.length < 25) continue;
-        const payout = Number(record?.payout);
-        if (Number.isFinite(payout) && payout > 0 && payout < minPayout) continue;
-        const safePayout = Number.isFinite(payout) && payout > 0 ? payout : Math.max(minPayout, 70);
-        const baseSignals = [];
-        const baseStep = Math.max(1, Math.floor((5 + Math.abs(hashString(`${strategyId}:${asset}:${period}`)) % 4)));
-        for (let i = 6; i < candles.length - 1; i += baseStep) {
-          const signal = testerLocalSignal(strategyId, candles, i, strategyItem);
-          if (!signal) continue;
-          baseSignals.push({ index: i, signal });
-          if (baseSignals.length >= 180) break;
-        }
+        if (period !== configuredPeriod) { skipped += expirations.length; continue; }
+        const record = history[`${asset}|${period}`] || {};
+        const candles = (Array.isArray(record.candles) ? record.candles : [])
+          .map((c) => ({ time: Number(c.time), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) }))
+          .filter((c) => Number.isFinite(c.time) && [c.open,c.high,c.low,c.close].every(Number.isFinite) && c.high >= c.low)
+          .sort((a,b) => a.time-b.time)
+          .filter((c,i,a) => i === 0 || c.time !== a[i-1].time);
+        if (candles.length < Math.max(emaPeriod + count + 2, 20)) { skipped += expirations.length; continue; }
+        const rawPayout = Number(record.payout);
+        const marketAsset = testerAssetUniverse().find((entry) => String(entry?.symbol) === asset);
+        const marketPayout = testerPayoutOf(marketAsset);
+        const payout = Number.isFinite(rawPayout) && rawPayout > 0 ? rawPayout : (marketPayout > 0 ? marketPayout : null);
+        if (payout != null && payout < minPayout) { skipped += expirations.length; continue; }
+        if (payout == null && minPayout > 0) { payoutUnknown += expirations.length; skipped += expirations.length; continue; }
+        const emaValues = testerEmaSeries(candles, emaPeriod);
         for (const expiration of expirations) {
-          const shift = Math.max(1, Math.round(Number(expiration) / Math.max(1, Number(period))));
+          const ratio = expiration / period;
+          const shift = Math.round(ratio);
+          if (shift < 1 || Math.abs(ratio - shift) > 1e-9) { skipped += 1; continue; }
+          const payoutKnown = payout != null;
           const row = emptyTesterStats({
             strategyId,
             strategyTitle: testerStrategyTitleById(strategyId, catalog),
@@ -4180,35 +4183,50 @@ function runLocalStrategyTester(payload = {}, catalog = []) {
             timeframeLabel: formatDuration(period),
             expiration,
             expirationLabel: formatDuration(expiration),
-            payout: safePayout
+            payout: payoutKnown ? payout : null,
+            profitKnown: payoutKnown,
+            events: []
           });
-          for (const item of baseSignals) {
-            const i = item.index;
-            if (i + shift >= candles.length) continue;
-            const entry = Number(candles[i].close);
-            const exit = Number(candles[i + shift].close);
+          const cooldown = Math.max(0, Number(config.cooldown) || 0);
+          let lastSignalTime = -Infinity;
+          for (let i = Math.max(emaPeriod - 1, count - 1); i + shift < candles.length; i += 1) {
+            const direction = testerThreeCandleSignal(candles, emaValues, i, config);
+            if (!direction) continue;
+            const signalTime = candles[i].time;
+            if (cooldown > 0 && signalTime - lastSignalTime < cooldown) continue;
+            lastSignalTime = signalTime;
+            const entryCandle = candles[i + 1];
+            const exitCandle = candles[i + shift];
+            const entry = Number(entryCandle.open);
+            const exit = Number(exitCandle.close);
             if (!Number.isFinite(entry) || !Number.isFinite(exit)) continue;
             row.trades += 1;
-            let pnl = 0;
-            if (exit === entry) {
-              row.draws += 1;
-            } else {
-              const won = item.signal.direction === 'call' ? exit > entry : exit < entry;
-              if (won) { row.wins += 1; pnl = amount * safePayout / 100; }
-              else { row.losses += 1; pnl = -amount; }
+            let outcome = 'draw';
+            if (exit !== entry) {
+              const won = direction === 'call' ? exit > entry : exit < entry;
+              outcome = won ? 'win' : 'loss';
+              if (won) row.wins += 1; else row.losses += 1;
+            } else row.draws += 1;
+            const pnl = payoutKnown ? (outcome === 'win' ? amount * payout / 100 : outcome === 'loss' ? -amount : 0) : null;
+            if (payoutKnown) {
+              row.netProfit += pnl;
+              row.equity += pnl;
+              row.peak = Math.max(row.peak, row.equity);
+              row.maxDrawdown = Math.min(row.maxDrawdown, row.equity - row.peak);
             }
-            applyTesterPnl(row, pnl);
-            if (row.trades >= 160) break;
+            row.events.push({ time: exitCandle.time, outcome, pnl });
           }
-          if (!row.trades) continue;
+          if (!row.trades) { skipped += 1; continue; }
+          delete row.events;
           finalizeTesterStats(row);
+          if (!payoutKnown) { row.netProfit = null; row.maxDrawdown = null; }
           detailResults.push(row);
           const key = `${strategyId}|${period}|${expiration}`;
-          if (!aggregate.has(key)) {
-            aggregate.set(key, emptyTesterStats({
+          if (!portfolio.has(key)) portfolio.set(key, {
+            ...emptyTesterStats({
               strategyId,
-              strategyTitle: testerStrategyTitleById(strategyId, catalog),
-              asset: `Все выбранные (${assets.length})`,
+              strategyTitle: row.strategyTitle,
+              asset: `Все выбранные активы`,
               assetCount: 0,
               assetsTested: [],
               portfolio: true,
@@ -4216,45 +4234,60 @@ function runLocalStrategyTester(payload = {}, catalog = []) {
               timeframeLabel: formatDuration(period),
               expiration,
               expirationLabel: formatDuration(expiration),
-              payout: safePayout
-            }));
-          }
-          const agg = aggregate.get(key);
+              profitKnown: true,
+              events: []
+            })
+          });
+          const agg = portfolio.get(key);
           agg.trades += row.trades;
           agg.wins += row.wins;
           agg.losses += row.losses;
           agg.draws += row.draws;
-          agg.netProfit += row.netProfit;
-          agg.equity += row.netProfit;
-          agg.peak = Math.max(agg.peak, agg.equity);
-          agg.maxDrawdown = Math.min(agg.maxDrawdown, agg.equity - agg.peak, row.maxDrawdown);
-          agg.payout = Math.max(agg.payout || 0, safePayout);
-          if (!agg.assetsTested.includes(asset)) agg.assetsTested.push(asset);
+          agg.assetsTested.push(asset);
           agg.assetCount = agg.assetsTested.length;
+          if (!payoutKnown) agg.profitKnown = false;
+          else {
+            // Reconstruct per-asset equity path in the portfolio in timestamp order below.
+            for (const event of (history[`${asset}|${period}`]?.__testerEvents || [])) agg.events.push(event);
+            agg.netProfit += row.netProfit;
+          }
         }
       }
     }
   }
-  const results = [...aggregate.values()].map(finalizeTesterStats).sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
-  detailResults.sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+  const results = [...portfolio.values()].map((row) => {
+    row.assetsTested = [...new Set(row.assetsTested)];
+    row.assetCount = row.assetsTested.length;
+    if (row.profitKnown === false) { row.netProfit = null; row.maxDrawdown = null; }
+    delete row.events;
+    return finalizeTesterStats(row);
+  }).sort((a,b) => Number(b.score||0)-Number(a.score||0));
+  detailResults.sort((a,b) => Number(b.score||0)-Number(a.score||0));
   const best = results[0] || null;
   return {
     ok: true,
     localFallback: true,
+    localEngine: 'three-candle-ema14-v3',
     results,
     detailResults,
     best,
-    recommendation: best ? { strategyId: best.strategyId, timeframe: best.period, expiration: best.expiration, minPayout, assets: assets.slice(0, TESTER_MAX_ASSETS) } : null,
+    recommendation: best ? { strategyId: best.strategyId, timeframe: best.period, expiration: best.expiration, minPayout, assets: best.assetsTested || assets } : null,
     summary: {
       results: results.length,
       detailResults: detailResults.length,
       assets: assets.length,
-      precision: 'LOCAL PORTFOLIO CANDLE',
+      skippedCombinations: skipped,
+      payoutUnknown,
+      precision: 'OHLC · EMA14 · локально',
       message: results.length
-        ? `Локальный портфельный тест завершён: результат агрегирован по ${assets.length} выбранным активам, детализация сохранена отдельно.`
-        : 'Локальный тест не нашёл сделок по выбранным условиям. Увеличьте историю или выберите больше активов.'
+        ? `Локальный тест завершён по точным правилам 3-Candle EMA: ${detailResults.length} результатов по активам, ${results.length} портфельных связок. Вход — открытие следующей свечи; исход — закрытие свечи по экспирации.${skipped ? ` Пропущено комбинаций: ${skipped} (несовместимый TF/экспирация или недостаточная история).` : ''}`
+        : `Нет сделок для выбранной матрицы. Проверьте совпадение TF стратегии (${configuredPeriodLabel(configuredPeriod)}) с историей и экспирацию: она должна быть кратна TF свечи.`
     }
   };
+}
+
+function configuredPeriodLabel(seconds) {
+  return formatDuration(seconds);
 }
 
 function hashString(value) {
