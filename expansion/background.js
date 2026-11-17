@@ -58,7 +58,7 @@ const OFFICIAL_DYNAMIC_POCKET_HOSTS = new Set();
 const SUPPORTED_POCKET_HOSTS = new Set([...STATIC_POCKET_HOSTS]);
 const CANONICAL_POCKET_ORIGIN = 'https://pocketoption.com';
 const VPN_REQUIRED_POPUP_PAGE = 'vpn-required.html';
-const PT_EXTENSION_BUILD_ID = 'expansion-local-1.0.1-schema2';
+const PT_EXTENSION_BUILD_ID = 'expansion-local-1.0.2-schema2';
 
 function affiliateTrackingState(value) {
   try {
