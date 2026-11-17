@@ -3778,16 +3778,17 @@
 
 
         _startMultiPairTrading() {
-            this._multiPairs = new Map();
-            this._multiSubscribed = new Set();
-            this._multiOpenByAsset = new Map();
-            this._multiPendingByRequestId = new Map();
-            this._multiTradesById = new Map();
-            this._multiLastEntryBar = {};
-            this._multiRequestId = Date.now() * 1000;
-            this._multiSocket = null;
+            this._multiPairs = this._multiPairs || new Map();
+            this._multiSubscribed = this._multiSubscribed || new Set();
+            this._multiOpenByAsset = this._multiOpenByAsset || new Map();
+            this._multiPendingByRequestId = this._multiPendingByRequestId || new Map();
+            this._multiTradesById = this._multiTradesById || new Map();
+            this._multiLastEntryBar = this._multiLastEntryBar || {};
+            this._multiRequestId = this._multiRequestId || (Date.now() * 1000);
+            this._multiSocket = this._multiSocket || null;
             this._multiLastRefreshAt = 0;
             this._multiModeLogged = false;
+            this._multiAccountWarned = false;
             this._refreshMultiPairs(true);
         }
 
