@@ -5,8 +5,8 @@
 
   const state = { mode: 'unknown', balance: null, source: 'none', updatedAt: 0 };
   const words = {
-    demo: /\\b(demo|practice|virtual)\\b|демо|тренировочн|учебн/i,
-    real: /\\b(real|live|เงินจริง)\\b|реальн|боев(ой|ом)/i
+    demo: /\b(demo|practice|virtual)\b|демо|тренировочн|учебн/i,
+    real: /\b(real|live)\b|реальн|боев(ой|ом)/i
   };
 
   function normalize(value) {
@@ -22,8 +22,8 @@
     if (!data || typeof data !== 'object') return null;
     const candidates = [data.accountType, data.account_type, data.accountMode,
       data.account_mode, data.mode, data.typeAccount, data.type_account];
-    for (const v of candidates) {
-      const mode = normalize(v);
+    for (const value of candidates) {
+      const mode = normalize(value);
       if (mode !== 'unknown') return { mode, source: 'platform-event' };
     }
     for (const key of ['isDemo', 'is_demo', 'demo', 'practice']) {
@@ -38,7 +38,7 @@
 
   function fromDom() {
     const path = location.pathname.toLowerCase();
-    if (/\\/(demo|practice)(\\/|$)/.test(path) || /demo-quick-high-low/.test(path)) {
+    if (/\/(demo|practice)(\/|$)/.test(path) || /demo-quick-high-low/.test(path)) {
       return { mode: 'demo', source: 'url' };
     }
     const attrs = document.querySelectorAll('[data-account-type],[data-account-mode],[data-balance-type]');
@@ -82,8 +82,8 @@
       badge.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;padding:8px 12px;border-radius:9px;font:700 12px/1.2 Arial,sans-serif;letter-spacing:.4px;box-shadow:0 4px 18px #0006;pointer-events:none';
       (document.documentElement || document.body).appendChild(badge);
     }
-    const known = state.mode !== 'unknown';
-    badge.textContent = known ? (state.mode === 'demo' ? 'PT 4 · DEMO СЧЁТ' : 'PT 4 · REAL СЧЁТ') : 'PT 4 · СЧЁТ НЕ ОПРЕДЕЛЁН';
+    badge.textContent = state.mode === 'demo' ? 'PT 4 · DEMO СЧЁТ' :
+      state.mode === 'real' ? 'PT 4 · REAL СЧЁТ' : 'PT 4 · СЧЁТ НЕ ОПРЕДЕЛЁН';
     badge.style.background = state.mode === 'demo' ? '#123c2b' : state.mode === 'real' ? '#542222' : '#30343b';
     badge.style.color = '#fff';
   }
@@ -97,9 +97,9 @@
 
   window.addEventListener('message', event => {
     if (event.source !== window || !event.data) return;
-    const d = event.data;
-    if (d.type === 'POROBOT_BALANCE' || d.type === 'POROBOT_ACCOUNT' || d.type === 'POROBOT_STATE') {
-      const candidate = fromMessage(d.payload || d.data || d);
+    const data = event.data;
+    if (data.type === 'POROBOT_BALANCE' || data.type === 'POROBOT_ACCOUNT' || data.type === 'POROBOT_STATE') {
+      const candidate = fromMessage(data.payload || data.data || data);
       if (candidate) publish(candidate);
     }
   });
@@ -116,7 +116,7 @@
   }
 
   scan();
-  const observer = new MutationObserver(() => scan());
+  const observer = new MutationObserver(scan);
   observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true,
     attributeFilter: ['data-account-type', 'data-account-mode', 'data-balance-type'] });
   setInterval(scan, 1800);
