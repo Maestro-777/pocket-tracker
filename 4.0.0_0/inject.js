@@ -3979,7 +3979,7 @@
             this.predictiveConfig.stake = Math.max(1, Math.min(100000, Number(this.predictiveConfig.stake) || 1));
             this.predictiveConfig.maxConcurrentTrades = Math.max(1, Math.min(20, parseInt(this.predictiveConfig.maxConcurrentTrades, 10) || 1));
             if (this._predictiveRefreshTimer) { clearInterval(this._predictiveRefreshTimer); this._predictiveRefreshTimer = null; }
-            if (this.predictiveConfig.enabled && this.predictiveConfig.assetMode !== 'current') {
+            if (this.predictiveConfig.enabled && this.predictiveConfig.assetMode !== 'current' && isPrimarySignalFrame()) {
                 this._refreshMultiPairs(true, true);
                 const self = this;
                 this._predictiveRefreshTimer = setInterval(function() { self._refreshMultiPairs(false, true); }, 10000);
