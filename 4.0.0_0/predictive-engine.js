@@ -128,7 +128,7 @@
       if (series.length > this.options.maxTicks) series.splice(0, series.length - this.options.maxTicks);
       this._settle(asset, timestamp, price);
       if (series.length < this.options.minSamples) {
-        if (series.length % 10 === 0) root.postMessage({ type: 'POROBOT_PREDICTIVE_WARMUP', asset, samples: series.length, required: this.options.minSamples }, '*');
+        if (series.length % 10 === 0) root.postMessage({ type: 'POROBOT_PREDICTIVE_WARMUP', asset, samples: series.length, required: this.options.minSamples, price, timestamp }, '*');
         return null;
       }
       return this.forecast(asset, timestamp);
