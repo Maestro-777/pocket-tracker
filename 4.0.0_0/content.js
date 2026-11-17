@@ -3625,6 +3625,7 @@
         var source=cfg.sourceMode;
         var indicator=pt4Predictive.lastIndicator;
         var sourceText=source==='indicators'?'Только индикаторы · сделки управляются основным модулем':source==='combined'?'Ожидание совпадения направлений':'Predictive Formula';
+        if(source==='indicators') eligible=false;
         if(source==='combined' && indicator && indicator.direction && dir.indexOf(indicator.direction)===0)sourceText='Совпадение индикаторов и прогноза';
         else if(source==='combined' && indicator && indicator.direction && dir!=='—' && indicator.direction!==dir.replace(/ .*/,''))sourceText='КОНФЛИКТ · вход запрещён';
         document.getElementById('pt4-signal-status').textContent=sourceText+(eligible?' · порог пройден':' · нет допуска');
