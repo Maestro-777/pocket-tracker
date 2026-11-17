@@ -60,10 +60,12 @@ export async function getLegalConsent() {
 }
 
 export async function acceptLegalConsent(payload = {}) {
-  if (!payload.riskAccepted || !payload.termsAccepted || !payload.privacyAccepted) throw new Error('Подтвердите риски и условия использования.');
-  const consent = { accepted: true, version: 'local-v1', acceptedAt: nowIso(), riskAccepted: true, termsAccepted: true, privacyAccepted: true };
-  await chrome.storage.local.set({ [LEGAL_KEY]: consent });
-  return consent;
+  return serializeLocalStorageMutation(async () => {
+    if (!payload.riskAccepted || !payload.termsAccepted || !payload.privacyAccepted) throw new Error('Подтвердите риски и условия использования.');
+    const consent = { accepted: true, version: 'local-v1', acceptedAt: nowIso(), riskAccepted: true, termsAccepted: true, privacyAccepted: true };
+    await chrome.storage.local.set({ [LEGAL_KEY]: consent });
+    return consent;
+  });
 }
 
 export async function getRuntimeInfo() {
@@ -71,16 +73,18 @@ export async function getRuntimeInfo() {
 }
 
 export async function bindServerAccountContext(bridgeState) {
-  const uid = uidFromBridge(bridgeState);
-  const strategies = (await read(STRATEGIES_KEY)) || [];
-  const state = makeState({
-    accountConnected: Boolean(uid), pocketUid: uid, sessionUid: uid,
-    accountMode: bridgeState?.account?.mode || null, accountKey: uid,
-    authenticated: Boolean(uid), sessionToken: uid ? 'local-owner' : null,
-    entitlement: entitlement(), strategies
+  return serializeLocalStorageMutation(async () => {
+    const uid = uidFromBridge(bridgeState);
+    const strategies = (await read(STRATEGIES_KEY)) || [];
+    const state = makeState({
+      accountConnected: Boolean(uid), pocketUid: uid, sessionUid: uid,
+      accountMode: bridgeState?.account?.mode || null, accountKey: uid,
+      authenticated: Boolean(uid), sessionToken: uid ? 'local-owner' : null,
+      entitlement: entitlement(), strategies
+    });
+    await chrome.storage.local.set({ ptServerState: state });
+    return state;
   });
-  await chrome.storage.local.set({ ptServerState: state });
-  return state;
 }
 
 export async function syncServer() {
@@ -197,39 +201,45 @@ export async function getSignalSocketTicket() {
 }
 
 export async function deleteAccountData() {
-  const keys = [
-    'ptServerState', 'ptRemoteControl', 'ptAffiliatePrepared',
-    TICKETS_KEY, STRATEGIES_KEY, TRADES_KEY, LEGAL_KEY,
-    'poTradeLedger', 'poRobotTradeRegistry', 'poUsageStats', 'poProfitStats',
-    'ptSignalDiagnostics', 'ptNotificationHistory', 'ptSeenServerNotifications',
-    'ptSeenServerBroadcasts', 'ptAccessNotification', 'ptLastAccessNotificationKey',
-    'ptLastFreeDailyLimitNoticeKey', 'ptTradeTesterHistory', 'ptTradeTesterResults'
-  ];
-  await chrome.storage.local.remove(keys);
-  return { ok: true, localOnly: true, consentReset: true };
+  return serializeLocalStorageMutation(async () => {
+    const keys = [
+      'ptServerState', 'ptRemoteControl', 'ptAffiliatePrepared',
+      TICKETS_KEY, STRATEGIES_KEY, TRADES_KEY, LEGAL_KEY,
+      'poTradeLedger', 'poRobotTradeRegistry', 'poUsageStats', 'poProfitStats',
+      'ptSignalDiagnostics', 'ptNotificationHistory', 'ptSeenServerNotifications',
+      'ptSeenServerBroadcasts', 'ptAccessNotification', 'ptLastAccessNotificationKey',
+      'ptLastFreeDailyLimitNoticeKey', 'ptTradeTesterHistory', 'ptTradeTesterResults'
+    ];
+    await chrome.storage.local.remove(keys);
+    return { ok: true, localOnly: true, consentReset: true };
+  });
 }
 
 export async function saveCustomStrategy(payload = {}) {
-  const list = (await read(STRATEGIES_KEY)) || [];
-  const id = String(payload.id || crypto.randomUUID());
-  const item = { ...payload, id, updatedAt: nowIso(), localOnly: true };
-  const index = list.findIndex(entry => String(entry.id) === id);
-  if (index >= 0) list[index] = item; else list.push(item);
-  await chrome.storage.local.set({ [STRATEGIES_KEY]: list });
-  const serverState = await getServerState();
-  serverState.strategies = list;
-  await chrome.storage.local.set({ ptServerState: serverState });
-  return { ok: true, strategy: item, strategies: list, serverState };
+  return serializeLocalStorageMutation(async () => {
+    const list = (await read(STRATEGIES_KEY)) || [];
+    const id = String(payload.id || crypto.randomUUID());
+    const item = { ...payload, id, updatedAt: nowIso(), localOnly: true };
+    const index = list.findIndex(entry => String(entry.id) === id);
+    if (index >= 0) list[index] = item; else list.push(item);
+    await chrome.storage.local.set({ [STRATEGIES_KEY]: list });
+    const serverState = await getServerState();
+    serverState.strategies = list;
+    await chrome.storage.local.set({ ptServerState: serverState });
+    return { ok: true, strategy: item, strategies: list, serverState };
+  });
 }
 
 export async function deleteCustomStrategy(strategyId) {
-  const id = String(strategyId || '');
-  const list = ((await read(STRATEGIES_KEY)) || []).filter(item => String(item.id) !== id);
-  await chrome.storage.local.set({ [STRATEGIES_KEY]: list });
-  const serverState = await getServerState();
-  serverState.strategies = list;
-  await chrome.storage.local.set({ ptServerState: serverState });
-  return { ok: true, deleted: true, strategyId: id, strategies: list, serverState };
+  return serializeLocalStorageMutation(async () => {
+    const id = String(strategyId || '');
+    const list = ((await read(STRATEGIES_KEY)) || []).filter(item => String(item.id) !== id);
+    await chrome.storage.local.set({ [STRATEGIES_KEY]: list });
+    const serverState = await getServerState();
+    serverState.strategies = list;
+    await chrome.storage.local.set({ ptServerState: serverState });
+    return { ok: true, deleted: true, strategyId: id, strategies: list, serverState };
+  });
 }
 
 export async function activateTrial() { return { ok: true, localOnly: true, entitlement: entitlement(), message: 'Локальный режим активен; пробный период не требуется.' }; }
