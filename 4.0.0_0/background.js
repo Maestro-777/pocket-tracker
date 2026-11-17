@@ -175,7 +175,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 url: panelUrl,
                 type: 'popup',
                 width: 402,
-                height: 760,
+                height: 860,
                 focused: true
             });
             chrome.storage.local.set({ panelWindowId: win.id });
