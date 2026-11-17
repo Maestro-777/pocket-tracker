@@ -7,7 +7,7 @@
   // Build-aware takeover marker: deduplicate the same injected build, but allow a
   // newer extension build to replace an invalidated isolated-world controller in an
   // already-open Pocket tab without waiting for a manual page reload.
-  const PT_CONTENT_BUILD_ID = '2.0.50-statusbar-recovery-20260916';
+  const PT_CONTENT_BUILD_ID = 'expansion-local-1.0.3-audit1';
   if (window.__PO_BRIDGE_CONTENT_BUILD_ID__ === PT_CONTENT_BUILD_ID) return;
   window.__PO_BRIDGE_CONTENT_BUILD_ID__ = PT_CONTENT_BUILD_ID;
 
