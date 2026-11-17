@@ -4115,6 +4115,24 @@ function testerThreeCandleSignal(candles, emaValues, index, config) {
   return relation === 'above' ? 'call' : 'put';
 }
 
+function testerLatestContinuousCandles(candles, period) {
+  const ordered = Array.isArray(candles) ? candles : [];
+  if (ordered.length <= 1) return ordered;
+  const continuous = [ordered[ordered.length - 1]];
+  const maxGap = Math.max(60, Number(period) * 8);
+  for (let index = ordered.length - 2; index >= 0; index -= 1) {
+    const older = ordered[index];
+    const newer = continuous[0];
+    const gap = newer.time - older.time;
+    const reference = Math.max(Math.abs(newer.open), Math.abs(newer.close), 1e-9);
+    const priceJump = Math.abs(older.close - newer.open) / reference;
+    if (gap <= 0 || gap > maxGap || priceJump > 0.35) break;
+    continuous.unshift(older);
+    if (continuous.length >= 5000) break;
+  }
+  return continuous;
+}
+
 function emptyTesterStats(extra = {}) {
   return { trades: 0, wins: 0, losses: 0, draws: 0, netProfit: 0, equity: 0, peak: 0, maxDrawdown: 0, ...extra };
 }
@@ -4157,15 +4175,18 @@ function runLocalStrategyTester(payload = {}, catalog = []) {
       for (const period of timeframes) {
         if (period !== configuredPeriod) { skipped += expirations.length; continue; }
         const record = history[`${asset}|${period}`] || {};
-        const candles = (Array.isArray(record.candles) ? record.candles : [])
-          .map((c) => ({ time: Number(c.time), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) }))
-          .filter((c) => Number.isFinite(c.time)
-            && [c.open,c.high,c.low,c.close].every(Number.isFinite)
-            && c.high >= c.low
-            && c.high >= Math.max(c.open, c.close)
-            && c.low <= Math.min(c.open, c.close))
-          .sort((a,b) => a.time-b.time)
-          .filter((c,i,a) => i === 0 || c.time !== a[i-1].time);
+        const candles = testerLatestContinuousCandles(
+          (Array.isArray(record.candles) ? record.candles : [])
+            .map((c) => ({ time: Number(c.time), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) }))
+            .filter((c) => Number.isFinite(c.time)
+              && [c.open,c.high,c.low,c.close].every(Number.isFinite)
+              && c.high >= c.low
+              && c.high >= Math.max(c.open, c.close)
+              && c.low <= Math.min(c.open, c.close))
+            .sort((a,b) => a.time-b.time)
+            .filter((c,i,a) => i === 0 || c.time !== a[i-1].time),
+          period
+        );
         if (candles.length < Math.max(emaPeriod + count + 2, 20)) { skipped += expirations.length; continue; }
         const rawPayout = Number(record.payout);
         const marketAsset = testerAssetUniverse().find((entry) => String(entry?.symbol) === asset);
