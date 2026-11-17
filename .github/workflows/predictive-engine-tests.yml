@@ -1,0 +1,24 @@
+name: Predictive Engine Tests
+on:
+  push:
+    branches:
+      - feature/pocket-tracker-4.0
+  pull_request:
+    branches:
+      - feature/pocket-tracker-4.0
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax check
+        run: |
+          node --check 4.0.0_0/predictive-engine.js
+          node --check 4.0.0_0/content.js
+          node --check 4.0.0_0/inject.js
+      - name: Predictive engine tests
+        run: node --test 4.0.0_0/tests/predictive-engine.test.cjs
