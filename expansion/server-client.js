@@ -127,7 +127,7 @@ export async function requestTradePermit(payload = {}) {
     const amount = Number(payload.amount);
     const duration = Number(payload.duration);
     const requestId = String(payload.requestId || '').trim();
-    if (!asset || !action || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(duration) || duration < 1 || duration > 86400 || !requestId) {
+    if (!asset || !action || !Number.isFinite(amount) || amount <= 0 || !Number.isInteger(duration) || duration < 1 || duration > 86400 || !requestId) {
       return { ok: false, allowed: false, reason: 'INVALID_TRADE_PAYLOAD', error: 'Некорректные параметры сделки: проверьте актив, направление, сумму, экспирацию и ID запроса.' };
     }
 
@@ -165,7 +165,7 @@ export async function consumeTradeExecutionTicket(ticket) {
     if (!uid || String(p.accountUid || '') !== uid) {
       return { ok: false, error: 'Аккаунт Pocket Option изменился после проверки допуска. Запросите новый билет.' };
     }
-    if (!String(p.asset || '').trim() || !action || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(duration) || duration < 1 || duration > 86400) {
+    if (!String(p.asset || '').trim() || !action || !Number.isFinite(amount) || amount <= 0 || !Number.isInteger(duration) || duration < 1 || duration > 86400) {
       return { ok: false, error: 'Параметры локального билета сделки повреждены или некорректны.' };
     }
     return { ok: true, permit: {
@@ -234,7 +234,7 @@ export async function generateAffiliatePublic() { throw new Error('Партнё�
 export async function openPreparedAffiliatePublic() { throw new Error('Партнёрские функции отсутствуют в автономной версии.'); }
 export async function openAffiliatePublic() { throw new Error('Партнёрские функции отсутствуют в автономной версии.'); }
 export async function openAdmin() { throw new Error('Админ-панель пока не реализована в автономной версии.'); }
-export async function openUpdate() { return { ok: true, localOnly: true }; }
+export async function openUpdate() { return { ok: false, localOnly: true, unavailable: true, message: 'Автообновление отключено в автономной версии. Установите новую папку expansion вручную.' }; }
 export function humanReason(reason) { return String(reason || 'Операция недоступна в локальном режиме.'); }
 export function compareVersions(a, b) { const x=String(a||'0').split('.').map(Number), y=String(b||'0').split('.').map(Number); for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1;} return 0; }
 export async function initializeServerClient() {
