@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pocket Tracker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Локальные индикаторы, свечной анализ, журнал и DEMO-only автоторговля для Pocket Option.",
   "permissions": [
     "storage",
