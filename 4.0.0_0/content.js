@@ -1158,6 +1158,7 @@
         <label>Макс. одновременных сделок<input id="pt4-max-trades" class="pt4-input" type="number" min="1" max="20" step="1" value="1"></label>
         <label class="pt4-check"><input id="pt4-auto-trade" type="checkbox"> Автоторговля по прогнозу</label>
       </div>
+      <div class="pt4-footnote">Predictive Formula и Combined отключают отдельные автосделки индикаторов. Для Combined нужен активный сканер индикаторов; конфликт направлений блокирует вход.</div>
       <div class="pt4-actions"><button id="pt4-save" type="button">СОХРАНИТЬ НАСТРОЙКИ</button><span id="pt4-signal-status">Сигналы не активны</span></div>
     </div>
     <div class="pt4-card">
