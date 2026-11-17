@@ -3969,13 +3969,13 @@
         setPredictiveConfig(config) {
             const defaults = {
                 enabled: true, sourceMode: 'formula', assetMode: 'all', selectedAsset: '*',
-                horizonSeconds: 60, model: 'auto', confidenceFloor: 0.52,
+                horizonSeconds: 60, model: 'auto', confidenceFloor: 0.60,
                 autoTrade: false, accountMode: 'demo', stake: 1, maxConcurrentTrades: 1
             };
             this.predictiveConfig = Object.assign({}, defaults, config || {});
             this.predictiveConfig.horizonSeconds = [60,120,180,240,300].includes(Number(this.predictiveConfig.horizonSeconds))
                 ? Number(this.predictiveConfig.horizonSeconds) : 60;
-            this.predictiveConfig.confidenceFloor = Math.max(0.5, Math.min(0.95, Number(this.predictiveConfig.confidenceFloor) || 0.52));
+            this.predictiveConfig.confidenceFloor = Math.max(0.5, Math.min(0.95, Number(this.predictiveConfig.confidenceFloor) || 0.60));
             this.predictiveConfig.stake = Math.max(1, Math.min(100000, Number(this.predictiveConfig.stake) || 1));
             this.predictiveConfig.maxConcurrentTrades = Math.max(1, Math.min(20, parseInt(this.predictiveConfig.maxConcurrentTrades, 10) || 1));
             if (this._predictiveRefreshTimer) { clearInterval(this._predictiveRefreshTimer); this._predictiveRefreshTimer = null; }
