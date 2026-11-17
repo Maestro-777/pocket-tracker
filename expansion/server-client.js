@@ -19,7 +19,7 @@ const entitlement = () => ({
   limits: { maxAssets: null, maxDailyTrades: null, maxDevices: null },
   features: {
     ai: true, strategyBuilder: true, autoTrading: true, realTrading: true,
-    basicStrategies: true, premiumStrategies: true, strategyTester: false,
+    basicStrategies: true, premiumStrategies: true, strategyTester: true,
     remoteControl: false
   },
   devices: { used: 1, allowed: null },
@@ -188,8 +188,18 @@ export async function initializeServerClient() {
   return state;
 }
 export async function ingestServerNotifications() { return { ok: true, notifications: [], localOnly: true }; }
-export async function getStrategyTesterConfig() { throw new Error('Strategy Tester PRO требует переноса вычислительного движка в локальную версию; серверная зависимость отключена.'); }
-export async function runStrategyTester() { throw new Error('Локальный движок Strategy Tester ещё не реализован.'); }
+export async function getStrategyTesterConfig() {
+  const state = await getServerState();
+  return {
+    strategies: Array.isArray(state?.strategies) ? state.strategies : [],
+    entitlement: entitlement(),
+    localOnly: true,
+    engine: 'dashboard-local-candle-engine'
+  };
+}
+export async function runStrategyTester() {
+  throw new Error('Запускайте локальный Strategy Tester из панели расширения: расчёт выполняется в интерфейсе на загруженных свечах.');
+}
 export async function getRemoteControlLocalState() { return { enabled: false, localOnly: true, available: false, message: 'Remote Control требует отдельного сервиса и отключён.' }; }
 export async function enableRemoteControl() { throw new Error('Remote Control отключён: внешний сервер недоступен в автономной версии.'); }
 export async function disableRemoteControl() { await chrome.storage.local.remove('ptRemoteControl'); return { ok: true, localOnly: true }; }
