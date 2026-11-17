@@ -130,15 +130,34 @@ function detectLayout(rows) {
   if(ochl>0)return {o:1,h:3,l:4,c:2};
   return null;
 }
-async function storeHistory(payload) {
+async function storeHistory(tabId,payload) {
   const data=Array.isArray(payload)?payload[0]:payload;
   if(!data||!data.asset||!Array.isArray(data.history||data.data||data.candles))return 0;
   const rows=data.history||data.data||data.candles;
   const period=Number(data.period||0);
-  if(!period)return 0;
   const layout=detectLayout(rows);
-  if(!layout)return 0; // Price-only arrays are not falsely labelled OHLC.
   const asset=normAsset(data.asset),out=[];
+  if(!layout){
+    // PO history commonly arrives as [timestamp, price] or [timestamp, price, direction].
+    // Convert these observations into 5-second bars through the same tick aggregator.
+    const historicalTicks=[];
+    for(const row of rows){
+      let time=0,price=0;
+      if(Array.isArray(row)&&row.length>=2&&row.length<=3){
+        time=epochMs(row[0]);price=Number(row[1]);
+      }else if(row&&typeof row==="object"){
+        time=epochMs(row.time??row.t??row.ts);
+        price=Number(row.price??row.p??row.close??row.c);
+      }
+      if(time&&price>0)historicalTicks.push({asset,time,price});
+    }
+    if(historicalTicks.length){
+      await storeTicks(tabId,historicalTicks);
+      return historicalTicks.length;
+    }
+    return 0;
+  }
+  if(!period)return 0;
   for(const row of rows){
     let c=null;
     if(Array.isArray(row)&&row.length>=5&&!layout.objectRows){
@@ -256,7 +275,7 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
         }else if(name==="updateStream"||name==="quotes/stream"){
           const ticks=tickRows(p);await storeTicks(tabId,ticks);
         }else if(["history/list/v2","updateHistoryNew","updateHistoryNewFast","loadHistoryPeriod","loadHistoryPeriodFast"].includes(name)){
-          const n=await storeHistory(p);if(!n&&Array.isArray((Array.isArray(p)?p[0]:p)?.history))s.lastError="Получена история без подтверждённых OHLC-полей; тики продолжат формировать 5s свечи.";
+          const n=await storeHistory(tabId,p);if(!n&&Array.isArray((Array.isArray(p)?p[0]:p)?.history))s.lastError="Получена история без подтверждённых OHLC-полей; тики продолжат формировать 5s свечи.";
         }
       }else if(msg.kind==="BRIDGE_ERROR"){s.lastError=msg.payload?.message||"Ошибка bridge";}
       return {ok:true};
