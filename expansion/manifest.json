@@ -3,7 +3,7 @@
   "name": "Pocket TRADE ROBOT — Expansion",
   "short_name": "PT ROBOT",
   "description": "Автономная персональная версия Pocket TRADE ROBOT с локальным хранением данных.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minimum_chrome_version": "120",
   "default_locale": "ru",
   "action": {
