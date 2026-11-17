@@ -130,6 +130,13 @@ test('manifest and UI are wired to the existing MAIN-world quote injector', () =
   assert.match(content, /POROBOT_PREDICTIVE_EVENT/);
   assert.match(injector, /onPredictiveForecast\(forecast\)/);
   assert.match(injector, /_openPredictiveOrder\(signal, cfg\)/);
+  assert.match(injector, /_refreshMultiPairs\(force, predictiveOnly\)/);
+  assert.match(injector, /POROBOT_PREDICTIVE_ASSETS/);
+  assert.match(injector, /const tradeDirection = signal.direction/);
+  assert.match(injector, /if \(trade.source !== 'predictive'\) this\._recordReverseResult\(result\)/);
+  const predictiveTrade = injector.slice(injector.indexOf('_openPredictiveOrder(signal, cfg)'), injector.indexOf('_scanMultiPairs()'));
+  assert.doesNotMatch(predictiveTrade, /realTradeConfirmed|confirmReal/);
+  assert.match(predictiveTrade, /accountType !== cfg.accountMode/);
 });
 
 
