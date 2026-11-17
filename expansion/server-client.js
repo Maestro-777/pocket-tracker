@@ -91,9 +91,9 @@ export async function getServerState({ sync = false } = {}) {
   if (sync) return syncServer();
   const saved = await read('ptServerState');
   const bridge = await read('poBridgeState');
-  // An existing bridge snapshot is authoritative even when uid is null;
-  // never resurrect the previous account from a cached server-state snapshot.
-  const uid = bridge && typeof bridge === 'object' ? uidFromBridge(bridge) : (saved?.pocketUid || null);
+  // The live bridge is the only authority for account identity. A cached UID
+  // must never make a disconnected or not-yet-initialized terminal look connected.
+  const uid = uidFromBridge(bridge);
   return makeState({
     ...(saved || {}), version: 2, clientBuild: BUILD, localOnly: true,
     accountConnected: Boolean(uid), pocketUid: uid, sessionUid: uid,
