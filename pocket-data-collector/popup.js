@@ -23,7 +23,9 @@ async function refresh(){
   $("balance").textContent=s.balance==null?"—":Number(s.balance).toLocaleString("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:2});
   $("accountType").textContent=(s.accountType||"тип счёта неизвестен")+(s.balanceSource?" · "+s.balanceSource:"");
   $("stored").textContent=number(s.storedCandles);
+  $("stored").title=number(s.pairCandles)+" свечей текущей пары · "+number(s.assetCount)+" пар в базе";
   $("ticks").textContent=number(s.ticks);
+  $("pairStored").textContent=number(s.pairCandles);
   $("events").textContent=number(s.events);
   if(s.lastError)$("analysis").textContent=s.lastError;
 }
@@ -51,8 +53,11 @@ $("analyze").addEventListener("click",async()=>{
       resultLimit:Number($("resultLimit").value)
     });
     $("matchCount").textContent=number(r.totalMatches)+" совпадений";
-    $("analysis").textContent="Проанализировано "+number(candles.length)+" свечей · длина паттерна "+r.patternLength+
-      " · порог сходства "+r.threshold.toFixed(0)+"%. Это поиск похожих участков, не прогноз вероятности выигрыша.";
+    if(r.status==="gaps"){ $("analysis").textContent=r.message+" Получено "+number(candles.length)+" свечей."; return; }
+    $("analysis").textContent="В выборку вошло "+number(candles.length)+" из "+number(lastStatus?.pairCandles||0)+
+      " свечей текущей пары. Проверено "+number(r.validWindows||0)+" непрерывных исторических окон; пропущено из-за разрывов: "+
+      number(r.skippedGaps||0)+". Длина паттерна: "+r.patternLength+" свечей. Порог сходства: "+
+      r.threshold.toFixed(0)+"%. Это поиск похожих участков, не прогноз вероятности выигрыша.";
     $("matches").innerHTML="";
     if(!r.matches.length){$("matches").innerHTML='<div class="empty">Совпадений выше заданного порога не найдено.</div>';return;}
     for(const m of r.matches){
@@ -75,9 +80,23 @@ $("exportCsv").addEventListener("click",async()=>{
 });
 $("exportJson").addEventListener("click",async()=>{
   try{
-    const candles=await getData();
-    if(!candles.length)throw Error("Нет свечей для экспорта.");
-    download("pocket-candles.json",JSON.stringify({exportedAt:new Date().toISOString(),candles},null,2),"application/json");
+    const tabId=await activeTab();
+    const r=await chrome.runtime.sendMessage({type:"PDC_EXPORT",tabId,limit:100000,period:0});
+    const candles=r?.candles||[];
+    if(!candles.length)throw Error("Локальная история пуста.");
+    download("pocket-candles-all.json",JSON.stringify({exportedAt:new Date().toISOString(),count:candles.length,candles},null,2),"application/json");
+  }catch(e){$("analysis").textContent=e.message;}
+});
+$("exportAllCsv").addEventListener("click",async()=>{
+  try{
+    const tabId=await activeTab();
+    const r=await chrome.runtime.sendMessage({type:"PDC_EXPORT",tabId,limit:100000,period:0});
+    const candles=r?.candles||[];
+    if(!candles.length)throw Error("Локальная история пуста.");
+    const rows=["asset,period,time,open,high,low,close,ticks,source",...candles.map(c=>
+      [c.asset,c.period,new Date(c.time).toISOString(),c.open,c.high,c.low,c.close,c.ticks||0,c.source||""].map(v=>String(v??"").replaceAll('"','""')).map(v=>/[",\\n]/.test(v)?'"'+v+'"':v).join(",")
+    )];
+    download("pocket-candles-all.csv",rows.join("\\n"),"text/csv;charset=utf-8");
   }catch(e){$("analysis").textContent=e.message;}
 });
 refresh();setInterval(refresh,2000);
