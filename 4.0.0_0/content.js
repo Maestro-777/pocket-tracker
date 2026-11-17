@@ -3577,6 +3577,10 @@
         if(message.eventType==='forecast')handlePredictiveForecast(message.payload);
         if(message.eventType==='settled')appendLog('Predictive: проверен '+message.payload.asset+' · '+message.payload.horizon+'с · '+message.payload.actualDirection);
         if(message.eventType==='invalid')appendLog('Predictive: прогноз '+message.payload.asset+' помечен недействительным (запоздалая котировка).');
+        if(message.eventType==='settlement_batch'){
+            (message.payload.settled||[]).forEach(function(x){appendLog('Predictive: проверен '+x.asset+' · '+x.horizon+'с · '+x.actualDirection);});
+            (message.payload.invalid||[]).forEach(function(x){appendLog('Predictive: прогноз '+x.asset+' · '+x.horizon+'с недействителен (запоздалая котировка).');});
+        }
         if(message.state){
             pt4Predictive.state=message.state;
             if(!pt4Predictive.saveTimer)pt4Predictive.saveTimer=setTimeout(function(){
