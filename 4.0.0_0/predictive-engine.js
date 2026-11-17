@@ -468,7 +468,7 @@
   // This prevents each all_frames instance from building a separate history/statistics set.
   root.addEventListener('message', event => {
     const data = event.data;
-    if (!data || event.source !== root || data.type !== 'PT4_PREDICTIVE_TICK' ||
+    if (!data || event.source !== root.top || data.type !== 'PT4_PREDICTIVE_TICK' ||
         !data.tick || !data.tick.asset || !/_otc$/i.test(data.tick.asset)) return;
     const result = root.__pt4PredictiveEngine.ingest(data.tick);
     if (result) root.postMessage({ type: 'POROBOT_PREDICTIVE_UPDATE', forecast: result }, '*');
