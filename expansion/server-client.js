@@ -1,29 +1,25 @@
-import {
-  getCurrentUser, hasPermission, getLocalAccessSnapshot
-} from './local-users.js';
-
 const SUPPORT_URL = 'https://github.com/Maestro-777/pocket-tracker/issues';
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
-const BUILD = 'expansion-local-1.0.0';
+const BUILD = 'expansion-local-1.0.1-schema2';
 const LEGAL_KEY = 'expLocalLegalConsent';
 const TICKETS_KEY = 'expLocalTradeTickets';
 const STRATEGIES_KEY = 'expLocalStrategies';
 const TRADES_KEY = 'expLocalTradeReports';
 
-const entitlement = (user = null) => ({
-  plan: user ? 'LOCAL' : 'LOCAL_LOCKED',
-  premium: Boolean(user),
+const entitlement = () => ({
+  plan: 'LOCAL',
+  premium: true,
   source: 'local',
   status: 'active',
   accessState: 'LOCAL_ACTIVE',
   registrationRequired: false,
-  realTradingAllowed: Boolean(user && ['owner', 'trader'].includes(user.role)),
+  realTradingAllowed: true,
   pauseReason: null,
   expiresAt: null,
   limits: { maxAssets: null, maxDailyTrades: null, maxDevices: null },
   features: {
-    ai: Boolean(user), strategyBuilder: Boolean(user && user.role !== 'viewer'), autoTrading: Boolean(user && ['owner', 'trader'].includes(user.role)), realTrading: Boolean(user && ['owner', 'trader'].includes(user.role)),
-    basicStrategies: true, premiumStrategies: Boolean(user), strategyTester: false,
+    ai: true, strategyBuilder: true, autoTrading: true, realTrading: true,
+    basicStrategies: true, premiumStrategies: true, strategyTester: false,
     remoteControl: false
   },
   devices: { used: 1, allowed: null },
@@ -38,7 +34,7 @@ const read = async key => (await chrome.storage.local.get(key))[key];
 
 function makeState(patch = {}) {
   return {
-    version: 1, clientBuild: BUILD, online: true, serverReachable: true,
+    version: 2, clientBuild: BUILD, online: true, serverReachable: true,
     accountConnected: false, authenticated: false, lastHealthAt: nowIso(),
     lastSyncAt: nowIso(), lastError: null, sessionToken: null,
     sessionUid: null, pocketUid: null, accountMode: null, accountKey: null,
@@ -61,18 +57,17 @@ export async function acceptLegalConsent(payload = {}) {
 }
 
 export async function getRuntimeInfo() {
-  return { buildId: BUILD, extensionVersion: EXTENSION_VERSION, serverStateSchema: 1, serverStateVersion: 1, legalConsentVersion: 'local-v1', legalAccepted: (await getLegalConsent()).accepted, apiBase: 'local://extension', wsUrl: null, localOnly: true };
+  return { buildId: BUILD, extensionVersion: EXTENSION_VERSION, serverStateSchema: 2, serverStateVersion: 2, legalConsentVersion: 'local-v1', legalAccepted: (await getLegalConsent()).accepted, apiBase: 'local://extension', wsUrl: null, localOnly: true };
 }
 
 export async function bindServerAccountContext(bridgeState) {
   const uid = uidFromBridge(bridgeState);
-  const user = await getCurrentUser();
   const strategies = (await read(STRATEGIES_KEY)) || [];
   const state = makeState({
     accountConnected: Boolean(uid), pocketUid: uid, sessionUid: uid,
     accountMode: bridgeState?.account?.mode || null, accountKey: uid,
-    authenticated: Boolean(user), sessionToken: user ? `local:${user.id}` : null,
-    entitlement: entitlement(user), strategies
+    authenticated: true, sessionToken: 'local-owner',
+    entitlement: entitlement(), strategies
   });
   await chrome.storage.local.set({ ptServerState: state });
   return state;
@@ -87,22 +82,20 @@ export async function getServerState({ sync = false } = {}) {
   if (sync) return syncServer();
   const saved = await read('ptServerState');
   const bridge = await read('poBridgeState');
-  const user = await getCurrentUser();
   const uid = uidFromBridge(bridge) || saved?.pocketUid || null;
   return makeState({
-    ...(saved || {}),
+    ...(saved || {}), version: 2, clientBuild: BUILD, localOnly: true,
     accountConnected: Boolean(uid), pocketUid: uid, sessionUid: uid,
-    authenticated: Boolean(user), sessionToken: user ? `local:${user.id}` : null,
-    entitlement: entitlement(user)
+    authenticated: true, sessionToken: 'local-owner',
+    entitlement: entitlement()
   });
 }
 
 export async function getServerAccess() {
-  const user = await getCurrentUser();
   const serverState = await getServerState();
-  const access = entitlement(user);
+  const access = entitlement();
   serverState.entitlement = access;
-  return { serverState, entitlement: access, localUser: user };
+  return { serverState, entitlement: access, localUser: { id: 'local-owner', login: 'owner', role: 'owner' } };
 }
 
 export async function getReferralProgram() {
@@ -110,7 +103,6 @@ export async function getReferralProgram() {
 }
 
 export async function requestTradePermit(payload = {}) {
-  if (!await hasPermission('trade:execute')) return { ok: false, allowed: false, reason: 'LOCAL_LOGIN_REQUIRED', error: 'Войдите под пользователем с ролью owner или trader.' };
   const consent = await getLegalConsent();
   if (!consent.accepted) return { ok: false, allowed: false, reason: 'LEGAL_CONSENT_REQUIRED', error: 'Сначала подтвердите локальные условия и риски.' };
   const ticket = crypto.randomUUID() + crypto.randomUUID();
@@ -155,7 +147,6 @@ export async function deleteAccountData() {
 }
 
 export async function saveCustomStrategy(payload = {}) {
-  if (!await hasPermission('strategies:write')) throw new Error('Недостаточно прав для изменения стратегий.');
   const list = (await read(STRATEGIES_KEY)) || [];
   const id = String(payload.id || crypto.randomUUID());
   const item = { ...payload, id, updatedAt: nowIso(), localOnly: true };
@@ -191,6 +182,7 @@ export async function openUpdate() { return { ok: true, localOnly: true }; }
 export function humanReason(reason) { return String(reason || 'Операция недоступна в локальном режиме.'); }
 export function compareVersions(a, b) { const x=String(a||'0').split('.').map(Number), y=String(b||'0').split('.').map(Number); for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d>0?1:-1;} return 0; }
 export async function initializeServerClient() {
+  await chrome.storage.local.remove(['expLocalUsersV1', 'expLocalSessionV1']);
   const state = await syncServer();
   await chrome.storage.local.set({ ptServerState: { ...state, strategies: (await read(STRATEGIES_KEY)) || [] } });
   return state;
