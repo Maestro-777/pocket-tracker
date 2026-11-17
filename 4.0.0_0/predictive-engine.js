@@ -105,6 +105,7 @@
       const nextMode = mode === 'selected' && selectedAsset && selectedAsset !== '*' ? 'selected' : 'all';
       const nextAsset = this._key(selectedAsset || '*');
       this.assetFilter = { mode: nextMode, selectedAsset: nextMode === 'selected' ? nextAsset : '*' };
+      root.postMessage({ type: 'POROBOT_PREDICTIVE_FILTER', mode: nextMode, selectedAsset: this.assetFilter.selectedAsset }, '*');
       if (nextMode === 'selected') {
         for (const asset of Array.from(this.series.keys())) if (asset !== nextAsset) this.series.delete(asset);
         for (const [id, forecast] of this.pending) {
