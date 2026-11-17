@@ -3618,7 +3618,8 @@
         var forecast=pt4Predictive.latest[asset], horizon=parseInt(document.getElementById('pt4-horizon').value,10)||60;
         var row=forecast&&forecast.horizons&&forecast.horizons[horizon];
         var warm=pt4Predictive.warmup[asset];
-        document.getElementById('pt4-feed-status').textContent=forecast?'OTC · ПОТОК АКТИВЕН':(warm?'ИСТОРИЯ '+warm.samples+'/'+warm.required:'ОЖИДАНИЕ OTC');
+        var fresh=!!(forecast && Date.now()-forecast.timestamp<=15000);
+        document.getElementById('pt4-feed-status').textContent=fresh?'OTC · ПОТОК АКТИВЕН':(forecast?'КОТИРОВКИ УСТАРЕЛИ':(warm?'ИСТОРИЯ '+warm.samples+'/'+warm.required:'ОЖИДАНИЕ OTC'));
         document.getElementById('pt4-current-asset').textContent=asset||'Ожидание котировок';
         document.getElementById('pt4-issued-at').textContent=forecast?new Date(forecast.timestamp).toLocaleTimeString():'—';
         document.getElementById('pt4-current-price').textContent=forecast?pt4FormatPrice(forecast.currentPrice):(warm?pt4FormatPrice(warm.price):'—');
@@ -3630,7 +3631,7 @@
         var confidence=row?(cfg.model==='auto'?row.confidence:(row.modelConfidence&&row.modelConfidence[cfg.model]!=null?row.modelConfidence[cfg.model]:0.5)):null;
         var confidenceSamples=row?(cfg.model==='auto'?row.confidenceSamples:(row.modelConfidenceSamples&&row.modelConfidenceSamples[cfg.model]||0)):0;
         document.getElementById('pt4-confidence-out').textContent=confidence==null?'—':Math.round(confidence*100)+'%'+(confidenceSamples>=30?' · n='+confidenceSamples:' · мало данных');
-        var eligible=!!(row&&(cfg.model==='auto'?row.eligible:(row.modelEligible&&row.modelEligible[cfg.model]))&&confidence>=cfg.confidenceFloor&&dir!=='DRAW');
+        var eligible=!!(fresh&&row&&(cfg.model==='auto'?row.eligible:(row.modelEligible&&row.modelEligible[cfg.model]))&&confidence>=cfg.confidenceFloor&&dir!=='DRAW');
         var source=cfg.sourceMode;
         var indicator=pt4Predictive.indicators[asset] || pt4Predictive.lastIndicator;
         if(indicator && indicator.timestamp && Date.now()-indicator.timestamp>12000)indicator=null;
