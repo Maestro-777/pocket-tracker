@@ -44,9 +44,9 @@
       const candidate=features.slice(i-length,i);
       const similarity=score(query,candidate);
       if(similarity>=threshold){
-        const next=candles[i]?.close,after=candles[i+1]?.close;
+        const previous=candles[i-1]?.close,next=candles[i]?.close;
         matches.push({index:i-length,time:candles[i-length]?.time,similarity,
-          nextDirection:after==null||next==null?"UNKNOWN":after>next?"UP":after<next?"DOWN":"FLAT"});
+          nextDirection:next==null||previous==null?"UNKNOWN":next>previous?"UP":next<previous?"DOWN":"FLAT"});
       }
     }
     matches.sort((a,b)=>b.similarity-a.similarity);
