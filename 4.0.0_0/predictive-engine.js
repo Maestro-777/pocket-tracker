@@ -66,7 +66,7 @@
         series: Array.from(this.series.entries()).map(([asset, ticks]) => [asset, ticks.slice(-300)]),
         pending: Array.from(this.pending.values()).slice(-this.options.maxForecasts),
         stats: Array.from(this.stats.entries()), history: this.history.slice(-500),
-        options: Object.assign({}, this.options)
+        options: Object.assign({}, this.options), assetFilter: Object.assign({}, this.assetFilter)
       };
     }
     restoreState(snapshot) {
