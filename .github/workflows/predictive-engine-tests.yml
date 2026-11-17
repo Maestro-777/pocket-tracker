@@ -20,5 +20,9 @@ jobs:
           node --check 4.0.0_0/predictive-engine.js
           node --check 4.0.0_0/content.js
           node --check 4.0.0_0/inject.js
+          node --check 4.0.0_0/background.js
+          node --check 4.0.0_0/account-mode.js
+          node --check 4.0.0_0/panel/panel.js
+          node -e "JSON.parse(require('fs').readFileSync('4.0.0_0/manifest.json', 'utf8'))"
       - name: Predictive engine tests
         run: node --test 4.0.0_0/tests/predictive-engine.test.cjs
