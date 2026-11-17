@@ -48,7 +48,51 @@
       this.lastForecastAt = new Map();
     }
     onUpdate(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
-    emit(type, data) { for (const fn of this.listeners) { try { fn(type, data); } catch (_) {} } }
+    emit(type, data) {
+      for (const fn of this.listeners) { try { fn(type, data); } catch (_) {} }
+      try { root.postMessage({ type: 'POROBOT_PREDICTIVE_EVENT', eventType: type, payload: data, state: this.exportState() }, '*'); } catch (_) {}
+    }
+    exportState() {
+      return {
+        version: 1, savedAt: Date.now(),
+        series: Array.from(this.series.entries()).map(([asset, ticks]) => [asset, ticks.slice(-300)]),
+        pending: Array.from(this.pending.values()).slice(-this.options.maxForecasts),
+        stats: Array.from(this.stats.entries()), history: this.history.slice(-500),
+        options: Object.assign({}, this.options)
+      };
+    }
+    restoreState(snapshot) {
+      if (!snapshot || snapshot.version !== 1) return false;
+      const validAsset = asset => typeof asset === 'string' && this._isOtc(asset);
+      if (Array.isArray(snapshot.series)) {
+        for (const row of snapshot.series.slice(-100)) {
+          if (!Array.isArray(row) || !validAsset(row[0]) || !Array.isArray(row[1])) continue;
+          const ticks = row[1].filter(x => x && Number.isFinite(Number(x.t)) && Number(x.p) > 0)
+            .map(x => ({ t: Number(x.t), p: Number(x.p) })).sort((a,b) => a.t-b.t).slice(-300);
+          if (ticks.length) this.series.set(this._key(row[0]), ticks);
+        }
+      }
+      if (Array.isArray(snapshot.stats)) {
+        for (const row of snapshot.stats.slice(-10000)) {
+          if (!Array.isArray(row) || typeof row[0] !== 'string' || !row[1] || typeof row[1] !== 'object') continue;
+          const parts = row[0].split('|');
+          if (parts.length !== 3 || !validAsset(parts[0]) || !HORIZONS.includes(Number(parts[1])) || !MODEL_IDS.includes(parts[2])) continue;
+          const v = row[1];
+          const numeric = ['n','decisive','wins','losses','draws','mae','brier','lastUpdatedAt'];
+          if (numeric.some(k => !Number.isFinite(Number(v[k])) || Number(v[k]) < 0)) continue;
+          this.stats.set(row[0], Object.fromEntries(numeric.map(k => [k, Number(v[k])] )));
+        }
+      }
+      if (Array.isArray(snapshot.pending)) {
+        for (const item of snapshot.pending.slice(-this.options.maxForecasts)) {
+          if (!item || !validAsset(item.asset) || !HORIZONS.includes(Number(item.horizon)) || !Number.isFinite(Number(item.dueAt)) || !(Number(item.entry)>0) || !item.models || !item.modelDirections || !item.modelProbabilities) continue;
+          this.pending.set(String(item.id), item);
+        }
+      }
+      if (Array.isArray(snapshot.history)) this.history = snapshot.history.filter(x => x && validAsset(x.asset)).slice(-this.options.maxForecasts);
+      if (snapshot.options && typeof snapshot.options === 'object') this.setOptions(snapshot.options);
+      return true;
+    }
     _key(asset) { return String(asset || '').trim().toUpperCase(); }
     _isOtc(asset) { return /(?:_OTC| OTC)$/i.test(String(asset || '').trim()); }
     _statKey(asset, horizon, model) { return asset + '|' + horizon + '|' + model; }
@@ -157,10 +201,10 @@
       return Math.exp(clamp(logPrice, Math.log(sample[sample.length-1].p)-0.05, Math.log(sample[sample.length-1].p)+0.05));
     }
     _momentum(series, horizonSeconds, features) {
-      const r = features.returns.slice(-50).map(x => x.r);
+      const r = features.returns.slice(-50).map(x => x.r / x.dt);
       const fast = mean(r.slice(-8)), slow = mean(r);
       const damp = Math.exp(-horizonSeconds / 240);
-      return series[series.length-1].p * Math.exp(clamp((fast*0.7 + slow*0.3) * Math.sqrt(horizonSeconds) * damp, -0.05, 0.05));
+      return series[series.length-1].p * Math.exp(clamp((fast*0.7 + slow*0.3) * horizonSeconds * damp, -0.05, 0.05));
     }
     _cyclical(series, horizonSeconds, features) {
       const r = features.returns.slice(-100).map(x => x.r);
@@ -197,32 +241,33 @@
       for (const id of BASE_MODELS) {
         if (!(predictions[id] > 0) || !Number.isFinite(predictions[id])) delete predictions[id];
       }
-      const ranked = BASE_MODELS.filter(id => predictions[id] > 0).map(id => ({
+      const rankedBase = BASE_MODELS.filter(id => predictions[id] > 0).map(id => ({
         id, score: this._score(asset, horizonSeconds, id)
       })).sort((a,b) => a.score - b.score);
-      const eligible = ranked.filter(x => {
+      const eligibleBase = rankedBase.filter(x => {
         const st = this.stats.get(this._statKey(asset, horizonSeconds, x.id));
         return st && st.decisive >= this.options.minEvaluationSamples;
       });
-      const chosen = (eligible.length ? eligible : ranked).slice(0, eligible.length ? 3 : ranked.length);
+      const chosen = (eligibleBase.length ? eligibleBase : rankedBase).slice(0, eligibleBase.length ? 3 : rankedBase.length);
       const weights = chosen.map(x => {
         const st = this.stats.get(this._statKey(asset, horizonSeconds, x.id));
         return st && st.decisive >= this.options.minEvaluationSamples ? 1 / Math.max(0.02, x.score) : 1;
       });
       if (chosen.length) predictions.ensemble = chosen.reduce((sum, x, i) => sum + predictions[x.id] * weights[i], 0) / weights.reduce((a,b)=>a+b,0);
+      const ranked = Object.keys(predictions).map(id => ({ id, score: this._score(asset, horizonSeconds, id) })).sort((a,b) => a.score - b.score);
       return { predictions, ranked, features };
     }
     _score(asset, horizonSeconds, model) {
       const st = this.stats.get(this._statKey(asset, horizonSeconds, model));
       if (!st || st.decisive < this.options.minEvaluationSamples) return Infinity;
-      return 1 - st.wins / st.decisive;
+      const accuracyError = 1 - st.wins / st.decisive;
+      const brier = st.brier / st.decisive;
+      return 0.7 * accuracyError + 0.3 * brier;
     }
     _confidence(asset, horizonSeconds, model, predicted, current, features) {
       const st = this.stats.get(this._statKey(asset, horizonSeconds, model));
       if (!st || st.decisive < this.options.minEvaluationSamples) {
-        const move = Math.abs(Math.log(predicted/current));
-        const noise = Math.max(1e-8, features.volatility * Math.sqrt(horizonSeconds));
-        return { value: clamp(0.5 + 0.08 * move/(move+noise), 0.5, 0.58), samples: st ? st.decisive : 0, calibrated: false };
+        return { value: 0.5, samples: st ? st.decisive : 0, calibrated: false };
       }
       const n = st.decisive, p = st.wins/n, z = 1.96;
       const lower = (p + z*z/(2*n) - z*Math.sqrt((p*(1-p)+z*z/(4*n))/n))/(1+z*z/n);
@@ -348,9 +393,12 @@
   root.__pt4PredictiveEngine = root.__pt4PredictiveEngine || new PredictiveEngine();
   root.addEventListener('message', event => {
     const data = event.data;
-    if (!data || data.type !== 'PT4_PREDICTIVE_CONFIG') return;
-    root.__pt4PredictiveEngine.setOptions(data.config || {});
+    if (!data || event.source !== root) return;
+    if (data.type === 'PT4_PREDICTIVE_CONFIG') root.__pt4PredictiveEngine.setOptions(data.config || {});
+    if (data.type === 'PT4_PREDICTIVE_HELLO') root.postMessage({ type: 'PT4_PREDICTIVE_READY' }, '*');
+    if (data.type === 'PT4_PREDICTIVE_RESTORE') root.__pt4PredictiveEngine.restoreState(data.state);
   });
+  root.postMessage({ type: 'PT4_PREDICTIVE_READY' }, '*');
   // Reuse the existing inject.js Pocket Option WebSocket quote event.
   root.addEventListener('message', event => {
     const data = event.data;
