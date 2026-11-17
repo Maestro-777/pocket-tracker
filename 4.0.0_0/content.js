@@ -3545,6 +3545,7 @@
         document.getElementById('pt4-confidence').addEventListener('input',function(){document.getElementById('pt4-confidence-value').textContent=this.value+'%';});
         document.getElementById('pt4-save').addEventListener('click',savePredictiveConfig);
         document.getElementById('pt4-source').addEventListener('change',pt4UpdateModeControls);
+        if(!pt4Predictive.renderTimer)pt4Predictive.renderTimer=setInterval(renderPredictivePanel,5000);
         try { chrome.storage.local.get(['pt4PredictiveConfig'],function(data){if(data&&data.pt4PredictiveConfig)pt4ApplyConfig(data.pt4PredictiveConfig);else pt4ApplyConfig(pt4DefaultConfig());}); }
         catch(_) { pt4ApplyConfig(pt4DefaultConfig()); }
         window.postMessage({type:'PT4_PREDICTIVE_HELLO'},'*');
