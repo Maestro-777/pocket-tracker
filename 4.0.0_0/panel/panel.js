@@ -14,8 +14,33 @@ function renderAccount(payload) {
   el.textContent=mode==='demo'?'DEMO · ДЕМО-СЧЁТ':mode==='real'?'REAL · РЕАЛЬНЫЙ СЧЁТ':'НЕ ОПРЕДЕЛЁН';
   hint.textContent=mode==='demo'?'Обнаружен демонстрационный счёт.':mode==='real'?'Обнаружен реальный счёт. Запуск требует отдельного подтверждения.':'Режим счёта не подтверждён. Автоторговля из этой панели заблокирована.';
 }
-async function loadSettings() { const s=await chrome.storage.local.get(null); if(s.indicator)$('indicator').value=s.indicator; if(s.moneyManagement)$('mm').value=s.moneyManagement; if(s.baseBet)$('baseBet').value=s.baseBet; if(s.expiration)$('expiration').value=s.expiration; }
-async function saveSettings() { const data={indicator:$('indicator').value,moneyManagement:$('mm').value,baseBet:parseFloat($('baseBet').value||'1'),expiration:parseInt($('expiration').value||'1',10)}; await chrome.storage.local.set(data); return data; }
+async function loadSettings() {
+  const s=await chrome.storage.local.get(null);
+  if(s.indicator)$('indicator').value=s.indicator;
+  if(s.moneyManagement)$('mm').value=s.moneyManagement;
+  if(s.baseBet)$('baseBet').value=s.baseBet;
+  if(s.expiration)$('expiration').value=s.expiration;
+  $('multiPairTrading').checked = s.multiPairTrading !== false;
+  $('minProfit').value = s.minProfit != null ? s.minProfit : 92;
+  $('maxConcurrentTrades').value = s.maxConcurrentTrades != null ? s.maxConcurrentTrades : 4;
+  $('includeOtc').checked = s.includeOtc !== false;
+}
+async function saveSettings() {
+  const minProfit = Number($('minProfit').value);
+  const maxConcurrentTrades = Number($('maxConcurrentTrades').value);
+  const data={
+    indicator:$('indicator').value,
+    moneyManagement:$('mm').value,
+    baseBet:parseFloat($('baseBet').value||'1'),
+    expiration:parseInt($('expiration').value||'1',10),
+    multiPairTrading:$('multiPairTrading').checked,
+    minProfit:Number.isFinite(minProfit)?Math.max(0,Math.min(100,minProfit)):92,
+    maxConcurrentTrades:Number.isFinite(maxConcurrentTrades)?Math.max(1,Math.min(20,Math.round(maxConcurrentTrades))):4,
+    includeOtc:$('includeOtc').checked
+  };
+  await chrome.storage.local.set(data);
+  return data;
+}
 async function refreshAccount() {
   const tabId=await getQuotexTabId(); if(!tabId)return;
   try { const state=await chrome.tabs.sendMessage(tabId,{type:'PT4_GET_ACCOUNT_MODE'}); if(state)renderAccount(state); }
