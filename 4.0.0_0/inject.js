@@ -722,7 +722,7 @@
                     }
                     if (!settings || typeof settings !== 'object') continue;
                     if (settings.chartId) window.__poChartId = String(settings.chartId);
-                    const period = parseInt(settings.chartPeriod || settings.fastTimeframe || 0, 10);
+                    const period = parsePeriodSeconds(settings.chartPeriod || settings.fastTimeframe || settings.period || 0);
                     if (period > 0) window.__poChartPeriodSec = period;
                 }
                 return;
@@ -758,7 +758,7 @@
                     }
                     if (!settings || typeof settings !== 'object') continue;
                     if (settings.chartId) window.__poChartId = String(settings.chartId);
-                    const period = parseInt(settings.chartPeriod || settings.fastTimeframe || 0, 10);
+                    const period = parsePeriodSeconds(settings.chartPeriod || settings.fastTimeframe || settings.period || 0);
                     if (period > 0) {
                         window.__poChartPeriodSec = period;
                         if (PosChartOverlay && PosChartOverlay.enabled) {
@@ -2007,6 +2007,17 @@
         300: { rsiPeriod: 14, smaFast: 5, smaSlow: 20, emaFast: 5, emaSlow: 21, bbPeriod: 20, macdFast: 12, macdSlow: 26, macdSig: 9, stochK: 14, stochD: 3, cciPeriod: 20, trendPeriod: 5, minStretch: 0.60 }
     };
     const PROFILE_STEPS = Object.keys(ANALYSIS_PROFILES).map(Number).sort(function(a, b) { return a - b; });
+
+    function parsePeriodSeconds(value) {
+        const raw = String(value == null ? '' : value).trim().toUpperCase();
+        const match = raw.match(/^([SMH])\\s*(\\d+)$/);
+        if (match) {
+            const n = parseInt(match[2], 10);
+            return n * (match[1] === 'S' ? 1 : match[1] === 'M' ? 60 : 3600);
+        }
+        const n = parseInt(raw, 10);
+        return isFinite(n) && n >= 3 ? n : 0;
+    }
 
     function getAnalysisProfile(expirationSec, timeframeSec) {
         const exp = Math.max(3, parseInt(expirationSec, 10) || 60);
