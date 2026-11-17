@@ -117,6 +117,15 @@ test('manifest and UI are wired to the existing MAIN-world quote injector', () =
   assert.match(injector, /_openPredictiveOrder\(signal, cfg\)/);
 });
 
+
+test('clears stale model warm-up after a prolonged quote interruption', () => {
+  const { engine } = makeEngine({ minSamples: 30 });
+  for (let i = 1; i <= 30; i++) tick(engine, 'EURCHF_otc', i * 1000, 0.95 + i * 0.00001);
+  assert.equal(engine.series.get('EURCHF_OTC').length, 30);
+  tick(engine, 'EURCHF_otc', 61000, 0.951);
+  assert.equal(engine.series.get('EURCHF_OTC').length, 1);
+});
+
 test('ignores out-of-order and duplicate timestamps', () => {
   const { engine } = makeEngine({ minSamples: 30 });
   assert.ok(tick(engine, 'EURGBP_otc', 1000, 0.85) === null);
