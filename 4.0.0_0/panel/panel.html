@@ -40,6 +40,17 @@
         <div class="row"><label class="lbl" for="baseBet">Ставка ($)</label><input id="baseBet" class="ctl" type="number" min="1" step="0.5" value="1" /></div>
         <div class="row"><label class="lbl" for="expiration">Экспирация (мин)</label><select id="expiration" class="ctl"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option></select></div>
       </div>
+      <div class="row">
+        <label class="lbl" for="multiPairTrading">Сканировать все валютные пары</label>
+        <label class="hint"><input id="multiPairTrading" type="checkbox" checked> Включить мульти-парный режим</label>
+      </div>
+      <div class="grid2">
+        <div class="row"><label class="lbl" for="minProfit">Минимальная доходность (%)</label><input id="minProfit" class="ctl" type="number" min="0" max="100" step="1" value="92"></div>
+        <div class="row"><label class="lbl" for="maxConcurrentTrades">Макс. одновременных сделок</label><input id="maxConcurrentTrades" class="ctl" type="number" min="1" max="20" step="1" value="4"></div>
+      </div>
+      <div class="row">
+        <label class="hint"><input id="includeOtc" type="checkbox" checked> Включать OTC валютные пары</label>
+      </div>
       <div class="btns"><button id="start" class="btn btnP">▶ Старт</button><button id="stop" class="btn btnS" disabled>⬛ Стоп</button></div>
       <div class="hint safety">Автоторговля связана с финансовым риском. Перед REAL-счётом проверьте стратегию на DEMO.</div>
     </section>
