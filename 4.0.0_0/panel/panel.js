@@ -20,6 +20,7 @@ async function loadSettings() {
   if(s.moneyManagement)$('mm').value=s.moneyManagement;
   if(s.baseBet)$('baseBet').value=s.baseBet;
   if(s.expiration)$('expiration').value=s.expiration;
+  $('autoTrade').checked = !!s.autoTrade;
   $('multiPairTrading').checked = s.multiPairTrading !== false;
   $('minProfit').value = s.minProfit != null ? s.minProfit : 92;
   $('maxConcurrentTrades').value = s.maxConcurrentTrades != null ? s.maxConcurrentTrades : 4;
@@ -33,6 +34,7 @@ async function saveSettings() {
     moneyManagement:$('mm').value,
     baseBet:parseFloat($('baseBet').value||'1'),
     expiration:parseInt($('expiration').value||'1',10),
+    autoTrade:$('autoTrade').checked,
     multiPairTrading:$('multiPairTrading').checked,
     minProfit:Number.isFinite(minProfit)?Math.max(0,Math.min(100,minProfit)):92,
     maxConcurrentTrades:Number.isFinite(maxConcurrentTrades)?Math.max(1,Math.min(20,Math.round(maxConcurrentTrades))):4,
