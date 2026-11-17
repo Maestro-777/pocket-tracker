@@ -3925,7 +3925,10 @@
                 const liveBalanceRaw = liveBalanceInfo && parseFloat(liveBalanceInfo.balance);
                 const availableBalance = isFinite(liveBalanceRaw) ? liveBalanceRaw : balance;
                 if (availableBalance != null && availableBalance + 1e-9 < amount + reservedThisCycle) {
-                    this.log('⛔ [' + asset + '] недостаточно свободного баланса для ещё одной сделки на 
+                    this.log('⛔ [' + asset + '] недостаточно свободного баланса для ещё одной сделки');
+                    continue;
+                }
+                const ws = getActivePoSocket();
                 if (!ws) continue;
                 const requestId = ++this._multiRequestId;
                 const rawAsset = item.raw || toPoAssetId(asset);
