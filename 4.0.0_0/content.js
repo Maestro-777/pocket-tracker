@@ -3440,7 +3440,7 @@
             } else if (msgType === 'POROBOT_MULTI_TRADE_RESULT') {
                 var mt = e.data.trade || {};
                 if (mt.result === 'WIN' || mt.result === 'LOSE') {
-                    var mp = parseFloat(mt.profit) || 0;
+                    var mp = netPnlFromResult(mt.result, parseFloat(mt.profit) || 0, mt.amount);
                     var mtime = new Date();
                     var mts = String(mtime.getHours()).padStart(2,'0') + ':' + String(mtime.getMinutes()).padStart(2,'0') + ':' + String(mtime.getSeconds()).padStart(2,'0');
                     applySessionPnl(mt.result, mp);
