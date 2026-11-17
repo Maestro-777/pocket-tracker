@@ -23,7 +23,6 @@
     // ── ACCESS MODE (free) ───────────────────────────────────────────
     const API_BASE  = 'https://pocketoption-signal.online/api';
     const _RS       = 'Xk9$Bn2R@mV7pLq!tZ'; // request-signing secret
-    const REF_LINK  = 'https://po-ru4.click/pwa?utm_campaign=773275&utm_source=affiliate&utm_medium=sr&a=rQkgoZ6yHljgTx&al=1786769&ac=optiontraderobot&cid=973082&code=WELCOME50';
     const detectUID = detectPocketOptionUID;
 
     async function _sign(body) {
@@ -503,7 +502,6 @@
         ru: {
             pill_stop:'СТОП', pill_run:'АНАЛИЗ', lang_btn:'🇬🇧',
             min_collapse:'Свернуть', min_expand:'Развернуть',
-            promo_banner:'🎁 <strong>Промокод:</strong> <strong>WELCOME50</strong><br><span style="color:#8aa8c0">Бонус 50%; минимальный депозит $10</span><br><a href="' + REF_LINK + '" target="_blank" class="pos-act-ref">Партнёрская ссылка</a>',
             act_placeholder:'Ваш ID аккаунта Pocket Option',
             act_btn:'✅ Активировать', act_checking:'Проверяю...',
             act_hint:'Где найти ID? В личном кабинете Pocket Option → Профиль',
@@ -590,19 +588,10 @@
             preset_applied:'Пресет применён',
             preset_cleared:'Пресет сброшен - настройте фильтры вручную',
             preset_clear_hint:'Снимает активный пресет и возвращает параметры индикаторов к классическим (RSI 14/30/70, MACD 12/26/9, BB 20/2 и т.д.)',
-            sec_contacts:'📬 Контакты',
-            contact_site_lbl:'Сайт', contact_tg_lbl:'Telegram бот', contact_tg_channel_lbl:'Telegram канал',
-            contact_win_lbl:'Приложение для Windows', contact_win_val:'Скачать для Windows',
-            preset_app_only:'Готовые пресеты и Маркет пресетов (официальные, от авторов, свои) доступны только в Windows-приложении PocketOption Signal. В расширении настройте индикаторы вручную или импортируйте свой пресет из файла.',
-            preset_app_only_btn:'🪟 Скачать приложение для Windows',
-            contact_review_title:'Расширение бесплатное',
-            contact_review_sub:'Поставьте оценку в Google',
-            contact_free_note:'Расширение полностью бесплатное. Без регистрации по партнёрской программе и платежей.',
         },
         en: {
             pill_stop:'STOP', pill_run:'LIVE', lang_btn:'🇷🇺',
             min_collapse:'Minimize', min_expand:'Expand',
-            promo_banner:'🎁 <strong>Promo code:</strong> <strong>WELCOME50</strong><br><span style="color:#8aa8c0">50% bonus; minimum deposit $10</span><br><a href="' + REF_LINK + '" target="_blank" class="pos-act-ref">Partner link</a>',
             act_placeholder:'Your Pocket Option account ID',
             act_btn:'✅ Activate', act_checking:'Checking...',
             act_hint:'Where to find ID? In your Pocket Option profile → Account',
@@ -689,14 +678,6 @@
             preset_applied:'Preset applied',
             preset_cleared:'Preset cleared - configure filters manually',
             preset_clear_hint:'Clears the active preset and restores classic indicator defaults (RSI 14/30/70, MACD 12/26/9, BB 20/2, etc.)',
-            sec_contacts:'📬 Contacts',
-            contact_site_lbl:'Website', contact_tg_lbl:'Telegram bot', contact_tg_channel_lbl:'Telegram channel',
-            contact_win_lbl:'Windows app', contact_win_val:'Download for Windows',
-            preset_app_only:'Ready-made presets and the Preset market (official, community, your own) are available only in the PocketOption Signal Windows app. In the extension, set up indicators manually or import your own preset from a file.',
-            preset_app_only_btn:'🪟 Download the Windows app',
-            contact_review_title:'The extension is free',
-            contact_review_sub:'Rate it in the Google store',
-            contact_free_note:'Extension is completely free. No affiliate registration or payments required.',
         },
     };
 
@@ -940,7 +921,6 @@
     <button class="pos-tab" data-tab="journal" data-i18n="tab_journal">Журнал</button>
     <button class="pos-tab" data-tab="stats" data-i18n="tab_stats">Аналитика</button>
     <button class="pos-tab" data-tab="settings" data-i18n="tab_settings">Настройки</button>
-    <button class="pos-tab" data-tab="contacts" data-i18n="tab_contacts">Контакты</button>
   </div>
 
   <!-- SIGNALS TAB -->
@@ -1228,50 +1208,6 @@
     </div>
   </div>
 
-  <div class="pos-tc" id="pos-tab-contacts">
-    <div class="qbs">
-      <div class="qbs-ttl" data-i18n="sec_contacts">📬 Контакты</div>
-      <div class="pos-contact-list">
-        <a class="pos-contact-item" href="https://${BRAND_SITE}" target="_blank" rel="noopener noreferrer">
-          <span class="pos-contact-icon" aria-hidden="true">🌐</span>
-          <span class="pos-contact-body">
-            <span class="pos-contact-lbl" data-i18n="contact_site_lbl">Сайт</span>
-            <span class="pos-contact-val">${BRAND_SITE}</span>
-          </span>
-        </a>
-        <a class="pos-contact-item pos-win-app-link" id="pos-contact-windows" href="https://${BRAND_SITE}/install#windows" target="_blank" rel="noopener noreferrer">
-          <span class="pos-contact-icon" aria-hidden="true">🪟</span>
-          <span class="pos-contact-body">
-            <span class="pos-contact-lbl" data-i18n="contact_win_lbl">Приложение для Windows</span>
-            <span class="pos-contact-val" data-i18n="contact_win_val">Скачать для Windows</span>
-          </span>
-        </a>
-        <a class="pos-contact-item" href="https://t.me/pocketoption_signal_ru_bot" target="_blank" rel="noopener noreferrer">
-          <span class="pos-contact-icon" aria-hidden="true">✈️</span>
-          <span class="pos-contact-body">
-            <span class="pos-contact-lbl" data-i18n="contact_tg_lbl">Telegram бот</span>
-            <span class="pos-contact-val">@pocketoption_signal_ru_bot</span>
-          </span>
-        </a>
-        <a class="pos-contact-item" href="https://t.me/pocketoption_signal_ru" target="_blank" rel="noopener noreferrer">
-          <span class="pos-contact-icon" aria-hidden="true">📢</span>
-          <span class="pos-contact-body">
-            <span class="pos-contact-lbl" data-i18n="contact_tg_channel_lbl">Telegram канал</span>
-            <span class="pos-contact-val">@pocketoption_signal_ru</span>
-          </span>
-        </a>
-      </div>
-      <a class="pos-review-btn" href="https://chromewebstore.google.com/detail/pocketoption-signal/kmikglaokkegcnmiidoboodmbeihjofe/reviews" target="_blank" rel="noopener noreferrer">
-        <span class="pos-review-stars" aria-hidden="true">
-          <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
-        </span>
-        <span class="pos-review-title" data-i18n="contact_review_title">Расширение бесплатное</span>
-        <span class="pos-review-sub" data-i18n="contact_review_sub">Поставьте оценку в Google</span>
-      </a>
-      <div class="pos-contact-note" data-i18n="contact_free_note">Расширение полностью бесплатное. Без регистрации по партнёрской программе и платежей.</div>
-    </div>
-    <div class="pos-contact-copy" data-i18n="copyright">PocketOption Signal v3.6.0 · pocketoption-signal.online</div>
-  </div>
   <div class="pos-toast" id="pos-toast" hidden></div>
 </div>`;
         document.body.appendChild(panel);
@@ -1279,8 +1215,7 @@
         initTabs();
         buildStrategyGrid();
         bindConfirmMode();
-        // ссылка на Windows-приложение — только в расширении (в самом приложении она не нужна)
-        if (typeof chrome !== 'undefined' && chrome && chrome.posApp) { var winContact = document.getElementById('pos-contact-windows'); if (winContact) winContact.remove(); }
+
         buildPresetGrid();
         buildMMSelect();
         bindButtons();
@@ -2680,33 +2615,9 @@
         document.querySelectorAll('#pos-panel .pos-win-app-link').forEach(function(a) { a.href = winAppUrl(); });
     }
 
-    // Нет хоста маркета (marketPresetLib === null): готовых пресетов нет — подсказка и ссылка на приложение.
-    function renderPresetAppOnly(tabs, grid) {
-        var hint = document.getElementById('pos-preset-hint');
-        if (hint) hint.style.display = 'none';
-        tabs.style.display = 'none';
-        tabs.innerHTML = '';
-        grid.innerHTML = '';
-        var box = document.createElement('div');
-        box.className = 'pos-preset-app-only';
-        var txt = document.createElement('div');
-        txt.className = 'pos-preset-app-only-txt';
-        txt.textContent = t('preset_app_only');
-        var a = document.createElement('a');
-        a.className = 'pos-preset-app-only-btn pos-win-app-link';
-        a.href = winAppUrl();
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.textContent = t('preset_app_only_btn');
-        box.appendChild(txt);
-        box.appendChild(a);
-        grid.appendChild(box);
-    }
-
     function updatePresetTabHint() {
         var hint = document.getElementById('pos-preset-hint');
         if (!hint) return;
-        if (!marketPresetLib) { hint.style.display = 'none'; return; }
         if (marketPresetLib && !marketPresetLib.length) { hint.textContent = t('preset_market_empty'); return; }
         var meta = presetTabsList().find(function(x) { return x.exp === activePresetExpTab; }) || getPresetTabMeta(activePresetExpTab);
         var base = t(marketPresetLib ? 'preset_hint_market' : 'preset_hint');
@@ -2718,7 +2629,6 @@
         var tabs = document.getElementById('pos-preset-tabs');
         var grid = document.getElementById('pos-preset-grid');
         if (!tabs || !grid) return;
-        if (!marketPresetLib) { renderPresetAppOnly(tabs, grid); return; }
 
         activePresetExpTab = snapPresetExpTab(activePresetExpTab);
 

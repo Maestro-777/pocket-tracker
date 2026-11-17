@@ -26,9 +26,6 @@
     "https://*.pocketoption.com/*",
     "https://pocketoption-signal.online/*"
   ],
-  "optional_host_permissions": [
-    "*://*/*"
-  ],
   "content_scripts": [
     {
       "matches": [
@@ -51,10 +48,7 @@
         "css/bot-ui.css"
       ],
       "js": [
-        "market/ext-host.js",
-        "content.js",
-        "market/qrcode.js",
-        "market/market.js"
+        "content.js"
       ],
       "run_at": "document_start",
       "all_frames": true

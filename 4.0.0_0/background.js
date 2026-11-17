@@ -174,7 +174,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             const win = await chrome.windows.create({
                 url: panelUrl,
                 type: 'popup',
-                width: 400,
+                width: 402,
                 height: 680,
                 focused: true
             });
