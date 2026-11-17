@@ -235,3 +235,15 @@ test('Predictive quote/statistics owner is the top frame and trade forecast is r
   assert.match(injector, /One stable quote\/statistics owner: the top-frame Predictive Engine/);
   assert.match(injector, /PT4_PREDICTIVE_TICK_RELAY/);
 });
+
+
+test('Predictive OTC refresh initializes its asset list before catalog iteration', () => {
+  const injector = fs.readFileSync(path.join(__dirname, '..', 'inject.js'), 'utf8');
+  const start = injector.indexOf('_refreshMultiPairs(force, predictiveOnly)');
+  const end = injector.indexOf('_getTradeDirection(', start);
+  assert.ok(start >= 0 && end > start, 'multi-pair refresh method must exist');
+  const method = injector.slice(start, end);
+  assert.match(method, /const availablePredictiveAssets = \[\];/);
+  assert.ok(method.indexOf('const availablePredictiveAssets = [];') < method.indexOf('availablePredictiveAssets.push(normalized)'));
+  assert.ok(method.indexOf('availablePredictiveAssets.push(normalized)') < method.indexOf('POROBOT_PREDICTIVE_ASSETS'));
+});
