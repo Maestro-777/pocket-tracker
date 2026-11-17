@@ -4700,7 +4700,7 @@
         window.addEventListener('message', function(e) {
             const d = e.data;
             if (!d || d.type !== 'PT4_PREDICTIVE_TICK_RELAY' || !d.tick) return;
-            if (e.origin !== window.location.origin) return;
+            if (!/^https:\/\/([a-z0-9-]+\.)*pocketoption\.com$/i.test(e.origin || '')) return;
             const claim = window.__poEngineClaim;
             const owner = claim && claim.win ? claim.win : window;
             try { owner.postMessage({ type: 'PT4_PREDICTIVE_TICK', tick: d.tick }, '*'); }
