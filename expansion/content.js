@@ -6643,6 +6643,14 @@
     const candleMode = candleOffset === 0 ? 'current' : 'closed';
     const effectiveSignalPeriod = selectedEffectiveAnalysisPeriod(auto);
     const strategyMode = effectiveAutoStrategyMode(auto, strategyIds);
+    const unsupportedLocalStrategies = strategyIds.filter((id) => !isLocalThreeCandleStrategy(id));
+    if (unsupportedLocalStrategies.length) {
+      return {
+        ok: false,
+        status: 'disabled_local_only',
+        error: `Автономный режим поддерживает автоторговлю только для локальной стратегии 3-Candle EMA14. Не перенесены: ${unsupportedLocalStrategies.join(', ')}.`
+      };
+    }
     const key = JSON.stringify([assets, strategyIds, strategyMode, strategyPeriods, strategyDurations, strategyCandleOffsets, strategyCooldowns]);
     const now = Date.now();
     if (autoRuntime.subscribedKey === key && now - autoRuntime.lastSubscriptionAt < 5000) {
@@ -6681,7 +6689,8 @@
         strategyDurations,
         strategyCandleOffsets,
         strategyCooldowns,
-        localConfigRevision: autoRuntime.signalConfigRevision
+        localConfigRevision: autoRuntime.signalConfigRevision,
+        localOnly: true
       }
     }, 30000).catch((error) => ({ ok: false, error: String(error?.message || error) }));
     if (response?.ok) {
