@@ -25,7 +25,8 @@
         "https://*.pocketoption.com/*"
       ],
       "js": [
-        "page-bridge.js"
+        "page-bridge.js",
+        "auto-trader.js"
       ],
       "run_at": "document_start",
       "world": "MAIN",
