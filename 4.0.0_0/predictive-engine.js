@@ -71,7 +71,8 @@
     }
     restoreState(snapshot) {
       if (!snapshot || snapshot.version !== 1) return false;
-      if (snapshot.assetFilter) this.assetFilter = Object.assign({ mode: 'all', selectedAsset: '*' }, snapshot.assetFilter);
+      if (snapshot.assetFilter && snapshot.assetFilter.mode === 'selected' && this._isOtc(snapshot.assetFilter.selectedAsset)) this.assetFilter = { mode: 'selected', selectedAsset: this._key(snapshot.assetFilter.selectedAsset) };
+      else this.assetFilter = { mode: 'all', selectedAsset: '*' };
       const validAsset = asset => typeof asset === 'string' && this._isOtc(asset);
       const allowedAsset = asset => validAsset(asset) && (this.assetFilter.mode !== 'selected' || this._key(asset) === this.assetFilter.selectedAsset);
       if (Array.isArray(snapshot.series)) {
