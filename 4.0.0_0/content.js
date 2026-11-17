@@ -3621,7 +3621,7 @@
         document.getElementById('pt4-feed-status').textContent=forecast?'OTC · ПОТОК АКТИВЕН':(warm?'ИСТОРИЯ '+warm.samples+'/'+warm.required:'ОЖИДАНИЕ OTC');
         document.getElementById('pt4-current-asset').textContent=asset||'Ожидание котировок';
         document.getElementById('pt4-issued-at').textContent=forecast?new Date(forecast.timestamp).toLocaleTimeString():'—';
-        document.getElementById('pt4-current-price').textContent=forecast?pt4FormatPrice(forecast.currentPrice):'—';
+        document.getElementById('pt4-current-price').textContent=forecast?pt4FormatPrice(forecast.currentPrice):(warm?pt4FormatPrice(warm.price):'—');
         var target=row?row.price:null;
         if(row && cfg.model!=='auto' && row.models[cfg.model]!=null)target=row.models[cfg.model];
         document.getElementById('pt4-target-price').textContent=target==null?'—':pt4FormatPrice(target);
