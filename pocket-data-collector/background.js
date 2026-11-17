@@ -61,10 +61,14 @@ function mergeCandle(oldBar,newBar) {
     return {...newBar,ticks:oldBar.ticks||0};
   }
   if (newBar.source === "tick-stream") {
-    return {...oldBar,high:Math.max(oldBar.high,newBar.high),
-      low:Math.min(oldBar.low,newBar.low),close:newBar.close,
+    const useNewClose=(newBar.closeTime||0)>=(oldBar.closeTime||0);
+    const useNewOpen=(oldBar.openTime||Infinity)>(newBar.openTime||Infinity);
+    return {...oldBar,
+      open:useNewOpen?newBar.open:oldBar.open,openTime:useNewOpen?newBar.openTime:oldBar.openTime,
+      high:Math.max(oldBar.high,newBar.high),low:Math.min(oldBar.low,newBar.low),
+      close:useNewClose?newBar.close:oldBar.close,closeTime:useNewClose?newBar.closeTime:oldBar.closeTime,
       ticks:(oldBar.ticks||0)+(newBar.ticks||0),
-      source:oldBar.source==="history"?"history+tick-stream":"tick-stream"};
+      source:oldBar.source==="history"||oldBar.source==="history+tick-stream"?"history+tick-stream":"tick-stream"};
   }
   return {...newBar,ticks:Math.max(oldBar.ticks||0,newBar.ticks||0)};
 }
@@ -95,8 +99,12 @@ async function storeTicks(tabId, ticks) {
     const bucket=Math.floor(t.time/5000)*5000;
     const id=t.asset+"|5|"+bucket;
     let bar=updates.get(id);
-    if(!bar)bar={id,asset:t.asset,period:5,time:bucket,open:t.price,high:t.price,low:t.price,close:t.price,ticks:1,source:"tick-stream"};
-    else {bar.high=Math.max(bar.high,t.price);bar.low=Math.min(bar.low,t.price);bar.close=t.price;bar.ticks++;}
+    if(!bar)bar={id,asset:t.asset,period:5,time:bucket,open:t.price,openTime:t.time,high:t.price,low:t.price,close:t.price,closeTime:t.time,ticks:1,source:t.historical?"history-ticks":"tick-stream"};
+    else {
+      if(t.time<bar.openTime){bar.open=t.price;bar.openTime=t.time;}
+      if(t.time>=bar.closeTime){bar.close=t.price;bar.closeTime=t.time;}
+      bar.high=Math.max(bar.high,t.price);bar.low=Math.min(bar.low,t.price);bar.ticks++;
+    }
     updates.set(id,bar);
     state.ticks++;
     state.lastTickAt=Math.max(state.lastTickAt,t.time);
