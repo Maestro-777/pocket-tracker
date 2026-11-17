@@ -3529,7 +3529,8 @@
         document.getElementById('pt4-stake').value=v.stake;
         document.getElementById('pt4-max-trades').value=v.maxConcurrentTrades;
         var asset=document.getElementById('pt4-asset');
-        if(v.selectedAsset && asset.querySelector('option[value="'+CSS.escape(v.selectedAsset)+'"]')) asset.value=v.selectedAsset;
+        if(v.selectedAsset && !Array.from(asset.options).some(function(o){return o.value===v.selectedAsset;})) { var opt=document.createElement('option'); opt.value=v.selectedAsset; opt.textContent=v.selectedAsset; asset.appendChild(opt); }
+        if(v.selectedAsset) asset.value=v.selectedAsset;
         window.postMessage({type:'PT4_PREDICTIVE_CONFIG',config:{
             enabled:true, confidenceFloor:v.confidenceFloor, minEvaluationSamples:30,
             predictive:v
@@ -3659,6 +3660,164 @@
             } else if (msgType === 'POROBOT_SCAN') {
                 pt4Predictive.lastIndicator = e.data.scan || null;
                 renderPredictivePanel();
+            } else if (msgType === 'POROBOT_PREDICTIVE_SIGNAL') {
+                var ps = e.data.signal || {};
+                appendLog('🧠 Predictive [' + (ps.asset || '?') + '] ' + (ps.direction || '—') + ' · ' + (ps.model || '') + ' · ' + Math.round((ps.confidence || 0) * 100) + '% · ' + (ps.horizonSeconds || 0) + 'с');
+            } else if (msgType === 'POROBOT_PREDICTIVE_TRADE_OPEN') {
+                var pt = e.data.trade || {};
+                appendLog('🤖 Predictive trade [' + (pt.asset || '?') + '] ' + (pt.direction || '') + ' · 
+                handlePredictiveEvent(e.data);
+            } else if (msgType === 'PT4_PREDICTIVE_READY') {
+                restorePredictiveState();
+            } else if (msgType === 'POROBOT_PREDICTIVE_UPDATE') {
+                handlePredictiveForecast(e.data.forecast);
+            } else if (msgType === 'POROBOT_LOG') {
+                appendLog(e.data.message);
+                try { chrome.runtime.sendMessage({ type: 'POROBOT_LOG', message: e.data.message }); } catch(_) {}
+            } else if (msgType === 'POROBOT_STATS') {
+                syncStatsFromExternal(e.data.stats);
+                try { chrome.runtime.sendMessage({ type: 'POROBOT_STATS', stats: e.data.stats }); } catch(_) {}
+            } else if (msgType === 'POROBOT_TRADE') {
+                addTradeToJournal(e.data.trade);
+                try { chrome.runtime.sendMessage({ type: 'POROBOT_TRADE', trade: e.data.trade }); } catch(_) {}
+            } else if (msgType === 'POROBOT_SIGNAL') {
+                showSignal(e.data.signal);
+                try { chrome.runtime.sendMessage({ type: 'POROBOT_SIGNAL', signal: e.data.signal }); } catch(_) {}
+            } else if (msgType === 'POROBOT_TRADE_RESULT') {
+                autoRecordResult(e.data.result, e.data.profit, { nextBet: e.data.nextBet, mmStep: e.data.mmStep, mm: e.data.mm });
+            } else if (msgType === 'POROBOT_MULTI_SIGNAL') {
+                var ms = e.data.signal || {};
+                appendLog('🔎 [' + (ms.asset || '?') + '] ' + (ms.direction || 'NEUTRAL') + ' | выплата ' + (ms.payout || 0) + '%');
+            } else if (msgType === 'POROBOT_MULTI_TRADE_OPEN') {
+                var mo = e.data.trade || {};
+                appendLog('🤖 Открыта [' + (mo.asset || '?') + '] ' + (mo.direction || '') + ' | $' + (parseFloat(mo.amount) || 0).toFixed(2));
+            } else if (msgType === 'POROBOT_MULTI_TRADE_RESULT') {
+                var mt = e.data.trade || {};
+                if (mt.result === 'WIN' || mt.result === 'LOSE') {
+                    var mp = netPnlFromResult(mt.result, parseFloat(mt.profit) || 0, mt.amount);
+                    var mtime = new Date();
+                    var mts = String(mtime.getHours()).padStart(2,'0') + ':' + String(mtime.getMinutes()).padStart(2,'0') + ':' + String(mtime.getSeconds()).padStart(2,'0');
+                    applySessionPnl(mt.result, mp);
+                    updateStreak(mt.result);
+                    addTradeToJournal({ time: mts, asset: mt.asset || '?', direction: mt.direction || '', bet: mt.amount || 0, result: mt.result, profit: mp.toFixed(2), strategy: 'Multi-pair · payout ' + (mt.payout || 0) + '%' });
+                    renderAssetStats();
+                    renderIndStats();
+                    posTelemetryTrade({ asset: mt.asset, direction: mt.direction, amount: mt.amount }, mt.result, mp, 'multi_pair', true);
+                    appendLog((mt.result === 'WIN' ? '✅' : '❌') + ' [' + mt.asset + '] ' + mt.result + ' | P&L: ' + (mp >= 0 ? '+' : '-') + '$' + Math.abs(mp).toFixed(2));
+                    showTradeReaction(mt.result);
+                    checkAutoTradeGuards();
+                } else if (mt.result === 'DRAW') {
+                    appendLog('➖ [' + (mt.asset || '?') + '] Возврат ставки');
+                }
+            } else if (msgType === 'POROBOT_SCAN') {
+                updateLiveScan(e.data.scan);
+            } else if (msgType === 'POROBOT_ASSET') {
+                var assetEl = document.getElementById('pos-cur-asset');
+                var liveDot = document.getElementById('pos-asset-live-dot');
+                if (assetEl && e.data.asset) {
+                    assetEl.textContent = e.data.asset;
+                    if (liveDot) liveDot.classList.add('active');
+                }
+                if (e.data.asset && e.data.asset !== _posTelemAsset) {
+                    _posTelemAsset = String(e.data.asset);
+                    posTelemetryState();
+                }
+            } else if (msgType === 'POROBOT_BALANCE') {
+                var bal = e.data.balance != null ? parseFloat(e.data.balance) : NaN;
+                var demoBal = e.data.demoBalance != null ? parseFloat(e.data.demoBalance) : null;
+                var realBal = e.data.realBalance != null ? parseFloat(e.data.realBalance) : null;
+                if ((!isNaN(bal) && bal >= 0) ||
+                    (demoBal != null && !isNaN(demoBal)) ||
+                    (realBal != null && !isNaN(realBal))) {
+                    syncAccountBalanceUI({
+                        balance: !isNaN(bal) && bal >= 0 ? bal : null,
+                        accountType: e.data.accountType,
+                        demoBalance: demoBal != null && !isNaN(demoBal) ? demoBal : null,
+                        realBalance: realBal != null && !isNaN(realBal) ? realBal : null,
+                        source: e.data.source || null,
+                        ts: e.data.ts || Date.now()
+                    });
+                }
+            } else if (msgType === 'POROBOT_AUTO_STOP') {
+                disableAutoTrade(
+                    e.data.reason === 'tp' ? 'toast_take_profit'
+                        : e.data.reason === 'tl' ? 'toast_take_loss'
+                        : 'toast_low_balance',
+                    e.data.reason === 'tp' ? 'ok' : 'err'
+                );
+            }
+        });
+    } else {
+        window.addEventListener('message', function(e) {
+            var msgType = e.data && e.data.type;
+            if (msgType === 'POROBOT_LOG' || msgType === 'POROBOT_STATS' || msgType === 'POROBOT_TRADE' || msgType === 'POROBOT_SIGNAL' || msgType === 'POROBOT_TRADE_RESULT' || msgType === 'POROBOT_MULTI_SIGNAL' || msgType === 'POROBOT_MULTI_TRADE_OPEN' || msgType === 'POROBOT_MULTI_TRADE_RESULT' || msgType === 'POROBOT_ASSET' || msgType === 'POROBOT_SCAN' || msgType === 'POROBOT_BALANCE' || msgType === 'POROBOT_AUTO_STOP') {
+                try { window.top.postMessage(e.data, '*'); } catch(_) {}
+            }
+        });
+    }
+
+    // ── EXTENSION COMMANDS ───────────────────────────────────────────
+    try {
+        chrome.runtime.onMessage.addListener(function(request) {
+            function relayCoreCmd(req) {
+                try { window.postMessage({ type: 'POROBOT_CORE_CMD', cmd: req.cmd, config: req.config, patch: req.patch, enabled: req.enabled }, '*'); } catch(_) {}
+            }
+            // Windows-приложение выключило бота (bridge/bridge-client.js): останавливаем
+            // автоторговлю и убираем оверлей. На pocketoption.com не приходит — там статические скрипты.
+            if (request.type === 'POS_BRIDGE_OFF') {
+                relayCoreCmd({ cmd: 'STOP' });
+                var bridgePanel = IS_TOP && document.getElementById('pos-panel');
+                if (bridgePanel) bridgePanel.remove();
+                return;
+            }
+            if (!IS_TOP) {
+                var hasTrade = !!document.querySelector('.block--expiration-inputs, a.btn.btn-call, a.btn.btn-put, .btn.btn-call, .btn.btn-put, .btn-call, .btn-put, .dops__timeframes-item, .value__val input, .control__value input');
+                if (request.type === 'POROBOT_CORE_CMD') {
+                    if (hasTrade || (request.patch && (request.patch.expiration != null || request.patch.baseBet != null))) relayCoreCmd(request);
+                } else if (request.type === 'POROBOT_START') {
+                    if (hasTrade) relayCoreCmd({ cmd: 'START', config: request.config });
+                } else if (request.type === 'POROBOT_STOP') {
+                    relayCoreCmd({ cmd: 'STOP' });
+                }
+                return;
+            }
+            if (request.type === 'POROBOT_CORE_CMD') {
+                relayCoreCmd(request);
+            } else if (request.type === 'POROBOT_START') {
+                relayCoreCmd({ cmd: 'START', config: request.config });
+            } else if (request.type === 'POROBOT_STOP') {
+                relayCoreCmd({ cmd: 'STOP' });
+            } else if (request.type === 'POROBOT_LOG') {
+                appendLog(request.message);
+            } else if (request.type === 'POROBOT_STATS') {
+                syncStatsFromExternal(request.stats);
+            } else if (request.type === 'POROBOT_TRADE') {
+                addTradeToJournal(request.trade);
+            } else if (request.type === 'POROBOT_SIGNAL') {
+                showSignal(request.signal);
+            }
+        });
+    } catch(_) {}
+
+    // ── BOT_TICK ─────────────────────────────────────────────────────
+    window.addEventListener('BOT_TICK', function(e) {
+        var asset = e.detail && e.detail.asset;
+        if (!asset || asset === 'UNKNOWN') return;
+        var el = document.getElementById('pos-cur-asset');
+        if (el) el.textContent = asset;
+    });
+
+    // ── INIT ─────────────────────────────────────────────────────────
+    if (IS_TOP) {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', injectBotUI);
+        } else {
+            injectBotUI();
+        }
+    }
+
+})();
+ + (Number(pt.amount) || 0).toFixed(2));
             } else if (msgType === 'POROBOT_PREDICTIVE_EVENT') {
                 handlePredictiveEvent(e.data);
             } else if (msgType === 'PT4_PREDICTIVE_READY') {
