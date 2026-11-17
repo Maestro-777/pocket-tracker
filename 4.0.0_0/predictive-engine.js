@@ -464,11 +464,13 @@
     if (data.type === 'PT4_PREDICTIVE_RESTORE') root.__pt4PredictiveEngine.restoreState(data.state);
   });
   root.postMessage({ type: 'PT4_PREDICTIVE_READY' }, '*');
-  // Reuse the existing inject.js Pocket Option WebSocket quote event.
+  // Quotes are routed by the top-frame coordinator to exactly one engine owner.
+  // This prevents each all_frames instance from building a separate history/statistics set.
   root.addEventListener('message', event => {
     const data = event.data;
-    if (!data || data.type !== 'POROBOT_WS_PRICE' || !data.asset || !/_otc$/i.test(data.asset)) return;
-    const result = root.__pt4PredictiveEngine.ingest(data);
+    if (!data || event.source !== root || data.type !== 'PT4_PREDICTIVE_TICK' ||
+        !data.tick || !data.tick.asset || !/_otc$/i.test(data.tick.asset)) return;
+    const result = root.__pt4PredictiveEngine.ingest(data.tick);
     if (result) root.postMessage({ type: 'POROBOT_PREDICTIVE_UPDATE', forecast: result }, '*');
   });
 })(window);
