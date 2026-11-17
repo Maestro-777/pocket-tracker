@@ -145,6 +145,13 @@
         return normalizeAssetName(s);
     }
 
+    function isFxCurrencyPair(symbol) {
+        const raw = String(symbol || '').toUpperCase().replace(/_?OTC$/i, '').replace(/[^A-Z]/g, '');
+        if (raw.length !== 6) return false;
+        const currencies = new Set(['USD','EUR','GBP','JPY','CHF','CAD','AUD','NZD','CNY','HKD','SGD','TRY','ZAR','MXN','NOK','SEK','PLN','THB','INR','IDR','BRL','KRW','CZK','HUF','ILS','DKK']);
+        return currencies.has(raw.slice(0, 3)) && currencies.has(raw.slice(3, 6));
+    }
+
     function ingestAssetsCatalog(payload) {
         const rows = Array.isArray(payload) ? payload : (payload && payload.assets ? payload.assets : [payload]);
         if (!rows || !rows.length) return 0;
@@ -152,13 +159,17 @@
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
             if (!row) continue;
-            let symbol = '', label = '';
+            let symbol = '', label = '', profit = NaN, active = false;
             if (Array.isArray(row) && row.length >= 2) {
                 symbol = row[1];
                 label = row[2] || row[1];
+                profit = parseFloat(row[5]);
+                active = row[14] === true || row[14] === 1 || row[14] === '1' || String(row[14]).toLowerCase() === 'true';
             } else if (typeof row === 'object') {
                 symbol = row.symbol || row.asset || row.code || row.s || '';
                 label = row.name || row.title || row.label || row.n || symbol;
+                profit = parseFloat(row.profit ?? row.payout ?? row.percentProfit);
+                active = row.active === true || row.isActive === true || row.active === 1 || row.active === '1' || String(row.active).toLowerCase() === 'true';
             }
             if (!symbol) continue;
             rememberRawAsset(symbol);
@@ -168,7 +179,9 @@
             window.__poAssetCatalog[symNorm] = {
                 symbol: symNorm,
                 label: labelNorm || symNorm,
-                raw: symbol
+                raw: symbol,
+                profit: isFinite(profit) ? (profit > 0 && profit <= 1 ? profit * 100 : profit) : NaN,
+                active: active
             };
             if (labelNorm && !assetsMatch(labelNorm, symNorm)) {
                 learnAssetAlias(labelNorm, symNorm);
@@ -650,9 +663,13 @@
                 return;
             }
 
+            if (eventName === 'successopenOrder' && core._handleMultiOpen && core._handleMultiOpen(payload)) return;
+            if (eventName === 'failopenOrder' && core._handleMultiFail && core._handleMultiFail(payload)) return;
+
             // ── updateAssets: полный каталог инструментов (символ ↔ название в UI) ──
             if (eventName === 'updateAssets') {
                 ingestAssetsCatalog(payload);
+                if (core.isRunning && core.config?.multiPairTrading) core._refreshMultiPairs(true);
                 return;
             }
 
@@ -868,12 +885,14 @@
                         window.postMessage({ type: 'POROBOT_BALANCE', balance: newBal }, '*');
                     }
                 } catch (_) {}
-                if (!core.isRunning) return;
                 const deals = Array.isArray(payload?.deals) ? payload.deals
                             : Array.isArray(payload)         ? payload
                             : [payload];
+                if (!core.isRunning && !(core._multiTradesById && core._multiTradesById.size) && !(core._multiPendingByRequestId && core._multiPendingByRequestId.size)) return;
                 for (const deal of deals) {
                     if (!deal) continue;
+                    if (core._handleMultiClose && core._handleMultiClose(deal)) continue;
+                    if (!core.isRunning) continue;
                     const netProfit = parseFloat(deal.profit ?? 0);
                     const amount    = parseFloat(deal.amount ?? 1);
                     // WIN = net profit > 0; LOSS = profit is 0 or negative (lost investment)
@@ -895,6 +914,7 @@
                 const items = Array.isArray(d) ? d : [d];
                 for (const item of items) {
                     if (!item) continue;
+                    if (core._handleMultiClose && core._handleMultiClose(item)) continue;
                     const status = (item.status || item.result || item.state || '').toString().toLowerCase();
                     const rawProfit = parseFloat(item.profit ?? NaN);
                     const investment = parseFloat(item.amount || item.investment || 1);
@@ -3018,6 +3038,7 @@
             this._syncAssetFromDOM(true);
             this._domTimer=setInterval(()=>this._syncAssetFromDOM(), 800);
             this._watchResults();
+            if (this.config?.multiPairTrading) this._startMultiPairTrading();
             const exp = parseInt(this.config?.expiration, 10) || 60;
             const prof = getAnalysisProfile(exp);
             const bet = capBetToBalance(parseFloat(this.config?.baseBet) || 1);
@@ -3460,6 +3481,7 @@
             let lastTs=0;
             const COOLDOWN=8000;
             this._resultObserver=new MutationObserver(mutations=>{
+                if (self.config?.multiPairTrading) return;
                 for(const mut of mutations) {
                     for(const node of mut.addedNodes) {
                         if(node.nodeType!==1) continue;
@@ -3754,8 +3776,248 @@
             this.log('🔎 [' + asset + '] входа нет - ' + sig.rejectReason + cm);
         }
 
+
+        _startMultiPairTrading() {
+            this._multiPairs = new Map();
+            this._multiSubscribed = new Set();
+            this._multiOpenByAsset = new Map();
+            this._multiPendingByRequestId = new Map();
+            this._multiTradesById = new Map();
+            this._multiLastEntryBar = {};
+            this._multiRequestId = Date.now() * 1000;
+            this._multiSocket = null;
+            this._multiLastRefreshAt = 0;
+            this._multiModeLogged = false;
+            this._refreshMultiPairs(true);
+        }
+
+        _refreshMultiPairs(force) {
+            if (!this.isRunning || !this.config?.multiPairTrading) return;
+            const ws = getActivePoSocket();
+            if (!ws) return;
+            if (this._multiSocket !== ws) {
+                this._multiSocket = ws;
+                this._multiSubscribed = new Set();
+            }
+            const minProfitRaw = parseFloat(this.config.minProfit);
+            const minProfit = isFinite(minProfitRaw) ? Math.max(0, Math.min(100, minProfitRaw)) : 92;
+            const includeOtc = this.config.includeOtc !== false;
+            const catalog = window.__poAssetCatalog || {};
+            const next = new Map();
+            Object.keys(catalog).forEach((key) => {
+                const item = catalog[key];
+                if (!item || !item.active || !isFxCurrencyPair(item.symbol || key)) return;
+                if (!includeOtc && /_OTC$/i.test(String(item.symbol || key))) return;
+                const payout = parseFloat(item.profit);
+                if (!isFinite(payout) || payout < minProfit) return;
+                next.set(normalizeAssetName(item.symbol || key), {
+                    symbol: normalizeAssetName(item.symbol || key),
+                    raw: item.raw || toPoAssetId(item.symbol || key),
+                    profit: payout,
+                    label: item.label || item.symbol || key
+                });
+            });
+            this._multiPairs = next;
+            const exp = parseInt(this.config?.expiration, 10) || 60;
+            const profile = getAnalysisProfile(exp);
+            let subscribed = 0;
+            for (const [asset, item] of next) {
+                if (this._multiSubscribed.has(asset)) continue;
+                const raw = item.raw || toPoAssetId(asset);
+                if (!raw) continue;
+                try {
+                    // This is the same per-symbol subscription pattern used by 1.1.7_0.
+                    ws.send('42["subfor",' + JSON.stringify(raw) + ']');
+                    ws.send('42["changeSymbol",' + JSON.stringify({ asset: raw, period: profile.exp }) + ']');
+                    this._multiSubscribed.add(asset);
+                    subscribed++;
+                } catch (_) {}
+            }
+            const now = Date.now();
+            if (force || subscribed || now - this._multiLastRefreshAt > 15000) {
+                this._multiLastRefreshAt = now;
+                this.log('🌐 Мульти-пары: ' + next.size + ' валютных пар с доходностью ≥ ' + minProfit + '% | подписано новых: ' + subscribed);
+            }
+        }
+
+        _scanMultiPairs() {
+            if (!this.isRunning || !isPrimarySignalFrame()) return;
+            const now = Date.now();
+            if (!this._multiPairs || !this._multiPairs.size || now - (this._multiLastRefreshAt || 0) > 10000) {
+                this._refreshMultiPairs(false);
+            }
+            if (!this._multiPairs || !this._multiPairs.size) return;
+
+            // Pending requests are bounded; a missing server acknowledgement must not block a pair forever.
+            const expSec = parseInt(this.config?.expiration, 10) || 60;
+            for (const [requestId, trade] of this._multiPendingByRequestId || []) {
+                if (now > trade.deadline) {
+                    this._multiPendingByRequestId.delete(requestId);
+                    if (this._multiOpenByAsset.get(trade.asset) === 'req:' + requestId) this._multiOpenByAsset.delete(trade.asset);
+                    this.log('⚠️ [' + trade.asset + '] нет подтверждения открытия — запрос снят с учёта');
+                }
+            }
+
+            const maxRaw = parseInt(this.config.maxConcurrentTrades, 10);
+            const maxOpen = isFinite(maxRaw) ? Math.max(1, Math.min(20, maxRaw)) : 4;
+            const minProfitRaw = parseFloat(this.config.minProfit);
+            const minProfit = isFinite(minProfitRaw) ? Math.max(0, Math.min(100, minProfitRaw)) : 92;
+            const accountType = window._poLastWsAccountType;
+            const balanceInfo = getActiveBalanceInfo();
+            const balance = balanceInfo && isFinite(parseFloat(balanceInfo.balance)) ? parseFloat(balanceInfo.balance) : null;
+            const amount = capBetToBalance(parseFloat(this.config.baseBet) || 1);
+            if (!this._multiModeLogged) {
+                this._multiModeLogged = true;
+                if (this.config.moneyManagement && this.config.moneyManagement !== 'fixed') {
+                    this.log('ℹ️ Мульти-пары используют фиксированную базовую ставку для независимых сделок; прогрессия ММ не применяется.');
+                }
+            }
+
+            let openCount = this._multiOpenByAsset ? this._multiOpenByAsset.size : 0;
+            if (openCount >= maxOpen) return;
+            for (const [asset, item] of this._multiPairs) {
+                if (openCount >= maxOpen) break;
+                if (item.profit < minProfit || this._multiOpenByAsset.has(asset)) continue;
+                const ticks = this._getTicksForAsset(asset);
+                const lastTickAt = this._priceTickTs[asset] || 0;
+                if (!ticks.length || !lastTickAt || now - lastTickAt > 15000) continue;
+
+                const ctx = this._getAnalysisContext(asset);
+                if (!ctx || !ctx.ready || !ctx.candles || !ctx.candles.length) continue;
+                const sig = this._buildScanState(asset, ctx);
+                if (!sig || (sig.direction !== 'UP' && sig.direction !== 'DOWN')) continue;
+                const barTs = ctx.candles[ctx.candles.length - 1].ts || 0;
+                if (!barTs || this._multiLastEntryBar[asset] === barTs) continue;
+
+                const signal = {
+                    asset: asset,
+                    direction: sig.direction,
+                    payout: item.profit,
+                    amount: amount,
+                    indicators: sig.matchedIndicators || '',
+                    expiration: expSec,
+                    timestamp: now
+                };
+                this._multiLastEntryBar[asset] = barTs;
+                this._post('POROBOT_MULTI_SIGNAL', { signal: signal });
+                if (!this.config.autoTrade) continue;
+
+                if (accountType !== 'demo' && accountType !== 'real') {
+                    if (!this._multiAccountWarned) {
+                        this._multiAccountWarned = true;
+                        this.log('⛔ Мульти-пары: тип счёта не подтверждён WebSocket — открытие сделок заблокировано.');
+                    }
+                    continue;
+                }
+                if (!isFinite(amount) || amount <= 0) continue;
+                if (balance != null && balance + 1e-9 < amount) {
+                    this.log('⛔ [' + asset + '] недостаточно средств для ставки $' + amount.toFixed(2));
+                    continue;
+                }
+                const ws = getActivePoSocket();
+                if (!ws) continue;
+                const requestId = ++this._multiRequestId;
+                const rawAsset = item.raw || toPoAssetId(asset);
+                const payload = {
+                    asset: rawAsset,
+                    amount: amount,
+                    action: sig.direction === 'UP' ? 'call' : 'put',
+                    isDemo: accountType === 'demo' ? 1 : 0,
+                    requestId: requestId,
+                    optionType: 100,
+                    time: expSec
+                };
+                try {
+                    ws.send('42["openOrder",' + JSON.stringify(payload) + ']');
+                    const trade = {
+                        requestId: String(requestId),
+                        asset: asset,
+                        direction: sig.direction,
+                        amount: amount,
+                        expiration: expSec,
+                        payout: item.profit,
+                        openedAt: now,
+                        deadline: now + (expSec + 30) * 1000
+                    };
+                    this._multiPendingByRequestId.set(String(requestId), trade);
+                    this._multiOpenByAsset.set(asset, 'req:' + requestId);
+                    openCount++;
+                    this._post('POROBOT_MULTI_TRADE_OPEN', { trade: trade });
+                    this.log('🤖 Мульти-сделка [' + asset + '] ' + (sig.direction === 'UP' ? 'CALL' : 'PUT') + ' $' + amount.toFixed(2) + ' | выплата ' + item.profit + '% | ' + expSec + 'с');
+                } catch (err) {
+                    this.log('⚠️ [' + asset + '] ошибка отправки ордера: ' + (err && err.message ? err.message : 'WebSocket'));
+                }
+            }
+        }
+
+        _handleMultiOpen(payload) {
+            const data = Array.isArray(payload) ? payload[0] : payload;
+            if (!data) return false;
+            const requestId = String(data.requestId ?? data.request_id ?? '');
+            const trade = requestId && this._multiPendingByRequestId && this._multiPendingByRequestId.get(requestId);
+            if (!trade) return false;
+            const id = data.id ?? data.orderId ?? data.order_id;
+            if (id == null) return true;
+            this._multiPendingByRequestId.delete(requestId);
+            trade.id = String(id);
+            trade.deadline = Date.now() + (trade.expiration + 30) * 1000;
+            this._multiTradesById.set(String(id), trade);
+            this._multiOpenByAsset.set(trade.asset, String(id));
+            this.log('✓ Ордер подтверждён [' + trade.asset + '] #' + id);
+            return true;
+        }
+
+        _handleMultiFail(payload) {
+            const data = Array.isArray(payload) ? payload[0] : payload;
+            if (!data) return false;
+            const requestId = String(data.requestId ?? data.request_id ?? '');
+            const trade = requestId && this._multiPendingByRequestId && this._multiPendingByRequestId.get(requestId);
+            if (!trade) return false;
+            this._multiPendingByRequestId.delete(requestId);
+            this._multiOpenByAsset.delete(trade.asset);
+            this.log('⚠️ Ордер отклонён [' + trade.asset + ']: ' + String(data.error || 'ошибка платформы'));
+            return true;
+        }
+
+        _handleMultiClose(deal) {
+            if (!deal) return false;
+            const id = deal.id ?? deal.ticket ?? deal.orderId ?? null;
+            let trade = id != null && this._multiTradesById ? this._multiTradesById.get(String(id)) : null;
+            if (!trade) {
+                const asset = normalizeAssetName(deal.asset || deal.symbol || '');
+                const token = asset && this._multiOpenByAsset ? this._multiOpenByAsset.get(asset) : null;
+                if (token && String(token).indexOf('req:') === 0) {
+                    trade = this._multiPendingByRequestId.get(String(token).slice(4)) || null;
+                }
+            }
+            if (!trade) return false;
+            if (trade.requestId) this._multiPendingByRequestId.delete(String(trade.requestId));
+            if (id != null && this._multiTradesById) this._multiTradesById.delete(String(id));
+            this._multiOpenByAsset.delete(trade.asset);
+            const net = parseFloat(deal.profit ?? 0);
+            const result = net > 0 ? 'WIN' : (net < 0 ? 'LOSE' : 'DRAW');
+            const profit = result === 'WIN' ? net : (result === 'LOSE' ? -trade.amount : 0);
+            this._post('POROBOT_MULTI_TRADE_RESULT', { trade: {
+                id: id == null ? null : String(id),
+                asset: trade.asset,
+                direction: trade.direction,
+                amount: trade.amount,
+                result: result,
+                profit: profit,
+                payout: trade.payout,
+                expiration: trade.expiration,
+                time: Date.now()
+            }});
+            this.log((result === 'WIN' ? '✅' : result === 'LOSE' ? '❌' : '➖') + ' [' + trade.asset + '] ' + result + ' | P&L: ' + (profit >= 0 ? '+' : '-') + '$' + Math.abs(profit).toFixed(2));
+            return true;
+        }
+
         _scan() {
             if(!this.isRunning || !isPrimarySignalFrame()) return;
+            if (this.config?.multiPairTrading) {
+                this._scanMultiPairs();
+                return;
+            }
 
             // Страховка: если клик по сделке завис, не блокируем сигналы навсегда
             if (this._tradeBusy) {
