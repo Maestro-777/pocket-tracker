@@ -33,6 +33,7 @@
         "https://*.pocketoption.com/*"
       ],
       "js": [
+        "predictive-engine.js",
         "inject.js"
       ],
       "run_at": "document_start",
