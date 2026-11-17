@@ -209,3 +209,14 @@ test('routes quotes and predictive state through one elected frame across all_fr
   assert.match(background, /PT4_PREDICTIVE_CONFIG_BROADCAST/);
   assert.match(background, /PT4_PREDICTIVE_RESTORE_BROADCAST/);
 });
+
+
+test('only coordinator-routed ticks enter the Predictive Engine', () => {
+  const { engine, window, listeners } = makeEngine({ minSamples: 30 });
+  const handler = listeners.message && listeners.message.find(Boolean);
+  assert.equal(typeof handler, 'function');
+  handler({ source: window, data: { type: 'POROBOT_WS_PRICE', asset: 'EURUSD_OTC', price: 1.1, timestamp: 1000 } });
+  assert.equal(engine.series.size, 0, 'raw per-frame WebSocket events must not create local histories');
+  handler({ source: window, data: { type: 'PT4_PREDICTIVE_TICK', tick: { asset: 'EURUSD_OTC', price: 1.1, timestamp: 1000 } } });
+  assert.equal(engine.series.get('EURUSD_OTC').length, 1, 'the elected owner ingests the routed tick');
+});
