@@ -4089,8 +4089,8 @@
                     self._multiPendingByRequestId.delete(requestKey);
                     if (self._multiOpenByAsset.get(signal.asset) === 'req:' + requestKey) self._multiOpenByAsset.delete(signal.asset);
                     delete self._predictiveLastTradeAt[cooldownKey];
-                    self.log('⚠️ Predictive [' + signal.asset + ']: платформа не подтвердила открытие ордера за 15 секунд.');
-                }, 15000);
+                    self.log('⚠️ Predictive [' + signal.asset + ']: платформа не подтвердила ордер в течение срока ожидания.');
+                }, (signal.horizonSeconds + 30) * 1000);
                 this._post('POROBOT_PREDICTIVE_TRADE_OPEN', { trade });
                 this.log('🤖 Predictive [' + signal.asset + '] ' + tradeDirection + ' · ' + signal.model +
                     ' · ' + Math.round(signal.confidence * 100) + '% · $' + amount.toFixed(2) +
