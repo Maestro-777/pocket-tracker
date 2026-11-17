@@ -55,6 +55,19 @@ async function putMany(rows) {
     tx.onabort = () => reject(tx.error);
   });
 }
+function mergeCandle(oldBar,newBar) {
+  if (!oldBar) return newBar;
+  if (newBar.source === "history" && oldBar.source !== "history") {
+    return {...newBar,ticks:oldBar.ticks||0};
+  }
+  if (newBar.source === "tick-stream") {
+    return {...oldBar,high:Math.max(oldBar.high,newBar.high),
+      low:Math.min(oldBar.low,newBar.low),close:newBar.close,
+      ticks:(oldBar.ticks||0)+(newBar.ticks||0),
+      source:oldBar.source==="history"?"history+tick-stream":"tick-stream"};
+  }
+  return {...newBar,ticks:Math.max(oldBar.ticks||0,newBar.ticks||0)};
+}
 function tickRows(payload) {
   const rows = Array.isArray(payload) ? payload : [payload];
   const out = [];
@@ -77,6 +90,7 @@ function tickRows(payload) {
 async function storeTicks(tabId, ticks) {
   if (!ticks.length) return;
   const state=getState(tabId), updates=new Map();
+  ticks=[...ticks].sort((a,b)=>a.time-b.time);
   for(const t of ticks){
     const bucket=Math.floor(t.time/5000)*5000;
     const id=t.asset+"|5|"+bucket;
@@ -95,7 +109,7 @@ async function storeTicks(tabId, ticks) {
   })));
   for(let i=0;i<existing.length;i++){
     const old=existing[i],fresh=updates.get([...updates.keys()][i]);
-    if(old){fresh.open=old.open;fresh.high=Math.max(old.high,fresh.high);fresh.low=Math.min(old.low,fresh.low);fresh.ticks=(old.ticks||0)+fresh.ticks;}
+    if(old)updates.set([...updates.keys()][i],mergeCandle(old,fresh));
   }
   await putMany([...updates.values()]);
 }
@@ -137,7 +151,13 @@ async function storeHistory(payload) {
     c.asset=asset;c.period=period;c.id=asset+"|"+period+"|"+c.time;
     out.push(c);
   }
-  await putMany(out);return out.length;
+  const database=await db();
+  const existing=await Promise.all(out.map(c=>new Promise(resolve=>{
+    const req=database.transaction(STORE).objectStore(STORE).get(c.id);
+    req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>resolve(null);
+  })));
+  const merged=out.map((c,i)=>mergeCandle(existing[i],c));
+  await putMany(merged);return merged.length;
 }
 async function queryCandles({asset,limit=10000,period=5}) {
   const database=await db();
@@ -163,6 +183,25 @@ async function getDbStats(asset=null) {
     assets:assets.length,
     byPeriod:all.reduce((a,c)=>(a[c.period]=(a[c.period]||0)+1,a),{})
   };
+}
+async function getIntegrity(asset,period=5) {
+  const rows=await queryCandles({asset,period,limit:100000});
+  const step=Number(period)*1000;
+  let gaps=0,missing=0,maxGapMs=0,duplicates=0;
+  const gapSamples=[];
+  for(let i=1;i<rows.length;i++){
+    const delta=rows[i].time-rows[i-1].time;
+    if(delta===0){duplicates++;continue;}
+    if(delta>step){
+      const absent=Math.max(0,Math.round(delta/step)-1);
+      gaps++;missing+=absent;maxGapMs=Math.max(maxGapMs,delta-step);
+      if(gapSamples.length<30)gapSamples.push({from:rows[i-1].time,to:rows[i].time,missingCandles:absent,durationSec:Math.round(delta/1000)});
+    }
+  }
+  return {asset:asset||null,period,total:rows.length,gaps,duplicates,missingCandles:missing,
+    maxGapSec:Math.round(maxGapMs/1000),
+    coverage:rows.length>1?Math.max(0,1-missing/(rows.length+missing-1)):null,
+    firstTime:rows[0]?.time||null,lastTime:rows.at(-1)?.time||null,gapSamples};
 }
 function getStatus(tabId) {
   const s=getState(tabId);
@@ -240,6 +279,10 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
     }
     if(msg.type==="PDC_DB_STATS"){
       return {ok:true,...await getDbStats(msg.asset||null)};
+    }
+    if(msg.type==="PDC_GET_INTEGRITY"){
+      const status=getStatus(tabId);
+      return {ok:true,...await getIntegrity(msg.asset||status.pair,Number(msg.period)||5)};
     }
     return {ok:false,error:"Unknown request"};
   })().then(reply).catch(error=>reply({ok:false,error:String(error?.message||error)}));
