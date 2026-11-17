@@ -4,7 +4,7 @@ const VERSION = (typeof chrome !== 'undefined' && chrome.runtime?.getManifest ? 
 // Keep an internal build marker because the user intentionally keeps the public
 // manifest version may stay unchanged while testing hotfix packages. It lets diagnostics
 // distinguish the repaired runtime from an older archive with the same version.
-const BUILD_ID = 'expansion-local-1.0.1-schema2';
+const BUILD_ID = 'expansion-local-1.0.2-schema2';
 const $ = (id) => document.getElementById(id);
 const DASHBOARD_MESSAGE_TIMEOUT_MS = 12000;
 const DASHBOARD_NETWORK_MESSAGE_TIMEOUTS = Object.freeze({
