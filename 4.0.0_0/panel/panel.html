@@ -55,6 +55,12 @@
         <label class="hint"><input id="includeOtc" type="checkbox" checked> Включать OTC валютные пары</label>
         <div class="hint">В мульти-парном режиме используется фиксированная базовая ставка; прогрессивный мани-менеджмент не применяется.</div>
       </div>
+      <div class="row">
+        <label class="hint"><input id="reverseEnabled" type="checkbox"> REVERS — переключать направление после серии побед</label>
+        <label class="lbl" for="reverseWins">Порог побед подряд: <strong id="reverseWinsValue">3</strong></label>
+        <input id="reverseWins" class="ctl" type="range" min="1" max="10" step="1" value="3">
+        <div class="hint">При достижении порога бот начинает открывать сделки против сигнала. Следующая серия побед переключит направление обратно; поражение сбрасывает счётчик.</div>
+      </div>
       <div class="btns"><button id="start" class="btn btnP">▶ Старт</button><button id="stop" class="btn btnS" disabled>⬛ Стоп</button></div>
       <div class="hint safety">Автоторговля связана с финансовым риском. Перед REAL-счётом проверьте стратегию на DEMO.</div>
     </section>
