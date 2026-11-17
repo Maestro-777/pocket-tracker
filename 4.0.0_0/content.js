@@ -3498,7 +3498,7 @@
 
 
     // ── PREDICTIVE ENGINE UI / STORAGE ────────────────────────────────
-    var pt4Predictive = { latest: {}, state: null, config: null, saveTimer: null, lastIndicator: null, restored: false };
+    var pt4Predictive = { latest: {}, warmup: {}, state: null, config: null, saveTimer: null, lastIndicator: null, restored: false };
     var PT4_MODEL_NAMES = { linear:'Линейная', exponential:'Экспоненциальная', polynomial:'Полиномиальная', momentum:'Momentum', cyclical:'Циклическая', ensemble:'Ансамбль' };
     function pt4DefaultConfig() {
         return { enabled:true, sourceMode:'formula', assetMode:'all', selectedAsset:'*', horizonSeconds:60, model:'auto',
@@ -3616,7 +3616,8 @@
         var asset=select.value==='*'?(pt4Predictive.lastAsset||Object.keys(pt4Predictive.latest).slice(-1)[0]||''):select.value;
         var forecast=pt4Predictive.latest[asset], horizon=parseInt(document.getElementById('pt4-horizon').value,10)||60;
         var row=forecast&&forecast.horizons&&forecast.horizons[horizon];
-        document.getElementById('pt4-feed-status').textContent=forecast?'OTC · ПОТОК АКТИВЕН':'ОЖИДАНИЕ OTC';
+        var warm=pt4Predictive.warmup[asset];
+        document.getElementById('pt4-feed-status').textContent=forecast?'OTC · ПОТОК АКТИВЕН':(warm?'ИСТОРИЯ '+warm.samples+'/'+warm.required:'ОЖИДАНИЕ OTC');
         document.getElementById('pt4-current-asset').textContent=asset||'Ожидание котировок';
         document.getElementById('pt4-issued-at').textContent=forecast?new Date(forecast.timestamp).toLocaleTimeString():'—';
         document.getElementById('pt4-current-price').textContent=forecast?pt4FormatPrice(forecast.currentPrice):'—';
@@ -3699,6 +3700,10 @@
             var msgType = e.data && e.data.type;
             if (msgType === 'POROBOT_SCAN') {
                 pt4Predictive.lastIndicator = e.data.scan || null;
+                renderPredictivePanel();
+            } else if (msgType === 'POROBOT_PREDICTIVE_WARMUP') {
+                pt4Predictive.warmup[e.data.asset]=e.data;
+                pt4Predictive.lastAsset=e.data.asset;
                 renderPredictivePanel();
             } else if (msgType === 'POROBOT_PREDICTIVE_ASSETS') {
                 var assetSelect = document.getElementById('pt4-asset'), keepAsset = assetSelect && assetSelect.value;
