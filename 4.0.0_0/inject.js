@@ -4712,19 +4712,33 @@
                 }
                 return;
             }
-            if (d.type !== 'PT4_PREDICTIVE_TICK_RELAY' || !d.tick) return;
-            const claim = window.__poEngineClaim;
-            const owner = claim && claim.win ? claim.win : window;
-            try { owner.postMessage({ type: 'PT4_PREDICTIVE_TICK', tick: d.tick }, '*'); }
-            catch (_) {
-                try { window.postMessage({ type: 'PT4_PREDICTIVE_TICK', tick: d.tick }, '*'); } catch (_) {}
+            if (d.type === 'POROBOT_PREDICTIVE_UPDATE' && d.forecast) {
+                const claim = window.__poEngineClaim;
+                const owner = claim && claim.win ? claim.win : window;
+                try { owner.postMessage({ type: 'PT4_PREDICTIVE_TRADE_FORECAST', forecast: d.forecast }, '*'); }
+                catch (_) {
+                    try { window.postMessage({ type: 'PT4_PREDICTIVE_TRADE_FORECAST', forecast: d.forecast }, '*'); } catch (_) {}
+                }
+                return;
             }
+            if (d.type !== 'PT4_PREDICTIVE_TICK_RELAY' || !d.tick) return;
+            // One stable quote/statistics owner: the top-frame Predictive Engine.
+            // The elected trade frame is used only for execution, never for data ingestion.
+            try { window.postMessage({ type: 'PT4_PREDICTIVE_TICK', tick: d.tick }, '*'); } catch (_) {}
         });
     }
 
     window.addEventListener('message', (e) => {
         const d = e.data;
-        if (!d || d.type !== 'POROBOT_CORE_CMD') return;
+        if (!d) return;
+        if (d.type === 'PT4_PREDICTIVE_TRADE_FORECAST' && e.source === window.top && d.forecast) {
+            try {
+                const core = window.__poCore;
+                if (core && typeof core.onPredictiveForecast === 'function') core.onPredictiveForecast(d.forecast);
+            } catch (_) {}
+            return;
+        }
+        if (d.type !== 'POROBOT_CORE_CMD') return;
         handleCoreCmd(d);
     });
 
