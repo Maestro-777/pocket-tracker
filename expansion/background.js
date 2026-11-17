@@ -1825,6 +1825,12 @@ async function connectServerSignalSocket() {
   await signalDiagnosticsReady;
   await restoreSignalSubscriptionState();
   const snapshot = signalSubscriptionSnapshot();
+  if (snapshot.enabled && snapshot.localOnly) {
+    closeServerSignalSocket('local_strategy_engine_restored', false);
+    persistSignalDiagnostics({ status: 'online', localOnly: true, lastError: null });
+    void notifySignalSubscribers({ type: 'PT_SIGNAL_SOCKET_STATUS', status: 'online', analysisReady: true, localOnly: true }, { controllerOnly: true });
+    return { ok: true, status: 'online', analysisReady: true, localOnly: true };
+  }
   if (!snapshot.enabled) {
     signalSocketReconnectAttempt = 0;
     closeServerSignalSocket('no_subscriptions', false);
@@ -5807,6 +5813,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (!signalLastRecoveryAttemptAt || now - signalLastRecoveryAttemptAt > SIGNAL_RECOVERY_COOLDOWN_MS) {
               await recoverPersistentSignalChannel('content_status_probe').catch(() => null);
             }
+          }
+          const restoredLocalSubscription = signalSubscriptionSnapshot();
+          if (restoredLocalSubscription.enabled && restoredLocalSubscription.localOnly) {
+            sendResponse({ ok: true, status: 'online', analysisReady: true, localOnly: true, diagnosticsStatus: 'online' });
+            return;
           }
           const status = signalSocket?.readyState === WebSocket.OPEN
             ? (signalSocketAnalysisReady ? 'online' : (signalSocketSubscriptionAckAt ? 'analyzing' : 'subscribing'))
