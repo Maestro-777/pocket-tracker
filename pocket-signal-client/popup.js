@@ -47,43 +47,59 @@ function showSignal(data, status) {
   }
 }
 
-button.addEventListener("click", () => {
+function sendMessage(payload) {
+  return new Promise(resolve => chrome.runtime.sendMessage(payload, response => {
+    if (chrome.runtime.lastError) resolve({ ok: false, error: chrome.runtime.lastError.message });
+    else resolve(response || { ok: false, error: "Пустой ответ" });
+  }));
+}
+
+button.addEventListener("click", async () => {
   button.disabled = true;
-  button.textContent = "Запрашиваю…";
+  button.textContent = "Проверяю доступ…";
   result.className = "result idle";
-  result.textContent = "Отправка запроса в SignalBots…";
+  result.textContent = "Проверка лицензии SignalBots…";
   raw.textContent = "Ожидание ответа…";
 
-  chrome.runtime.sendMessage({
-    type: "PSC_GET_SIGNAL",
-    payload: { pair: $("pair").value, tf: $("tf").value, key: $("key").value.trim() }
-  }, response => {
+  const credential = $("key").value.trim();
+  const license = await sendMessage({
+    type: "PSC_CHECK_LICENSE",
+    payload: { credential }
+  });
+
+  if (!license || !license.ok || !license.data || !license.data.licensed) {
     button.disabled = false;
     button.textContent = "Получить сигнал";
-    if (chrome.runtime.lastError) {
-      showError(chrome.runtime.lastError.message);
-      raw.textContent = chrome.runtime.lastError.message;
-      return;
+    const data = license && license.data || {};
+    const reason = license && (license.error || data.message || data.error)
+      || "Лицензия не подтверждена сервером.";
+    showError(reason + " Войдите на signalbots.ai или используйте действующий SB-ключ / unlock-ссылку.", license && license.status);
+    raw.textContent = JSON.stringify(license && (license.data || license) || {}, null, 2);
+    return;
+  }
+
+  button.textContent = "Запрашиваю сигнал…";
+  result.textContent = "Доступ подтверждён. Запрашиваю серверный сигнал…";
+  const signal = await sendMessage({
+    type: "PSC_GET_SIGNAL",
+    payload: {
+      pair: $("pair").value,
+      tf: $("tf").value,
+      key: license.key || ""
     }
-    if (!response) {
-      showError("Фоновый обработчик не вернул ответ.");
-      raw.textContent = "Пустой ответ";
-      return;
-    }
-    raw.textContent = JSON.stringify(response.data !== undefined ? response.data : response, null, 2);
-    if (!response.ok) {
-      const data = response.data || {};
-      let message = response.error || data.message || data.error || "Сервер отклонил запрос.";
-      if (response.status === 401 || response.status === 403) {
-        message += " Проверьте вход на signalbots.ai и права/лицензию для этого продукта.";
-      }
-      showError(message, response.status);
-      return;
-    }
-    if (!response.data || typeof response.data !== "object") {
-      showError("Сервер вернул пустой или неожиданный ответ.", response.status);
-      return;
-    }
-    showSignal(response.data, response.status);
   });
+
+  button.disabled = false;
+  button.textContent = "Получить сигнал";
+  raw.textContent = JSON.stringify(signal && (signal.data !== undefined ? signal.data : signal), null, 2);
+  if (!signal || !signal.ok) {
+    const data = signal && signal.data || {};
+    showError(signal && (signal.error || data.message || data.error) || "Сервер отклонил запрос после проверки лицензии.", signal && signal.status);
+    return;
+  }
+  if (!signal.data || typeof signal.data !== "object") {
+    showError("Сервер вернул пустой или неожиданный ответ.", signal.status);
+    return;
+  }
+  showSignal(signal.data, signal.status);
 });
