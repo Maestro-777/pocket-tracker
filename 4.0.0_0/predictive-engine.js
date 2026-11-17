@@ -48,8 +48,9 @@
       this.lastForecastAt = new Map();
     }
     onUpdate(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
-    emit(type, data) {
+    emit(type, data, broadcast = true) {
       for (const fn of this.listeners) { try { fn(type, data); } catch (_) {} }
+      if (!broadcast) return;
       try {
         const now = Date.now();
         const includeState = type !== 'forecast' || now - (this._lastStateExportAt || 0) >= 5000;
@@ -341,6 +342,7 @@
       return result;
     }
     _settle(asset, timestamp, price) {
+      const settledRecords = [], invalidRecords = [];
       for (const [id, forecast] of this.pending) {
         if (forecast.asset !== asset || timestamp < forecast.dueAt) continue;
         const delay = timestamp - forecast.dueAt;
@@ -349,7 +351,8 @@
           this.history.push(invalid);
           if (this.history.length > this.options.maxForecasts) this.history.shift();
           this.pending.delete(id);
-          this.emit('invalid', invalid);
+          invalidRecords.push(invalid);
+          this.emit('invalid', invalid, false);
           continue;
         }
         const actualDirection = signDirection(price, forecast.entry, this.options.drawEpsilon * forecast.entry);
@@ -383,7 +386,11 @@
         this.history.push(record);
         if (this.history.length > this.options.maxForecasts) this.history.shift();
         this.pending.delete(id);
-        this.emit('settled', record);
+        settledRecords.push(record);
+        this.emit('settled', record, false);
+      }
+      if (settledRecords.length || invalidRecords.length) {
+        this.emit('settlement_batch', { asset, settled: settledRecords, invalid: invalidRecords });
       }
     }
     getStats(asset) {
