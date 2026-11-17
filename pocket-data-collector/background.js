@@ -231,6 +231,7 @@ async function getIntegrity(asset,period=5) {
     coverage:rows.length>1?Math.max(0,1-missing/(rows.length+missing-1)):null,
     firstTime:rows[0]?.time||null,lastTime:rows.at(-1)?.time||null,gapSamples};
 }
+async function maybeAutoTrade(tabId){const st=getState(tabId),a=st.auto;if(!a?.enabled||a.pending||a.trades>=a.maxTrades||st.accountType!=="DEMO")return;if(Date.now()-(a.lastTradeAt||0)<60000)return;const candles=await queryCandles({asset:st.pair,period:5,limit:2500});if(candles.length<100)return;const latest=candles[candles.length-1];if(!latest||Date.now()-latest.time>12000||latest.time===a.lastAttemptBar)return;const report=globalThis.PocketCollectorEngine.evaluateExpiry(candles,{expirySec:15,minSamples:20,threshold:80});a.lastAttemptBar=latest.time;if(report.status!=="ready"||!["UP","DOWN"].includes(report.signal)){a.lastResult="Нет подтверждённого сигнала";return;}a.pending=true;a.lastResult="Передаю сигнал "+report.signal+" на DEMO";try{await chrome.tabs.sendMessage(tabId,{type:"PDC_EXECUTE_DEMO_TRADE",payload:{direction:report.signal,amount:a.amount,expirySec:15}});}catch(e){a.pending=false;a.lastResult="Ошибка передачи команды: "+String(e?.message||e);}}
 function getStatus(tabId) {
   const s=getState(tabId);
   const frames=Object.values(s.frameStates);
@@ -263,7 +264,7 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
           if(p.pair&&p.pair!=="UNKNOWN")s.pair=p.pair;
           if(p.balance?.value!=null){s.balance=p.balance.value;s.balanceSource="page";}
         }
-      }else if(msg.kind==="PO_EVENT"){
+      }else if(msg.kind==="AUTO_TRADE_RESULT"){s.auto.lastResult=msg.payload?.ok?"Кнопка нажата; принятие ордера платформой не подтверждено":(msg.payload?.reason||"Исполнение отклонено");if(msg.payload?.ok&&msg.payload?.clicked){s.auto.trades++;s.auto.lastTradeAt=Date.now();}s.auto.pending=false;}else if(msg.kind==="PO_EVENT"){
         const ev=msg.payload||{},name=ev.name,p=ev.payload;
         s.events++;s.lastEventAt=Date.now();f.lastEventAt=s.lastEventAt;
         if(name==="successauth"||name==="user_ready"){
@@ -281,7 +282,7 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
           const rows=Array.isArray(p)?p:[p];
           for(const row of rows){let settings=row?.settings;if(typeof settings==="string"){try{settings=JSON.parse(settings)}catch(_){}}const n=Number(settings?.chartPeriod||settings?.fastTimeframe||0);if(n>0)s.chartPeriod=n;}
         }else if(name==="updateStream"||name==="quotes/stream"){
-          const ticks=tickRows(p);await storeTicks(tabId,ticks);
+          const ticks=tickRows(p);await storeTicks(tabId,ticks);if(ticks.length)await maybeAutoTrade(tabId);
         }else if(["history/list/v2","updateHistoryNew","updateHistoryNewFast","loadHistoryPeriod","loadHistoryPeriodFast"].includes(name)){
           const n=await storeHistory(tabId,p);if(!n&&Array.isArray((Array.isArray(p)?p[0]:p)?.history))s.lastError="Получена история без подтверждённых OHLC-полей; тики продолжат формировать 5s свечи.";
         }
