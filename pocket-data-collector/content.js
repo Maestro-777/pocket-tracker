@@ -19,6 +19,9 @@
       isTop: window === window.top
     }).catch(() => {});
   });
+  chrome.runtime.onMessage.addListener(msg => {
+    if (msg?.type === "PDC_EXECUTE_DEMO_TRADE") window.postMessage({__pdc:marker,kind:"AUTO_TRADE",payload:msg.payload||{}}, "*");
+  });
   chrome.runtime.sendMessage({
     type: "PDC_CONTENT_READY",
     href: location.href,
