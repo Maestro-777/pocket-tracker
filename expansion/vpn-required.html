@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pocket TRADE ROBOT — нужен VPN</title>
+  <link rel="stylesheet" href="vpn-required.css">
+</head>
+<body>
+  <header class="mirror-statusbar" id="mirrorStatusBar" aria-live="polite">
+    <span class="mirror-statusbar__led" aria-hidden="true"></span>
+    <strong id="barStatus">Нужен VPN</strong>
+    <span class="mirror-statusbar__mode">POCKET OPTION</span>
+    <span class="mirror-statusbar__message" id="barMessage">Зеркало обнаружено · торговое соединение отключено</span>
+    <button class="mirror-statusbar__button" id="barOpenButton" type="button">⚡ Открыть Pocket TRADE ROBOT</button>
+  </header>
+  <main class="card" id="noticeCard" aria-live="polite">
+    <div class="brand">
+      <img src="icon128.png" alt="" width="58" height="58">
+      <div>
+        <h1>Pocket TRADE ROBOT</h1>
+        <p id="subtitle">Для стабильной торговли нужен основной домен</p>
+      </div>
+    </div>
+
+    <section class="warning">
+      <div class="warning-icon">VPN</div>
+      <div>
+        <strong id="title">Robot работает только на pocketoption.com</strong>
+        <p id="description">Вы открыли зеркало Pocket Option. На зеркалах автоторговля отключена из-за нестабильного торгового соединения.</p>
+      </div>
+    </section>
+
+    <section class="steps">
+      <div class="step"><span>1</span><p id="step1">Включите VPN для компьютера.</p></div>
+      <div class="step"><span>2</span><p id="step2">После подключения VPN нажмите кнопку ниже.</p></div>
+      <div class="step"><span>3</span><p id="step3">Откроется основной сайт pocketoption.com, где Robot работает в штатном режиме.</p></div>
+    </section>
+
+    <section class="domain-box">
+      <span id="currentLabel">Текущий зеркальный домен</span>
+      <strong id="mirrorHost">Проверяем…</strong>
+    </section>
+
+    <p id="message" class="message">VPN должен быть включён на компьютере до перехода на основной сайт.</p>
+
+    <section class="privacy-note"><span>🔒</span><p><b>Только локальное предупреждение</b><small>Торговый модуль, данные аккаунта и автоторговля на зеркале не запускаются.</small></p></section>
+
+    <div class="actions">
+      <button id="openButton" class="primary" type="button">VPN включён — открыть pocketoption.com</button>
+      <button id="closeButton" class="secondary" type="button">Закрыть</button>
+    </div>
+  </main>
+  <script src="vpn-required.js"></script>
+</body>
+</html>

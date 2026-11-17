@@ -1,0 +1,92 @@
+{
+  "manifest_version": 3,
+  "name": "Pocket TRADE ROBOT — Expansion",
+  "short_name": "PT ROBOT",
+  "description": "Автономная локальная версия Pocket TRADE ROBOT с локальными пользователями и ролями.",
+  "version": "1.0.0",
+  "minimum_chrome_version": "120",
+  "default_locale": "ru",
+  "action": {
+    "default_title": "Локальные пользователи",
+    "default_popup": "local-users.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "32": "icon32.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "page-bridge.js"
+      ],
+      "matches": [
+        "https://*.pocketoption.com/*",
+        "https://*.po.trade/*"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "css": [
+        "content.css"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "matches": [
+        "https://*.pocketoption.com/*",
+        "https://*.po.trade/*"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "alarms",
+    "notifications",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.pocketoption.com/*",
+    "https://*.po.trade/*"
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "32": "icon32.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "https://*.pocketoption.com/*",
+        "https://*.po.trade/*"
+      ],
+      "resources": [
+        "dashboard.html",
+        "dashboard.css",
+        "dashboard.js",
+        "i18n-bundled.js",
+        "i18n.js",
+        "server-client.js",
+        "local-users.js",
+        "pocket-partners-client.js",
+        "icon16.png",
+        "icon32.png",
+        "icon48.png",
+        "icon128.png",
+        "icon256.png",
+        "favicon.ico"
+      ]
+    }
+  ]
+}
