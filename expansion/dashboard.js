@@ -4003,10 +4003,14 @@ async function collectTesterHistoryFromUi() {
     `Загружаем историю: ${assets.length} активов × ${periods.length} таймфрейм…`,
     `Loading history: ${assets.length} assets × ${periods.length} timeframes…`
   ));
-  const collectionTimeoutMs = Math.max(
-    45000,
-    periods.length * Math.max(10000, assets.length * 2600) + 10000
-  );
+  // Each timeframe performs a HISTORY request and then waits for the requested
+  // candle depth (up to 30s). Scale the dashboard timeout to that real sequence;
+  // otherwise multi-timeframe requests could time out while content.js is still
+  // collecting the remaining periods.
+  const perPeriodTimeoutMs = Math.max(9000, assets.length * 350)
+    + Math.max(8000, Math.min(30000, assets.length * 2500))
+    + 10000;
+  const collectionTimeoutMs = Math.max(45000, periods.length * perPeriodTimeoutMs + 15000);
   const result = await runtimeMessage(
     { type: 'PT_TESTER_COLLECT_HISTORY', payload: { assets, periods, historyOffset } },
     { timeoutMs: collectionTimeoutMs }
