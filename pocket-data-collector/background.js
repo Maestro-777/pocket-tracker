@@ -1,3 +1,4 @@
+importScripts("engine.js");
 const DB_NAME = "pocket-data-collector";
 const DB_VERSION = 1;
 const STORE = "candles";
@@ -39,7 +40,7 @@ function getState(tabId) {
     connected:false, sockets:0, openSockets:0, events:0, ticks:0,
     pair:"UNKNOWN", balance:null, balanceSource:null, accountType:null,
     lastEventAt:0, lastTickAt:0, lastError:"", catalogCount:0,
-    chartPeriod:null, frameStates:{}
+    chartPeriod:null, frameStates:{}, auto:{enabled:false,amount:1,maxTrades:3,trades:0,lastAttemptBar:0,lastTradeAt:0,lastResult:"",pending:false}
   });
   return states.get(tabId);
 }
@@ -262,7 +263,7 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
         if(msg.isTop){
           const p=msg.payload||{};
           if(p.pair&&p.pair!=="UNKNOWN")s.pair=p.pair;
-          if(p.balance?.value!=null){s.balance=p.balance.value;s.balanceSource="page";}
+          if(p.balance?.value!=null){s.balance=p.balance.value;s.balanceSource="page";}if(p.accountType==="DEMO"||p.accountType==="REAL")s.accountType=p.accountType;
         }
       }else if(msg.kind==="AUTO_TRADE_RESULT"){s.auto.lastResult=msg.payload?.ok?"Кнопка нажата; принятие ордера платформой не подтверждено":(msg.payload?.reason||"Исполнение отклонено");if(msg.payload?.ok&&msg.payload?.clicked){s.auto.trades++;s.auto.lastTradeAt=Date.now();}s.auto.pending=false;}else if(msg.kind==="PO_EVENT"){
         const ev=msg.payload||{},name=ev.name,p=ev.payload;
