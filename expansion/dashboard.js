@@ -4038,8 +4038,8 @@ async function runStrategyTesterFromUi() {
     await collectTesterHistoryFromUi();
   }
   setTesterProgress(uiText(
-    'Сервер рассчитывает портфельную матрицу: стратегии × выбранные пары × таймфреймы × экспирации…',
-    'The server is calculating the portfolio matrix: strategies × selected assets × timeframes × expirations…'
+    'Локальный движок проверяет сигналы по историческим свечам…',
+    'The local engine is evaluating historical candle signals…'
   ));
   const testerPayload = {
     strategyIds, inlineStrategies, assets, timeframes, expirations,
@@ -4217,6 +4217,7 @@ function runLocalStrategyTester(payload = {}, catalog = []) {
             row.events.push({ time: exitCandle.time, outcome, pnl });
           }
           if (!row.trades) { skipped += 1; continue; }
+          const rowEvents = row.events.slice();
           delete row.events;
           finalizeTesterStats(row);
           if (!payoutKnown) { row.netProfit = null; row.maxDrawdown = null; }
@@ -4247,9 +4248,7 @@ function runLocalStrategyTester(payload = {}, catalog = []) {
           agg.assetCount = agg.assetsTested.length;
           if (!payoutKnown) agg.profitKnown = false;
           else {
-            // Reconstruct per-asset equity path in the portfolio in timestamp order below.
-            for (const event of (history[`${asset}|${period}`]?.__testerEvents || [])) agg.events.push(event);
-            agg.netProfit += row.netProfit;
+            for (const event of rowEvents) agg.events.push({ ...event, asset });
           }
         }
       }
@@ -4259,6 +4258,16 @@ function runLocalStrategyTester(payload = {}, catalog = []) {
     row.assetsTested = [...new Set(row.assetsTested)];
     row.assetCount = row.assetsTested.length;
     if (row.profitKnown === false) { row.netProfit = null; row.maxDrawdown = null; }
+    else {
+      row.netProfit = 0; row.equity = 0; row.peak = 0; row.maxDrawdown = 0;
+      row.events.sort((a,b) => Number(a.time)-Number(b.time));
+      for (const event of row.events) {
+        const pnl = Number(event.pnl) || 0;
+        row.netProfit += pnl; row.equity += pnl;
+        row.peak = Math.max(row.peak, row.equity);
+        row.maxDrawdown = Math.min(row.maxDrawdown, row.equity-row.peak);
+      }
+    }
     delete row.events;
     return finalizeTesterStats(row);
   }).sort((a,b) => Number(b.score||0)-Number(a.score||0));
@@ -4307,7 +4316,7 @@ function renderTesterResults(result) {
   if ($('testerResultSummary')) $('testerResultSummary').textContent = result?.summary?.message || 'Матрица теста завершена.';
   if ($('testerPrecision')) $('testerPrecision').textContent = result?.summary?.precision || 'CANDLE';
   if ($('testerResultRows')) $('testerResultRows').innerHTML = top.map((row) => `<tr>
-    <td>${escapeHtml(row.strategyTitle || row.strategyId || '—')}</td><td>${escapeHtml(row.asset || '—')}</td><td>${escapeHtml(row.timeframeLabel || formatDuration(row.period))}</td><td>${escapeHtml(row.expirationLabel || formatDuration(row.expiration))}</td><td>${row.trades || 0}</td><td>${formatNumber(row.winRate || 0, 1)}%</td><td class="${Number(row.netProfit || 0) >= 0 ? 'profit' : 'loss'}">${formatMoney(row.netProfit || 0, currentCurrency(), true)}</td><td>${formatMoney(row.maxDrawdown || 0, currentCurrency(), true)}</td><td>${formatNumber(row.score || 0, 1)}</td>
+    <td>${escapeHtml(row.strategyTitle || row.strategyId || '—')}</td><td>${escapeHtml(row.asset || '—')}</td><td>${escapeHtml(row.timeframeLabel || formatDuration(row.period))}</td><td>${escapeHtml(row.expirationLabel || formatDuration(row.expiration))}</td><td>${row.trades || 0}</td><td>${formatNumber(row.winRate || 0, 1)}%</td><td class="${row.profitKnown === false ? '' : Number(row.netProfit || 0) >= 0 ? 'profit' : 'loss'}">${row.profitKnown === false ? '—' : formatMoney(row.netProfit || 0, currentCurrency(), true)}</td><td>${row.profitKnown === false ? '—' : formatMoney(row.maxDrawdown || 0, currentCurrency(), true)}</td><td>${formatNumber(row.score || 0, 1)}</td>
   </tr>`).join('') || '<tr><td colspan="9" class="empty">Нет сделок по выбранной матрице. Увеличьте историю или выберите больше активов.</td></tr>';
   const best = result?.best;
   if ($('testerBestBox')) {
