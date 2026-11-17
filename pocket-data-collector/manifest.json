@@ -1,23 +1,44 @@
 {
   "manifest_version": 3,
   "name": "Pocket Data Collector",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Сбор котировок и свечей Pocket Option, локальная база и поиск исторических сходств.",
-  "permissions": ["storage", "tabs"],
-  "host_permissions": ["https://pocketoption.com/*", "https://*.pocketoption.com/*"],
-  "background": { "service_worker": "background.js" },
-  "action": { "default_popup": "popup.html", "default_title": "Pocket Data Collector" },
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://pocketoption.com/*",
+    "https://*.pocketoption.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Pocket Data Collector"
+  },
   "content_scripts": [
     {
-      "matches": ["https://pocketoption.com/*", "https://*.pocketoption.com/*"],
-      "js": ["page-bridge.js"],
+      "matches": [
+        "https://pocketoption.com/*",
+        "https://*.pocketoption.com/*"
+      ],
+      "js": [
+        "page-bridge.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": true
     },
     {
-      "matches": ["https://pocketoption.com/*", "https://*.pocketoption.com/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://pocketoption.com/*",
+        "https://*.pocketoption.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start",
       "all_frames": true
     }
