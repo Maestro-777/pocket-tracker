@@ -1,4 +1,4 @@
-// content.js - Pocket Tracker v3.6.0
+// content.js - Pocket Tracker v1.0.1
 // Platform: Pocket Option (pocketoption.com)
 // Site: github.com/Maestro-777/pocket-tracker
 
@@ -7,7 +7,7 @@
 
     const BRAND_NAME = 'Pocket Tracker';
     const BRAND_SITE = 'github.com/Maestro-777/pocket-tracker';
-    const BRAND_VERSION = '1.0.0';
+    const BRAND_VERSION = '1.0.1';
 
     const IS_TOP = (window === window.top);
 
@@ -19,9 +19,6 @@
         try { if (typeof __posChrome !== 'undefined' && __posChrome && __posChrome.posApp) return __posChrome.posApp; } catch (_) {}
         return null;
     }
-
-    // Standalone local build: remote activation and affiliate checks are removed.
-    async function checkActivation() { return true; }
 
     const STRATEGIES = [
         { id: 'RSI',       name: 'RSI',          desc: 'Перекуп./Перепрод.',  en_desc: 'Overbought/Oversold',   icon: '📊' },
@@ -424,13 +421,6 @@
         ru: {
             pill_stop:'СТОП', pill_run:'АНАЛИЗ', lang_btn:'🇬🇧',
             min_collapse:'Свернуть', min_expand:'Развернуть',
-            promo_banner:'Локальная сборка Pocket Tracker. Внешняя активация не требуется.',
-            act_placeholder:'Ваш ID аккаунта Pocket Option',
-            act_btn:'✅ Активировать', act_checking:'Проверяю...',
-            act_hint:'Где найти ID? В личном кабинете Pocket Option → Профиль',
-            act_err_id:'Введите корректный ID аккаунта.',
-            act_err_notfound:'Account not found.',
-            act_err_auto:'Не удалось определить ID автоматически. Введите вручную.',
             tab_signals:'Сигналы', tab_journal:'Журнал', tab_stats:'Аналитика', tab_settings:'Настройки', tab_contacts:'Контакты',
             stat_signals:'Сигналов', stat_wins:'Победы', stat_losses:'Потери', stat_winrate:'Винрейт', stat_profit:'Профит',
             total_profit:'Общий результат:',
@@ -487,7 +477,7 @@
             toast_take_loss:'Take Loss достигнут - автоторговля отключена',
             cur_asset:'Текущая пара', cur_asset_hint:'Синхронизация с графиком Pocket Option в реальном времени',
             brand_tagline:'Конструктор сигналов',
-            copyright:'Pocket Tracker v1.0.0 · Local build',
+            copyright:'Pocket Tracker v1.0.1 · Local build',
             streak_wins:' победы подряд', streak_losses:' потери подряд',
             mm_step:' · шаг ',
             mm_names:{ martingale:'Мартингейл', anti_mart:'Анти-Март', fibonacci:'Фибоначчи', dalembert:"Д'Аламбер", oscar:"Oscar's Grind", parlay:'Парлай', labouchere:'Лабушер', boost:'Разгон депозита' },
@@ -523,13 +513,6 @@
         en: {
             pill_stop:'STOP', pill_run:'LIVE', lang_btn:'🇷🇺',
             min_collapse:'Minimize', min_expand:'Expand',
-            promo_banner:'Pocket Tracker local build. No external activation is required.',
-            act_placeholder:'Your Pocket Option account ID',
-            act_btn:'✅ Activate', act_checking:'Checking...',
-            act_hint:'Where to find ID? In your Pocket Option profile → Account',
-            act_err_id:'Please enter a valid account ID.',
-            act_err_notfound:'Аккаунт не найден.',
-            act_err_auto:'Could not detect ID automatically. Please enter it manually.',
             tab_signals:'Signals', tab_journal:'Journal', tab_stats:'Analytics', tab_settings:'Settings', tab_contacts:'Contacts',
             stat_signals:'Signals', stat_wins:'Wins', stat_losses:'Losses', stat_winrate:'Win rate', stat_profit:'Profit',
             total_profit:'Total result:',
@@ -1201,7 +1184,6 @@
         bindButtons();
         loadSettings();
         initDebugTrigger();
-        // activation gate
         // Language button
         document.getElementById('pos-lang-btn').addEventListener('click', function() {
             currentLang = currentLang === 'ru' ? 'en' : 'ru';
