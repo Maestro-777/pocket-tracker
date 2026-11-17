@@ -3605,9 +3605,9 @@
         document.getElementById('pt4-target-price').textContent=target==null?'—':pt4FormatPrice(target);
         var dir=target==null?'—':target>forecast.currentPrice?'UP ▲':target<forecast.currentPrice?'DOWN ▼':'DRAW';
         var dirEl=document.getElementById('pt4-direction');dirEl.textContent=dir;dirEl.className=dir.indexOf('UP')===0?'pt4-up':dir.indexOf('DOWN')===0?'pt4-down':'';
-        var confidence=row?(cfg.model==='auto'?row.confidence:0.5):null;
+        var confidence=row?(cfg.model==='auto'?row.confidence:(row.modelConfidence&&row.modelConfidence[cfg.model]!=null?row.modelConfidence[cfg.model]:0.5)):null;
         document.getElementById('pt4-confidence-out').textContent=confidence==null?'—':Math.round(confidence*100)+'%'+(row&&row.confidenceCalibrated?' · статистика':' · нет выборки');
-        var eligible=!!(row&&row.eligible&&row.confidence>=cfg.confidenceFloor&&dir!=='DRAW');
+        var eligible=!!(row&&(cfg.model==='auto'?row.eligible:(row.modelEligible&&row.modelEligible[cfg.model]))&&confidence>=cfg.confidenceFloor&&dir!=='DRAW');
         var source=cfg.sourceMode;
         var indicator=pt4Predictive.lastIndicator;
         var sourceText=source==='indicators'?'Используются только индикаторы':source==='combined'?'Ожидание совпадения направлений':'Predictive Formula';
