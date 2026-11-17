@@ -4290,13 +4290,9 @@ function runLocalStrategyTester(payload = {}, catalog = []) {
       precision: 'OHLC · EMA14 · локально',
       message: results.length
         ? `Локальный тест завершён по точным правилам 3-Candle EMA: ${detailResults.length} результатов по активам, ${results.length} портфельных связок. Вход — открытие следующей свечи; исход — закрытие свечи по экспирации.${skipped ? ` Пропущено комбинаций: ${skipped} (несовместимый TF/экспирация или недостаточная история).` : ''}`
-        : `Нет сделок для выбранной матрицы. Проверьте совпадение TF стратегии (${configuredPeriodLabel(configuredPeriod)}) с историей и экспирацию: она должна быть кратна TF свечи.`
+        : `Нет сделок для выбранной матрицы. Проверьте, что история содержит достаточно закрытых свечей, выбран TF стратегии и экспирация кратна TF свечи.`
     }
   };
-}
-
-function configuredPeriodLabel(seconds) {
-  return formatDuration(seconds);
 }
 
 function hashString(value) {
