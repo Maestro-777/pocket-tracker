@@ -8,17 +8,17 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '..', 'predictive-engine.js'), 'utf8');
 
 function makeEngine(options = {}) {
-  const listeners = {};
+  const listeners = {}, posted = [];
   const window = {
     addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
-    postMessage() {},
+    postMessage(message) { posted.push(message); },
     __listeners: listeners
   };
   window.window = window;
   vm.runInNewContext(source, { window, console, Date, Math, Map, Set, Object, Array, Number, String, JSON });
   const Engine = window.PT4PredictiveEngine;
   const engine = new Engine(options);
-  return { engine, window, listeners };
+  return { engine, window, listeners, posted };
 }
 
 function tick(engine, asset, timestamp, price) {
@@ -72,7 +72,7 @@ test('selects different empirically validated models per asset and horizon', () 
 });
 
 test('settles forecasts only at/after expiry and records model outcomes', () => {
-  const { engine } = makeEngine({ minSamples: 30, maxSettlementDelayMs: 15000 });
+  const { engine, posted } = makeEngine({ minSamples: 30, maxSettlementDelayMs: 15000 });
   for (let i = 1; i <= 40; i++) tick(engine, 'GBPUSD_otc', i * 1000, 1.25 + i * 0.00001);
   const first = engine.getPending().find(x => x.horizon === 60);
   assert.ok(first);
@@ -83,6 +83,8 @@ test('settles forecasts only at/after expiry and records model outcomes', () => 
   assert.equal(settled.status, 'SETTLED');
   assert.equal(settled.actualDirection, 'UP');
   assert.equal(settled.modelResults.ensemble.correct, true);
+  assert.ok(posted.some(x => x.type === 'POROBOT_PREDICTIVE_EVENT' && x.eventType === 'settlement_batch'));
+  assert.equal(posted.some(x => x.type === 'POROBOT_PREDICTIVE_EVENT' && x.eventType === 'settled'), false);
   const stats = engine.getStats('GBPUSD_otc');
   assert.ok(stats.some(x => x.model === 'ensemble' && x.decisiveSamples === 1));
 });
@@ -143,11 +145,14 @@ test('manifest and UI are wired to the existing MAIN-world quote injector', () =
 
 
 test('clears stale model warm-up after a prolonged quote interruption', () => {
-  const { engine } = makeEngine({ minSamples: 30 });
+  const { engine, posted } = makeEngine({ minSamples: 30 });
   for (let i = 1; i <= 30; i++) tick(engine, 'EURCHF_otc', i * 1000, 0.95 + i * 0.00001);
   assert.equal(engine.series.get('EURCHF_OTC').length, 30);
   tick(engine, 'EURCHF_otc', 61000, 0.951);
   assert.equal(engine.series.get('EURCHF_OTC').length, 1);
+  const warmup = posted.filter(x => x.type === 'POROBOT_PREDICTIVE_WARMUP').slice(-1)[0];
+  assert.equal(warmup.samples, 1);
+  assert.equal(warmup.price, 0.951);
 });
 
 test('ignores out-of-order and duplicate timestamps', () => {
