@@ -1,0 +1,42 @@
+{
+   "action": {
+      "default_icon": {
+         "128": "icons/icon128.png",
+         "16": "icons/icon16.png",
+         "48": "icons/icon48.png"
+      },
+      "default_popup": "popup.html"
+   },
+   "background": {
+      "service_worker": "js/background.js"
+   },
+   "content_scripts": [ {
+      "js": [ "js/content-main.js" ],
+      "matches": [ "https://pocketoption.com/*", "https://platform58.po2.capital/*", "https://p.finance/*", "https://po.company/*", "https://po1.capital/*", "https://pocket-link22.co/*" ],
+      "run_at": "document_start",
+      "world": "MAIN"
+   }, {
+      "js": [ "js/content-isolated.js" ],
+      "matches": [ "https://pocketoption.com/*", "https://platform58.po2.capital/*", "https://p.finance/*", "https://po.company/*", "https://po1.capital/*", "https://pocket-link22.co/*" ],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+   } ],
+   "default_locale": "en",
+   "description": "Pocket Option trading bot",
+   "host_permissions": [ "https://pocketoption.com/*", "https://platform58.po2.capital/*", "https://p.finance/*", "https://po.company/*", "https://po1.capital/*", "https://pocket-link22.co/*" ],
+   "icons": {
+      "128": "icons/icon128.png",
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4JaQM1PkhMPESLyPGWTAnHDkTJJ5TdVaK1C0Q9pVzN20RFcyqFLNVrwoflbkEh1T49JFwbFyMgXZGD+3q+yZoOYBJWtmM9V/8aaYfLwPi7idDM8GTFqqhm3vsPDUcXnd+r/rLi9z5WUbACUXFyqTcMzNzopBDf5ILsMJIbPScjMiHnudgyUuwuHMZwkrre31/9HQNDc/TslIS2w83GW6FT2nHXXgI5rmzGYf2i2SZ1S4AzQjrUjFPDgiVJ+II23qwwsEa8VAUDgDB3GC/0gNTbEbtvIeW/xMwe8ir7Y3E34SvVgl3wF69z29CaFgensASIecDVDwCXfUtdUgonZZhQIDAQAB",
+   "manifest_version": 3,
+   "name": "Pocket Option Bot",
+   "permissions": [ "alarms", "storage", "scripting" ],
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "1.1.7",
+   "web_accessible_resources": [ {
+      "matches": [ "https://pocketoption.com/*", "https://platform58.po2.capital/*", "https://p.finance/*", "https://po.company/*", "https://po1.capital/*", "https://pocket-link22.co/*" ],
+      "resources": [ "css/shadow.css" ]
+   } ]
+}
