@@ -27,7 +27,7 @@ async function refresh(){
   $("ticks").textContent=number(s.ticks);
   $("pairStored").textContent=number(s.pairCandles);
   $("events").textContent=number(s.events);
-  if(s.lastError)$("analysis").textContent=s.lastError;
+  if(s.lastError)$("analysis").textContent=s.lastError;const a=s.auto||{};$("autoStatus").textContent="Статус: "+(a.enabled?"ВКЛЮЧЕНА":"выключена")+". Счёт: "+(s.accountType||"не подтверждён")+". Сделок: "+(a.trades||0)+"/"+(a.maxTrades||3)+". "+(a.lastResult||"");$("autoStart").disabled=!!a.enabled;$("autoStop").disabled=!a.enabled;
 }
 function download(name,text,type){
   const blob=new Blob([text],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");
@@ -42,7 +42,7 @@ async function getData(){
   if(!r?.ok)throw Error(r?.error||"Не удалось получить свечи.");
   return r.candles||[];
 }
-$("threshold").addEventListener("input",()=> $("thresholdOut").textContent=$("threshold").value+"%");
+$("autoStart").addEventListener("click",async()=>{try{const tabId=await activeTab();const amount=Number($("autoAmount").value),maxTrades=Number($("autoMaxTrades").value);if(!(amount>0&&amount<=1))throw Error("Ставка должна быть от 0.01 до 1.00.");if(!(maxTrades>=1&&maxTrades<=3))throw Error("Допустимо не более 3 сделок за запуск.");const r=await chrome.runtime.sendMessage({type:"PDC_AUTO_TOGGLE",tabId,enabled:true,amount,maxTrades});if(!r?.ok)throw Error(r?.error||"Не удалось запустить автоторговлю.");await refresh();}catch(e){$("autoStatus").textContent=e.message;}});$("autoStop").addEventListener("click",async()=>{try{const tabId=await activeTab();const r=await chrome.runtime.sendMessage({type:"PDC_AUTO_TOGGLE",tabId,enabled:false});if(!r?.ok)throw Error(r?.error||"Не удалось остановить.");await refresh();}catch(e){$("autoStatus").textContent=e.message;}});$("threshold").addEventListener("input",()=> $("thresholdOut").textContent=$("threshold").value+"%");
 $("analyze").addEventListener("click",async()=>{
   try{
     const candles=await getData();lastCandles=candles;
