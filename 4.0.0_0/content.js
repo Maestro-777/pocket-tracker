@@ -1862,11 +1862,22 @@
             syncAutoAria();
             autoEl.addEventListener('change', function() {
                 syncAutoAria();
+                var realConfirmedNow = false;
+                if (autoEl.checked && window._poAccountType === 'real') {
+                    if (!window.confirm('Включить мульти-парную автоторговлю на REAL-счёте? Возможны несколько одновременных сделок.')) {
+                        autoEl.checked = false;
+                        syncAutoAria();
+                    } else {
+                        realConfirmedNow = true;
+                    }
+                }
                 if (autoEl.checked) beginAutoTradeSession();
                 else window._poRiskStartBalance = null;
-                saveSettings(collectRiskSettings({ autoTrade: autoEl.checked }));
+                var autoPatch = collectRiskSettings({ autoTrade: autoEl.checked });
+                saveSettings(autoPatch);
                 if (window._posRunning) {
-                    sendCoreCmd({ cmd: 'PATCH_CONFIG', patch: collectRiskSettings({ autoTrade: autoEl.checked }) });
+                    if (realConfirmedNow) autoPatch.realTradeConfirmed = true;
+                    sendCoreCmd({ cmd: 'PATCH_CONFIG', patch: autoPatch });
                 }
                 checkAutoTradeGuards();
             });
@@ -2081,6 +2092,7 @@
     }
 
     function startBot() {
+        var realTradeConfirmed = false;
         var config = {
             indicators:      selectedStrategies.slice(),
             indicator:       selectedStrategies[0] || 'RSI',
@@ -2104,6 +2116,15 @@
             maxConcurrentTrades: parseInt(document.getElementById('pos-max-concurrent')?.value || '4', 10),
             includeOtc:      !!document.getElementById('pos-include-otc')?.checked
         };
+        if (config.autoTrade && window._poAccountType === 'real') {
+            if (window.confirm('Вы включаете автоторговлю на REAL-счёте. Сделки по нескольким валютным парам могут открываться почти одновременно. Продолжить?')) {
+                realTradeConfirmed = true;
+            } else {
+                config.autoTrade = false;
+                var autoToggle = document.getElementById('pos-auto-trade');
+                if (autoToggle) autoToggle.checked = false;
+            }
+        }
         Object.assign(config, collectRiskSettings());
         if (config.autoTrade) beginAutoTradeSession();
         signalExpirationSec = config.expiration;
@@ -2124,6 +2145,7 @@
         mmState.init(config);
         updateIdleBet();
         saveSettings(config);
+        if (realTradeConfirmed) config.realTradeConfirmed = true;
         window._posRunning = true;
         posTelemetryState();
         setRunning(true);
