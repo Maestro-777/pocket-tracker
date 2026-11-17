@@ -299,11 +299,12 @@
         const selected = eligible.length ? eligible[0].id : 'ensemble';
         const target = predictions[selected] || predictions.ensemble || current;
         const direction = signDirection(target, current, this.options.drawEpsilon * current);
-        const modelConfidence = {}, modelEligible = {};
+        const modelConfidence = {}, modelEligible = {}, modelConfidenceSamples = {};
         for (const id of Object.keys(predictions)) {
           const modelConf = this._confidence(asset, horizon, id, predictions[id], current, features);
           modelConfidence[id] = modelConf.value;
           modelEligible[id] = modelConf.value >= this.options.confidenceFloor;
+          modelConfidenceSamples[id] = modelConf.samples;
         }
         const confidence = this._confidence(asset, horizon, selected, target, current, features);
         const forecastId = asset + '|' + horizon + '|' + now;
@@ -320,7 +321,7 @@
           confidenceCalibrated: false, confidenceEvidenceBased: confidence.calibrated,
           eligible: confidence.value >= this.options.confidenceFloor,
           models: Object.assign({}, predictions), modelDirections, modelProbabilities,
-          modelConfidence, modelEligible
+          modelConfidence, modelEligible, modelConfidenceSamples
         };
         horizons[horizon] = row;
         this.pending.set(forecastId, {
