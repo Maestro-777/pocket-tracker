@@ -7705,14 +7705,22 @@
         const cachedCandles = Array.isArray(cached?.records?.[asset]?.historyItems)
           ? cached.records[asset].historyItems
           : [];
-        const currentCandleTime = finiteNumber(snap.currentCandle?.time);
+        const brokerOffset = finiteNumber(latestState?.market?.brokerClockOffsetSec) ?? 0;
+        const expectedCurrentBucket = Math.floor((Date.now() / 1000 + brokerOffset) / period) * period;
+        let currentCandleTime = finiteNumber(snap.currentCandle?.time);
+        if (currentCandleTime == null || Math.floor(currentCandleTime / period) * period !== expectedCurrentBucket) {
+          const latestRecentTime = recent.reduce((latest, item) => Math.max(latest, Number(item?.time) || 0), 0);
+          currentCandleTime = latestRecentTime && Math.floor(latestRecentTime / period) * period === expectedCurrentBucket
+            ? latestRecentTime
+            : null;
+        }
         const mergedByTime = new Map();
         for (const raw of [...cachedCandles, ...candles, ...recent]) {
           if (!raw || raw.time == null) continue;
           const candleTime = Number(raw.time);
-          // recentCandles may include the still-forming candle. Backtests must
-          // never treat that candle as closed or use its partial OHLC as a signal.
-          if (currentCandleTime != null && candleTime >= currentCandleTime) continue;
+          // recentCandles may include the still-forming candle. Match the live
+          // engine's broker-time bucket check and exclude that entire bucket.
+          if (currentCandleTime != null && Math.floor(candleTime / period) * period === Math.floor(currentCandleTime / period) * period) continue;
           mergedByTime.set(candleTime, raw);
         }
         const normalized = [...mergedByTime.values()]
