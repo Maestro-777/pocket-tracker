@@ -10,7 +10,7 @@
     "history/list/v2", "updateHistoryNew", "updateHistoryNewFast",
     "loadHistoryPeriod", "loadHistoryPeriodFast"
   ]);
-  let socketCount = 0, eventCount = 0;
+  let socketCount = 0, openSockets = 0, eventCount = 0;
 
   function emit(kind, payload) {
     try {
@@ -42,7 +42,8 @@
       ? new NativeWebSocket(url)
       : new NativeWebSocket(url, protocols);
     socketCount++;
-    emit("SOCKET", { connected: true, socketCount, url: String(url || "").slice(0, 180) });
+    emit("SOCKET", { connected: openSockets > 0, socketCount, url: String(url || "").slice(0, 180) });
+    ws.addEventListener("open", () => { openSockets++; emit("SOCKET", { connected:true, socketCount, openSockets }); });
     ws.addEventListener("message", event => {
       if (typeof event.data === "string") {
         parseSocketEvent(event.data);
@@ -51,7 +52,7 @@
         // framing is verified against a live capture.
       }
     });
-    ws.addEventListener("close", () => emit("SOCKET", { connected: false, socketCount }));
+    ws.addEventListener("close", () => { openSockets=Math.max(0,openSockets-1); emit("SOCKET", { connected:openSockets>0, socketCount, openSockets }); });
     return ws;
   }
 
