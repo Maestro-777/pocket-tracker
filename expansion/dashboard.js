@@ -4445,7 +4445,7 @@ function renderAutoTrade() {
       [isConnected(), 'Аккаунт'],
       [Boolean(selectedAssets.size), 'Активы'],
       [Boolean(strategyIds.length), strategyIds.length > 1 ? `${strategyIds.length} стратегии` : 'Стратегия'],
-      [Boolean(serverState?.online), 'Сервер'],
+      [isLocalExpansionMode() || Boolean(serverState?.online), isLocalExpansionMode() ? 'Локально' : 'Сервер'],
       [signalOnline, signalOnline ? 'Канал' : transientSignalState ? 'Канал…' : 'Канал'],
       [engineReady, 'Движок']
     ];
