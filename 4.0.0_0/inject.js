@@ -3949,6 +3949,125 @@
             }
         }
 
+        setPredictiveConfig(config) {
+            const defaults = {
+                enabled: true, sourceMode: 'formula', assetMode: 'all', selectedAsset: '*',
+                horizonSeconds: 60, model: 'auto', confidenceFloor: 0.52,
+                autoTrade: false, accountMode: 'demo', stake: 1, maxConcurrentTrades: 1
+            };
+            this.predictiveConfig = Object.assign({}, defaults, config || {});
+            this.predictiveConfig.horizonSeconds = [60,120,180,240,300].includes(Number(this.predictiveConfig.horizonSeconds))
+                ? Number(this.predictiveConfig.horizonSeconds) : 60;
+            this.predictiveConfig.confidenceFloor = Math.max(0.5, Math.min(0.95, Number(this.predictiveConfig.confidenceFloor) || 0.52));
+            this.predictiveConfig.stake = Math.max(1, Math.min(100000, Number(this.predictiveConfig.stake) || 1));
+            this.predictiveConfig.maxConcurrentTrades = Math.max(1, Math.min(20, parseInt(this.predictiveConfig.maxConcurrentTrades, 10) || 1));
+        }
+
+        onPredictiveForecast(forecast) {
+            const cfg = this.predictiveConfig;
+            if (!cfg || !cfg.enabled || cfg.sourceMode === 'indicators' || !forecast || !/_OTC$/i.test(forecast.asset || '')) return;
+            const asset = normalizeAssetName(forecast.asset);
+            if (cfg.selectedAsset && cfg.selectedAsset !== '*' && normalizeAssetName(cfg.selectedAsset) !== asset) return;
+            if (cfg.assetMode === 'current') {
+                const currentAsset = normalizeAssetName(this._resolveScanAsset() || this._domAsset || '');
+                if (!currentAsset || currentAsset !== asset) return;
+            }
+            const horizon = Number(cfg.horizonSeconds) || 60;
+            const row = forecast.horizons && forecast.horizons[horizon];
+            if (!row) return;
+            const model = cfg.model === 'auto' ? row.model : cfg.model;
+            const direction = row.modelDirections && row.modelDirections[model];
+            const confidence = cfg.model === 'auto' ? row.confidence : (row.modelConfidence && row.modelConfidence[model]);
+            const eligible = cfg.model === 'auto' ? row.eligible : (row.modelEligible && row.modelEligible[model]);
+            if (!['UP','DOWN'].includes(direction) || !eligible || !Number.isFinite(confidence) || confidence < cfg.confidenceFloor) return;
+            if (cfg.sourceMode === 'combined') {
+                const indicator = this._lastIndicatorByAsset && this._lastIndicatorByAsset[asset];
+                if (!indicator || Date.now() - indicator.timestamp > 12000 || indicator.direction !== direction) return;
+            }
+            const signal = {
+                asset, direction, model, horizonSeconds: horizon, confidence,
+                confidenceSamples: cfg.model === 'auto' ? row.confidenceSamples : undefined,
+                currentPrice: forecast.currentPrice,
+                predictedPrice: row.models[model],
+                timestamp: forecast.timestamp, sourceMode: cfg.sourceMode
+            };
+            this._post('POROBOT_PREDICTIVE_SIGNAL', { signal });
+            if (cfg.autoTrade) this._openPredictiveOrder(signal, cfg);
+        }
+
+        _openPredictiveOrder(signal, cfg) {
+            const now = Date.now();
+            this._multiOpenByAsset = this._multiOpenByAsset || new Map();
+            this._multiPendingByRequestId = this._multiPendingByRequestId || new Map();
+            this._multiTradesById = this._multiTradesById || new Map();
+            this._multiRequestId = this._multiRequestId || (Date.now() * 1000);
+            this._predictiveLastTradeAt = this._predictiveLastTradeAt || {};
+            if (this._multiOpenByAsset.has(signal.asset)) return;
+            if (this._multiOpenByAsset.size >= cfg.maxConcurrentTrades) return;
+            const cooldownKey = signal.asset + '|' + signal.horizonSeconds;
+            if (now - (this._predictiveLastTradeAt[cooldownKey] || 0) < signal.horizonSeconds * 1000) return;
+            const accountType = window._poLastWsAccountType || detectActiveAccountType();
+            if (accountType !== cfg.accountMode) {
+                if (!this._predictiveAccountWarnAt || now - this._predictiveAccountWarnAt > 15000) {
+                    this._predictiveAccountWarnAt = now;
+                    this.log('⛔ Predictive: выбран ' + String(cfg.accountMode).toUpperCase() +
+                        ', но Pocket Option определил ' + String(accountType || 'unknown').toUpperCase() + '. Сделка не отправлена.');
+                }
+                return;
+            }
+            const catalog = window.__poAssetCatalog || {};
+            let item = null;
+            for (const key of Object.keys(catalog)) {
+                const candidate = catalog[key];
+                if (candidate && candidate.active && normalizeAssetName(candidate.symbol || key) === signal.asset) {
+                    item = candidate;
+                    break;
+                }
+            }
+            if (!item || !isFxCurrencyPair(item.symbol || item.label || signal.asset) || !/_OTC$/i.test(signal.asset)) return;
+            const amount = Number(cfg.stake);
+            if (!Number.isFinite(amount) || amount <= 0) return;
+            const balanceInfo = getActiveBalanceInfo();
+            const balance = balanceInfo ? Number(balanceInfo.balance) : NaN;
+            if (Number.isFinite(balance) && balance + 1e-9 < amount) {
+                this.log('⛔ Predictive [' + signal.asset + ']: недостаточно средств для ставки $' + amount.toFixed(2));
+                return;
+            }
+            const ws = getActivePoSocket();
+            if (!ws) return;
+            const rawAsset = item.raw || toPoAssetId(signal.asset);
+            if (!rawAsset) return;
+            const tradeDirection = this._getTradeDirection(signal.direction);
+            const requestId = ++this._multiRequestId;
+            const payload = {
+                asset: rawAsset, amount,
+                action: tradeDirection === 'UP' ? 'call' : 'put',
+                isDemo: accountType === 'demo' ? 1 : 0,
+                requestId, optionType: 100, time: signal.horizonSeconds
+            };
+            try {
+                ws.send('42["openOrder",' + JSON.stringify(payload) + ']');
+                const trade = {
+                    requestId: String(requestId), asset: signal.asset,
+                    direction: tradeDirection, signalDirection: signal.direction,
+                    reversed: tradeDirection !== signal.direction, amount,
+                    expiration: signal.horizonSeconds, payout: Number(item.profit) || 0,
+                    openedAt: now, deadline: now + (signal.horizonSeconds + 30) * 1000,
+                    source: 'predictive', model: signal.model, confidence: signal.confidence
+                };
+                this._multiPendingByRequestId.set(String(requestId), trade);
+                this._multiOpenByAsset.set(signal.asset, 'req:' + requestId);
+                this._predictiveLastTradeAt[cooldownKey] = now;
+                this._post('POROBOT_PREDICTIVE_TRADE_OPEN', { trade });
+                this.log('🤖 Predictive [' + signal.asset + '] ' + tradeDirection + ' · ' + signal.model +
+                    ' · ' + Math.round(signal.confidence * 100) + '% · $' + amount.toFixed(2) +
+                    ' · ' + signal.horizonSeconds + 'с');
+            } catch (error) {
+                this.log('⚠️ Predictive [' + signal.asset + ']: ошибка отправки ордера — ' +
+                    (error && error.message ? error.message : 'WebSocket'));
+            }
+        }
+
         _scanMultiPairs() {
             if (!this.isRunning || !isPrimarySignalFrame()) return;
             const now = Date.now();
@@ -4007,6 +4126,8 @@
                 if (!ctx || !ctx.ready || !ctx.candles || !ctx.candles.length) continue;
                 readyPairs++;
                 const sig = this._buildScanState(asset, ctx);
+                this._lastIndicatorByAsset = this._lastIndicatorByAsset || {};
+                this._lastIndicatorByAsset[normalizeAssetName(asset)] = { direction: sig && sig.direction || 'NEUTRAL', timestamp: Date.now() };
                 if (!sig || (sig.direction !== 'UP' && sig.direction !== 'DOWN')) continue;
                 signalCount++;
                 const barTs = ctx.candles[ctx.candles.length - 1].ts || 0;
@@ -4257,6 +4378,8 @@
             this._lastAsset = scanAsset;
             const ctx = this._getAnalysisContext(scanAsset);
             const sig = this._buildScanState(scanAsset, ctx);
+            this._lastIndicatorByAsset = this._lastIndicatorByAsset || {};
+            this._lastIndicatorByAsset[normalizeAssetName(scanAsset)] = { direction: sig.direction, timestamp: Date.now() };
             const displayAsset = (this._domAsset && assetsMatch(scanAsset, this._domAsset)) ? this._domAsset : (scanAsset || this._domAsset);
             this._logReject(displayAsset || scanAsset, sig);
             try {
@@ -4435,6 +4558,9 @@
     }
 
     if(!window.__poCore) window.__poCore=new QuotexCore();
+    if (window.__PT4_PREDICTIVE_CONFIG && typeof window.__poCore.setPredictiveConfig === 'function') {
+        window.__poCore.setPredictiveConfig(window.__PT4_PREDICTIVE_CONFIG);
+    }
 
     function handleCoreCmd(d) {
         if (!d || !d.cmd) return;
