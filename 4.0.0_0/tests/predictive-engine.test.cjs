@@ -114,6 +114,11 @@ test('manual pair filter stops other OTC forecasts and invalidates their pending
   assert.ok(engine.getHistory().some(x => x.asset === 'GBPUSD_OTC' && x.status === 'INVALID_FILTER_CHANGED'));
   assert.equal(tick(engine, 'GBPUSD_otc', 41000, 1.26), null);
   assert.equal(engine.forecast('GBPUSD_OTC'), null);
+  const restored = makeEngine().engine;
+  assert.equal(restored.restoreState(engine.exportState()), true);
+  assert.equal(restored.assetFilter.mode, 'selected');
+  assert.equal(restored.assetFilter.selectedAsset, 'EURUSD_OTC');
+  assert.equal(tick(restored, 'GBPUSD_otc', 42000, 1.27), null);
 });
 
 test('exports and restores pending forecasts, price history and model statistics', () => {
