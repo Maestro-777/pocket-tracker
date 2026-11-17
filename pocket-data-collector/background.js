@@ -151,12 +151,13 @@ async function storeHistory(payload) {
     c.asset=asset;c.period=period;c.id=asset+"|"+period+"|"+c.time;
     out.push(c);
   }
+  const deduped=[...new Map(out.map(c=>[c.id,c])).values()].sort((a,b)=>a.time-b.time);
   const database=await db();
-  const existing=await Promise.all(out.map(c=>new Promise(resolve=>{
+  const existing=await Promise.all(deduped.map(c=>new Promise(resolve=>{
     const req=database.transaction(STORE).objectStore(STORE).get(c.id);
     req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>resolve(null);
   })));
-  const merged=out.map((c,i)=>mergeCandle(existing[i],c));
+  const merged=deduped.map((c,i)=>mergeCandle(existing[i],c));
   await putMany(merged);return merged.length;
 }
 async function queryCandles({asset,limit=10000,period=5}) {
