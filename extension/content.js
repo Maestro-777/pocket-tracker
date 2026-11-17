@@ -424,12 +424,12 @@
         ru: {
             pill_stop:'СТОП', pill_run:'АНАЛИЗ', lang_btn:'🇬🇧',
             min_collapse:'Свернуть', min_expand:'Развернуть',
-            promo_banner:'🎁 <strong>Промокод:</strong> <strong>WELCOME50</strong><br><span style="color:#8aa8c0">Бонус 50%; минимальный депозит $10</span><br><a href="' + REF_LINK + '" target="_blank" class="pos-act-ref">Партнёрская ссылка</a>',
+            promo_banner:'Локальная сборка Pocket Tracker. Внешняя активация не требуется.',
             act_placeholder:'Ваш ID аккаунта Pocket Option',
             act_btn:'✅ Активировать', act_checking:'Проверяю...',
             act_hint:'Где найти ID? В личном кабинете Pocket Option → Профиль',
             act_err_id:'Введите корректный ID аккаунта.',
-            act_err_notfound:'Аккаунт не найден.',
+            act_err_notfound:'Account not found.',
             act_err_auto:'Не удалось определить ID автоматически. Введите вручную.',
             tab_signals:'Сигналы', tab_journal:'Журнал', tab_stats:'Аналитика', tab_settings:'Настройки', tab_contacts:'Контакты',
             stat_signals:'Сигналов', stat_wins:'Победы', stat_losses:'Потери', stat_winrate:'Винрейт', stat_profit:'Профит',
@@ -523,7 +523,7 @@
         en: {
             pill_stop:'STOP', pill_run:'LIVE', lang_btn:'🇷🇺',
             min_collapse:'Minimize', min_expand:'Expand',
-            promo_banner:'🎁 <strong>Promo code:</strong> <strong>WELCOME50</strong><br><span style="color:#8aa8c0">50% bonus; minimum deposit $10</span><br><a href="' + REF_LINK + '" target="_blank" class="pos-act-ref">Partner link</a>',
+            promo_banner:'Pocket Tracker local build. No external activation is required.',
             act_placeholder:'Your Pocket Option account ID',
             act_btn:'✅ Activate', act_checking:'Checking...',
             act_hint:'Where to find ID? In your Pocket Option profile → Account',
