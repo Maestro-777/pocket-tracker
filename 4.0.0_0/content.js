@@ -11,15 +11,6 @@
 
     const IS_TOP = (window === window.top);
 
-    // Хост маркета пресетов (posApp): в приложении — chrome.posApp из host-shim.js, в расширении — __posChrome.posApp
-    // из market/ext-host.js (content script до content.js). null — маркета нет (iframe, старый хост).
-    function posMarketHost() {
-        if (!IS_TOP) return null;
-        try { if (typeof chrome !== 'undefined' && chrome && chrome.posApp) return chrome.posApp; } catch (_) {}
-        try { if (typeof __posChrome !== 'undefined' && __posChrome && __posChrome.posApp) return __posChrome.posApp; } catch (_) {}
-        return null;
-    }
-
     // ── ACCESS MODE (free) ───────────────────────────────────────────
     const API_BASE  = 'https://pocketoption-signal.online/api';
     const _RS       = 'Xk9$Bn2R@mV7pLq!tZ'; // request-signing secret
@@ -448,11 +439,6 @@
 
     let activeBuiltinPresetId = null;
     let activePresetExpTab = 15;
-    // Есть маркет (приложение и расширение ≥ 3.6.0, posMarketHost()): в «Пресетах стратегии» — только то, что пользователь
-    // добавил из Маркета (свои, установленные, купленные); список отдаёт market.js через posApp.core.setLibrary.
-    // null — хоста маркета нет: блок пресетов показывает подсказку renderPresetAppOnly.
-    let marketPresetLib = null;
-    if (posMarketHost()) marketPresetLib = [];
 
     const IND_PARAMS_META = {
         RSI:     [
@@ -508,7 +494,7 @@
             act_err_id:'Введите корректный ID аккаунта.',
             act_err_notfound:'Аккаунт не найден. Зарегистрируйтесь на Pocket Option по партнёрской ссылке → https://po-ru4.click/pwa?utm_campaign=773275&utm_source=affiliate&utm_medium=sr&a=rQkgoZ6yHljgTx&al=1786769&ac=optiontraderobot&cid=973082&code=WELCOME50',
             act_err_auto:'Не удалось определить ID автоматически. Введите вручную.',
-            tab_signals:'Сигналы', tab_journal:'Журнал', tab_stats:'Аналитика', tab_settings:'Настройки', tab_contacts:'Контакты',
+            tab_signals:'Сигналы', tab_journal:'Журнал', tab_stats:'Аналитика', tab_settings:'Настройки',
             stat_signals:'Сигналов', stat_wins:'Победы', stat_losses:'Потери', stat_winrate:'Винрейт', stat_profit:'Профит',
             total_profit:'Общий результат:',
             idle_waiting:'Ожидаю сигнал...', idle_next_bet:'След. ставка:', idle_start_hint:'Запустите анализ кнопкой ниже',
@@ -580,8 +566,6 @@
             stat_strat:'Индикаторы', stats_no_data:'Нет данных для анализа',
             sec_preset:'📁 Пресеты стратегии',
             preset_hint:'Выберите экспирацию вкладкой, затем вариацию. Ставка и автоторговля не меняются.',
-            preset_hint_market:'Пресеты, добавленные из Маркета. Выберите экспирацию, затем пресет. Ставка и автоторговля не меняются.',
-            preset_market_empty:'Здесь появятся пресеты, добавленные из Маркета (свои, установленные и купленные). Откройте Маркет пресетов, чтобы добавить.',
             preset_export:'💾 Экспорт', preset_import:'📂 Импорт',
             preset_clear:'↺ Сброс · вручную',
             preset_exported:'Пресет сохранён', preset_loaded:'Пресет загружен', preset_err:'Ошибка чтения файла',
@@ -598,7 +582,7 @@
             act_err_id:'Please enter a valid account ID.',
             act_err_notfound:'Account not found. Register on Pocket Option via our partner link → https://po-ru4.click/pwa?utm_campaign=773275&utm_source=affiliate&utm_medium=sr&a=rQkgoZ6yHljgTx&al=1786769&ac=optiontraderobot&cid=973082&code=WELCOME50',
             act_err_auto:'Could not detect ID automatically. Please enter it manually.',
-            tab_signals:'Signals', tab_journal:'Journal', tab_stats:'Analytics', tab_settings:'Settings', tab_contacts:'Contacts',
+            tab_signals:'Signals', tab_journal:'Journal', tab_stats:'Analytics', tab_settings:'Settings',
             stat_signals:'Signals', stat_wins:'Wins', stat_losses:'Losses', stat_winrate:'Win rate', stat_profit:'Profit',
             total_profit:'Total result:',
             idle_waiting:'Waiting for signal...', idle_next_bet:'Next bet:', idle_start_hint:'Start analysis with the button below',
@@ -670,8 +654,6 @@
             stat_strat:'Indicators', stats_no_data:'No data to analyse',
             sec_preset:'📁 Strategy presets',
             preset_hint:'Pick an expiry tab, then a variation. Base bet and auto-trade stay unchanged.',
-            preset_hint_market:'Presets added from the Market. Pick an expiry, then a preset. Base bet and auto-trade stay unchanged.',
-            preset_market_empty:'Presets you add from the Market (your own, installed and purchased) will appear here. Open the Preset market to add some.',
             preset_export:'💾 Export', preset_import:'📂 Import',
             preset_clear:'↺ Reset · manual',
             preset_exported:'Preset saved', preset_loaded:'Preset loaded', preset_err:'Error reading file',
@@ -2557,38 +2539,17 @@
         return PRESET_EXP_TABS.find(function(t) { return t.exp === exp; }) || PRESET_EXP_TABS[0];
     }
 
-    // Метка пресета маркета в activeBuiltinPresetId — как в posApplyMarketPreset.
-    function marketPresetMark(p) {
-        return p.official && p.key && BUILTIN_PRESETS.some(function(b) { return b.id === p.key; }) ? p.key : 'm:' + p.id;
-    }
+    function presetSource() { return BUILTIN_PRESETS; }
 
-    function presetSource() {
-        return marketPresetLib || BUILTIN_PRESETS;
-    }
-
-    // Вкладки экспираций: в приложении — только те, где есть пресеты из библиотеки маркета.
-    function presetTabsList() {
-        if (!marketPresetLib) return PRESET_EXP_TABS;
-        var seen = {};
-        marketPresetLib.forEach(function(p) { if (p.expiration) seen[p.expiration] = true; });
-        return Object.keys(seen).map(Number).sort(function(a, b) { return a - b; }).map(function(exp) {
-            var meta = PRESET_EXP_TABS.find(function(t) { return t.exp === exp; });
-            if (meta) return meta;
-            var lbl = exp % 3600 === 0 ? [exp / 3600 + 'ч', exp / 3600 + 'h']
-                : exp % 60 === 0 ? [exp / 60 + 'м', exp / 60 + 'm'] : [exp + 'с', exp + 's'];
-            return { exp: exp, label: lbl[0], en_label: lbl[1], hint: '', en_hint: '' };
-        });
-    }
+    function presetTabsList() { return PRESET_EXP_TABS; }
 
     function presetsForExp(exp) {
-        return presetSource().filter(function(p) { return p.expiration === exp; });
+        return BUILTIN_PRESETS.filter(function(p) { return p.expiration === exp; });
     }
 
     function syncPresetTabFromActive() {
         if (!activeBuiltinPresetId) return;
-        var p = marketPresetLib
-            ? marketPresetLib.find(function(x) { return marketPresetMark(x) === activeBuiltinPresetId; })
-            : BUILTIN_PRESETS.find(function(x) { return x.id === activeBuiltinPresetId; });
+        var p = BUILTIN_PRESETS.find(function(x) { return x.id === activeBuiltinPresetId; });
         if (p && p.expiration) activePresetExpTab = p.expiration;
     }
 
@@ -2607,20 +2568,11 @@
         return best;
     }
 
-    // Страница Windows-приложения на сайте (описание + установщик), с учётом языка панели.
-    function winAppUrl() {
-        return 'https://' + BRAND_SITE + (currentLang === 'en' ? '/en' : '') + '/install#windows';
-    }
-    function refreshWinAppLinks() {
-        document.querySelectorAll('#pos-panel .pos-win-app-link').forEach(function(a) { a.href = winAppUrl(); });
-    }
-
     function updatePresetTabHint() {
         var hint = document.getElementById('pos-preset-hint');
         if (!hint) return;
-        if (marketPresetLib && !marketPresetLib.length) { hint.textContent = t('preset_market_empty'); return; }
         var meta = presetTabsList().find(function(x) { return x.exp === activePresetExpTab; }) || getPresetTabMeta(activePresetExpTab);
-        var base = t(marketPresetLib ? 'preset_hint_market' : 'preset_hint');
+        var base = t('preset_hint');
         var tabHint = currentLang === 'en' ? (meta.en_hint || meta.hint) : meta.hint;
         hint.textContent = base + (tabHint ? ' ' + tabHint : '');
     }
@@ -2652,7 +2604,7 @@
         presetsForExp(activePresetExpTab).forEach(function(p) {
             var card = document.createElement('button');
             card.type = 'button';
-            var mark = marketPresetLib ? marketPresetMark(p) : p.id;
+            var mark = p.id;
             card.className = 'pos-preset-card tone-' + (p.tone || 'scalp') +
                 (activeBuiltinPresetId === mark ? ' active' : '');
             card.dataset.presetId = p.id;
@@ -2674,43 +2626,11 @@
             if (nameEl) nameEl.textContent = currentLang === 'en' ? (p.en_name || p.name) : p.name;
             if (descEl) descEl.textContent = currentLang === 'en' ? (p.en_desc || p.desc) : p.desc;
             card.addEventListener('click', function() {
-                if (marketPresetLib) applyLibraryPreset(p);
-                else applyBuiltinPreset(p.id);
+                applyBuiltinPreset(p.id);
             });
             grid.appendChild(card);
         });
         updatePresetTabHint();
-    }
-
-    function applyLibraryPreset(p) {
-        if (p.expiration) activePresetExpTab = p.expiration;
-        posApplyMarketPreset(p.config, { id: p.id, key: p.official ? p.key : null, applyMm: !!p.apply_mm, title: p.name });
-        buildPresetGrid();
-    }
-
-    /** Библиотека маркета (ответ action=my: own + purchased + installed) → карточки «Пресетов стратегии». */
-    function posSetMarketLibrary(items) {
-        if (!marketPresetLib || !Array.isArray(items)) return;
-        var seen = {};
-        marketPresetLib = items.filter(function(c) {
-            if (!c || c.id == null || seen[c.id] || !c.config || !Array.isArray(c.config.indicators)) return false;
-            seen[c.id] = true;
-            return true;
-        }).map(function(c) {
-            var cfg = c.config;
-            var b = c.official && c.key ? BUILTIN_PRESETS.find(function(x) { return x.id === c.key; }) : null;
-            return {
-                id: c.id, key: c.key || null, official: !!c.official, apply_mm: !!c.apply_mm, config: cfg,
-                expiration: normalizeExpiration(cfg.expiration || c.expiration),
-                name: c.title || (b && b.name) || '', en_name: c.title || (b && b.en_name) || '',
-                desc: c.description || (b && b.desc) || '', en_desc: c.description || (b && b.en_desc) || '',
-                tag: c.tag || (b && b.tag) || '', tone: c.tone || (b && b.tone) || 'scalp',
-                selectedStrategies: cfg.indicators.slice(), filterMode: cfg.filterMode,
-                confirmMode: cfg.confirmMode, htfFilter: !!cfg.htfFilter, suggestedBet: cfg.suggestedBet
-            };
-        });
-        syncPresetTabFromActive();
-        buildPresetGrid();
     }
 
     function refreshBuiltinPresetLabels() {
@@ -2955,92 +2875,6 @@
         }
         updateBetInputLimits();
     }
-
-    // ── МАРКЕТ ПРЕСЕТОВ (приложение и расширение) ─────────────────────
-    // Экран «Маркет» — market/market.js (в приложении WebCore/app-market.js); ему нужны снимок настроек и применение
-    // пресета. Хост — posMarketHost(): host-shim.js приложения или market/ext-host.js расширения. Формат preset v1 —
-    // Windows/ARCHITECTURE.md §15: ставка, баланс и автоторговля в пресет не входят и при применении не меняются.
-    function posPresetForShare() {
-        var s = posStrategySnapshot();
-        if (!s) return null;
-        delete s.preset; delete s.autoTrade; delete s.baseBet; delete s.startBalance;
-        return s;
-    }
-    /** Снимок текущих настроек (формат applyPresetData) — для «Вернуть мои настройки». */
-    function posSettingsBackup() {
-        var el = function(id) { return document.getElementById(id) || {}; };
-        var b = {
-            selectedStrategies: selectedStrategies.slice(),
-            filterMode: filterMode,
-            confirmMode: confirmMode,
-            triggerPolicy: triggerPolicy || '',
-            moneyManagement: el('pos-mm').value,
-            multiplier: el('pos-mult').value,
-            maxSteps: el('pos-max-steps').value,
-            parlaySteps: el('pos-steps').value,
-            dalembertUnit: el('pos-unit').value,
-            labSequence: el('pos-lab-seq').value,
-            expiration: normalizeExpiration(el('pos-expiration').value),
-            htfFilter: !!el('pos-htf-filter').checked,
-            indConfig: JSON.parse(JSON.stringify(indConfig)),
-            activeBuiltinPresetId: activeBuiltinPresetId
-        };
-        Object.assign(b, collectRiskSettings());
-        return b;
-    }
-    function posSettingsRestore(b) {
-        if (!b || typeof b !== 'object') return;
-        applyPresetData(b, { builtinId: b.activeBuiltinPresetId || null, keepBet: true, keepAutoTrade: true });
-        checkAutoTradeGuards();
-    }
-    /**
-     * Применить пресет маркета (preset v1). opts: id, key (официальный = id встроенного), applyMm, title.
-     * Метка для телеметрии и проверенного винрейта: activeBuiltinPresetId = id встроенного или 'm:<id>'
-     * (сбрасывается при ручной смене фильтров, как у встроенных).
-     */
-    function posApplyMarketPreset(cfg, opts) {
-        opts = opts || {};
-        if (!cfg || !Array.isArray(cfg.indicators) || !cfg.indicators.length) return false;
-        var d = {
-            selectedStrategies: cfg.indicators.filter(function(id) { return STRATEGIES.some(function(s) { return s.id === id; }); }),
-            filterMode: cfg.filterMode,
-            confirmMode: cfg.confirmMode || 'auto',
-            triggerPolicy: cfg.triggerPolicy || '',
-            expiration: cfg.expiration
-        };
-        if (!d.selectedStrategies.length) return false;
-        if (cfg.htfFilter != null) d.htfFilter = !!cfg.htfFilter;
-        if (cfg.indConfig && typeof cfg.indConfig === 'object') d.indConfig = cfg.indConfig;
-        if (cfg.mm) {
-            d.moneyManagement = cfg.mm;
-            ['multiplier', 'maxSteps', 'parlaySteps', 'dalembertUnit', 'labSequence'].forEach(function(k) { if (cfg[k] != null) d[k] = cfg[k]; });
-        }
-        if (cfg.risk && typeof cfg.risk === 'object') {
-            d.riskTpMode = cfg.risk.tpMode || 'percent'; d.riskTpValue = cfg.risk.tp;
-            d.riskTlMode = cfg.risk.tlMode || 'percent'; d.riskTlValue = cfg.risk.tl;
-            if (cfg.risk.on !== false) d.riskEnabled = true; // on:false — значения есть, лимиты не включаем
-        }
-        var builtin = opts.key && BUILTIN_PRESETS.some(function(p) { return p.id === opts.key; }) ? opts.key
-            : (opts.id ? 'm:' + opts.id : null);
-        applyPresetData(d, { builtinId: builtin, keepBet: true, keepAutoTrade: true, keepMM: !opts.applyMm });
-        checkAutoTradeGuards();
-        appendLog('✅ ' + t('preset_applied') + (opts.title ? ': ' + opts.title : ''));
-        return true;
-    }
-    try {
-        var posMkHost = posMarketHost();
-        if (posMkHost) {
-            posMkHost.core = {
-                share: posPresetForShare,
-                backup: posSettingsBackup,
-                restore: posSettingsRestore,
-                apply: posApplyMarketPreset,
-                lang: function() { return currentLang; },
-                activePreset: function() { return activeBuiltinPresetId || ''; },
-                setLibrary: posSetMarketLibrary
-            };
-        }
-    } catch (_) {}
 
     // ── DEBUG STAT EDITOR (hidden, triple-click on version label) ──────
     function injectDebugPanel() {
