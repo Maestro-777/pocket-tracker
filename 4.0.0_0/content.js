@@ -3632,6 +3632,7 @@
         var eligible=!!(row&&(cfg.model==='auto'?row.eligible:(row.modelEligible&&row.modelEligible[cfg.model]))&&confidence>=cfg.confidenceFloor&&dir!=='DRAW');
         var source=cfg.sourceMode;
         var indicator=pt4Predictive.indicators[asset] || pt4Predictive.lastIndicator;
+        if(indicator && indicator.timestamp && Date.now()-indicator.timestamp>12000)indicator=null;
         var sourceText=source==='indicators'?'Только индикаторы · сделки управляются основным модулем':source==='combined'?'Ожидание совпадения направлений':'Predictive Formula';
         if(source==='indicators') eligible=false;
         if(source==='combined' && indicator && indicator.direction && dir.indexOf(indicator.direction)===0)sourceText='Совпадение индикаторов и прогноза';
