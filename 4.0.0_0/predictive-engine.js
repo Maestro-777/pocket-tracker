@@ -46,6 +46,7 @@
       this.listeners = new Set();
       this.stats = new Map();
       this.lastForecastAt = new Map();
+      this.assetFilter = { mode: 'all', selectedAsset: '*' };
     }
     onUpdate(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
     emit(type, data, broadcast = true) {
@@ -100,6 +101,21 @@
       if (snapshot.options && typeof snapshot.options === 'object') this.setOptions(snapshot.options);
       return true;
     }
+    setAssetFilter(mode, selectedAsset) {
+      const nextMode = mode === 'selected' && selectedAsset && selectedAsset !== '*' ? 'selected' : 'all';
+      const nextAsset = this._key(selectedAsset || '*');
+      this.assetFilter = { mode: nextMode, selectedAsset: nextMode === 'selected' ? nextAsset : '*' };
+      if (nextMode === 'selected') {
+        for (const asset of Array.from(this.series.keys())) if (asset !== nextAsset) this.series.delete(asset);
+        for (const [id, forecast] of this.pending) {
+          if (forecast.asset === nextAsset) continue;
+          this.pending.delete(id);
+          this.history.push(Object.assign({}, forecast, { status: 'INVALID_FILTER_CHANGED', invalidReason: 'asset_filter_changed' }));
+        }
+        for (const asset of Array.from(this.lastForecastAt.keys())) if (asset !== nextAsset) this.lastForecastAt.delete(asset);
+        while (this.history.length > this.options.maxForecasts) this.history.shift();
+      }
+    }
     _key(asset) { return String(asset || '').trim().toUpperCase(); }
     _isOtc(asset) { return /(?:_OTC| OTC)$/i.test(String(asset || '').trim()); }
     _statKey(asset, horizon, model) { return asset + '|' + horizon + '|' + model; }
@@ -114,6 +130,7 @@
     ingest(tick) {
       if (!this.options.enabled || !tick || !this._isOtc(tick.asset)) return null;
       const asset = this._key(tick.asset);
+      if (this.assetFilter.mode === 'selected' && asset !== this.assetFilter.selectedAsset) return null;
       const price = Number(tick.price);
       const timestamp = Number(tick.timestamp) || Date.now();
       if (!(price > 0) || !Number.isFinite(price) || !Number.isFinite(timestamp)) return null;
@@ -289,6 +306,7 @@
     }
     forecast(asset, now = Date.now()) {
       asset = this._key(asset);
+      if (this.assetFilter.mode === 'selected' && asset !== this.assetFilter.selectedAsset) return null;
       const series = this.series.get(asset);
       if (!series || series.length < this.options.minSamples) return null;
       const previous = this.lastForecastAt.get(asset) || 0;
@@ -434,6 +452,7 @@
       root.__pt4PredictiveEngine.setOptions(data.config || {});
       if (data.config && data.config.predictive) {
         root.__PT4_PREDICTIVE_CONFIG = Object.assign({}, data.config.predictive);
+        root.__pt4PredictiveEngine.setAssetFilter(root.__PT4_PREDICTIVE_CONFIG.assetMode, root.__PT4_PREDICTIVE_CONFIG.selectedAsset);
         if (root.__poCore && typeof root.__poCore.setPredictiveConfig === 'function') root.__poCore.setPredictiveConfig(root.__PT4_PREDICTIVE_CONFIG);
       }
     }
