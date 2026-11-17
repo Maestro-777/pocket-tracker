@@ -56,6 +56,21 @@ test('creates five immutable-horizon forecasts with all six models', () => {
   assert.equal(engine.getPending().find(x => x.id === pending.id).predicted, frozen);
 });
 
+
+test('selects different empirically validated models per asset and horizon', () => {
+  const { engine } = makeEngine({ minSamples: 30, confidenceFloor: 0.60, minEvaluationSamples: 30 });
+  for (let i = 1; i <= 39; i++) tick(engine, 'EURUSD_otc', i * 1000, 1.1 + i * 0.00001 + Math.sin(i / 3) * 0.00001);
+  const good = { n:30, decisive:30, wins:30, losses:0, draws:0, mae:0.0001, brier:0, lastUpdatedAt:39000 };
+  engine.stats.set('EURUSD_OTC|60|linear', Object.assign({}, good));
+  engine.stats.set('EURUSD_OTC|120|exponential', Object.assign({}, good));
+  const forecast = tick(engine, 'EURUSD_otc', 40000, 1.1004);
+  assert.equal(forecast.horizons[60].model, 'linear');
+  assert.equal(forecast.horizons[120].model, 'exponential');
+  assert.equal(forecast.horizons[60].modelConfidenceSamples.linear, 30);
+  assert.ok(forecast.horizons[60].modelConfidence.linear > 0.60);
+  assert.equal(forecast.horizons[60].modelEligible.linear, true);
+});
+
 test('settles forecasts only at/after expiry and records model outcomes', () => {
   const { engine } = makeEngine({ minSamples: 30, maxSettlementDelayMs: 15000 });
   for (let i = 1; i <= 40; i++) tick(engine, 'GBPUSD_otc', i * 1000, 1.25 + i * 0.00001);
