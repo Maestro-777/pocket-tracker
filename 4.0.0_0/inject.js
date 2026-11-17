@@ -4082,6 +4082,14 @@
                 this._multiPendingByRequestId.set(String(requestId), trade);
                 this._multiOpenByAsset.set(signal.asset, 'req:' + requestId);
                 this._predictiveLastTradeAt[cooldownKey] = now;
+                const self = this, requestKey = String(requestId);
+                setTimeout(function() {
+                    const stillPending = self._multiPendingByRequestId && self._multiPendingByRequestId.get(requestKey);
+                    if (!stillPending) return;
+                    self._multiPendingByRequestId.delete(requestKey);
+                    if (self._multiOpenByAsset.get(signal.asset) === 'req:' + requestKey) self._multiOpenByAsset.delete(signal.asset);
+                    self.log('⚠️ Predictive [' + signal.asset + ']: платформа не подтвердила открытие ордера за 15 секунд.');
+                }, 15000);
                 this._post('POROBOT_PREDICTIVE_TRADE_OPEN', { trade });
                 this.log('🤖 Predictive [' + signal.asset + '] ' + tradeDirection + ' · ' + signal.model +
                     ' · ' + Math.round(signal.confidence * 100) + '% · $' + amount.toFixed(2) +
