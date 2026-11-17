@@ -241,3 +241,18 @@ PredictiveAutoTrade — тонкий адаптер. Он передаёт ва�
 - Все три Signal Source работают и не дублируют существующую торговую логику.
 - Пользователь выбирает DEMO/REAL и управление автоставками без обязательного demo-first.
 - Система не заявляет 80%+, пока достаточная независимая выборка не подтверждает этот показатель.
+
+
+## Cross-frame integration (2026-11-17)
+
+Predictive is hosted by one elected engine owner, not one independent history per injected frame.
+
+- Keep MAIN-world and content scripts on `all_frames: true`: Pocket Option may create its quote socket and trade controls in different frames.
+- Each frame with a Pocket Option WebSocket forwards normalized quote ticks to the top-frame coordinator using `PT4_PREDICTIVE_TICK_RELAY`.
+- Eligible trade frames announce their depth with `PT4_PREDICTIVE_FRAME_CLAIM`. The coordinator elects the deepest trade-capable frame, matching the primary-frame strategy already used by 3.6.0 and retaining a `postMessage` path for subdomain/cross-origin frames.
+- The coordinator forwards `PT4_PREDICTIVE_TICK` only to the elected owner. The Predictive Engine consumes only this routed event, so quote histories, pending forecasts and statistics are not independently built in every frame.
+- Predictive configuration and restored state are broadcast through the existing extension background → tab → content-script message path to every frame.
+- Child-frame Predictive events are relayed to the top-frame UI, including warm-up, forecast, settlement, asset catalog, indicator, signal and trade-request events.
+- Ordinary per-frame `core.onPrice` handling remains intact for the existing indicator engine. Predictive quote routing is additive and does not replace the existing WebSocket interceptor or order handlers.
+
+Automated regression tests cover the routed tick contract and the presence of the cross-frame configuration/event bridges. They do not replace testing in an authenticated Pocket Option browser session.
