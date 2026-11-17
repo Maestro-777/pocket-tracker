@@ -5,19 +5,19 @@
 <section class="top"><div><div class="eyebrow">POCKET OPTION DATA LINK</div><h1>Собираем данные.<br><em>Ищем сходства.</em></h1><p id="connectionText">Откройте график Pocket Option и дождитесь подключения.</p></div><div class="live"><span class="dot"></span><b id="pair">—</b><small>ТЕКУЩАЯ ПАРА</small></div></section>
 <section class="metrics">
 <article><small>БАЛАНС</small><b id="balance">—</b><span id="accountType">не получен</span></article>
-<article><small>СВЕЧИ В БАЗЕ</small><b id="stored">0</b><span>в локальном хранилище</span></article>
+<article><small>СВЕЧИ В БАЗЕ</small><b id="stored">0</b><span>всего · текущая пара: <strong id="pairStored">0</strong></span></article>
 <article><small>ПОЛУЧЕНО ТИКОВ</small><b id="ticks">0</b><span>из WebSocket</span></article>
 <article><small>СОЕДИНЕНИЕ</small><b id="events">0</b><span>событий получено</span></article>
 </section>
 <section class="panel">
-<div class="head"><div><h2>Параметры анализа</h2><p>Количество свечей выбирается из локальной базы.</p></div></div>
+<div class="head"><div><h2>Параметры анализа</h2><p>Свечи сохраняются локально в IndexedDB браузера и остаются после закрытия popup и перезапуска браузера. Анализируется только выбранная валютная пара.</p></div></div>
 <div class="settings">
 <label>Свечей для анализа<input id="candleCount" type="number" min="30" max="100000" step="100" value="2000"></label>
-<label>Длина паттерна<select id="patternLength"><option>5</option><option selected>8</option><option>10</option><option>12</option><option>16</option><option>20</option></select></label>
+<label>Длина паттерна<select id="patternLength"><option>5</option><option selected>8</option><option>10</option><option>12</option><option>16</option><option>20</option><option>30</option><option>40</option><option>50</option></select><small class="hint">Сколько последних свечей образуют образец. Например, 20 = сравнение участков по 20 свечей. Длиннее — строже, но меньше доступных совпадений.</small></label>
 <label>Минимальное сходство <output id="thresholdOut">80%</output><input id="threshold" type="range" min="50" max="99" value="80"></label>
 <label>Показывать совпадений<select id="resultLimit"><option>5</option><option selected>10</option><option>20</option><option>50</option></select></label>
 </div>
-<div class="buttons"><button id="analyze" class="primary">Найти сходства</button><button id="exportCsv" class="secondary">Экспорт CSV</button><button id="exportJson" class="secondary">Экспорт JSON</button></div>
+<div class="buttons"><button id="analyze" class="primary">Найти сходства</button><button id="exportCsv" class="secondary">Экспорт CSV</button><button id="exportJson" class="secondary">Экспорт всей базы JSON</button><button id="exportAllCsv" class="secondary">Экспорт всей базы CSV</button></div>
 <div id="analysis" class="analysis">Анализ пока не запускался.</div>
 </section>
 <section class="panel"><div class="head"><div><h2>Найденные исторические сходства</h2><p>Сравнивается форма Heikin Ashi: цвет, тело, тени и диапазон.</p></div><span id="matchCount" class="tag">0 совпадений</span></div><div id="matches" class="matches"><div class="empty">Пока нет результатов.</div></div></section>
