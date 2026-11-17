@@ -71,10 +71,12 @@
     }
     restoreState(snapshot) {
       if (!snapshot || snapshot.version !== 1) return false;
+      if (snapshot.assetFilter) this.assetFilter = Object.assign({ mode: 'all', selectedAsset: '*' }, snapshot.assetFilter);
       const validAsset = asset => typeof asset === 'string' && this._isOtc(asset);
+      const allowedAsset = asset => validAsset(asset) && (this.assetFilter.mode !== 'selected' || this._key(asset) === this.assetFilter.selectedAsset);
       if (Array.isArray(snapshot.series)) {
         for (const row of snapshot.series.slice(-100)) {
-          if (!Array.isArray(row) || !validAsset(row[0]) || !Array.isArray(row[1])) continue;
+          if (!Array.isArray(row) || !allowedAsset(row[0]) || !Array.isArray(row[1])) continue;
           const ticks = row[1].filter(x => x && Number.isFinite(Number(x.t)) && Number(x.p) > 0)
             .map(x => ({ t: Number(x.t), p: Number(x.p) })).sort((a,b) => a.t-b.t).slice(-300);
           if (ticks.length) this.series.set(this._key(row[0]), ticks);
@@ -93,7 +95,7 @@
       }
       if (Array.isArray(snapshot.pending)) {
         for (const item of snapshot.pending.slice(-this.options.maxForecasts)) {
-          if (!item || !validAsset(item.asset) || !HORIZONS.includes(Number(item.horizon)) || !Number.isFinite(Number(item.dueAt)) || !(Number(item.entry)>0) || !item.models || !item.modelDirections || !item.modelProbabilities) continue;
+          if (!item || !allowedAsset(item.asset) || !HORIZONS.includes(Number(item.horizon)) || !Number.isFinite(Number(item.dueAt)) || !(Number(item.entry)>0) || !item.models || !item.modelDirections || !item.modelProbabilities) continue;
           this.pending.set(String(item.id), item);
         }
       }
