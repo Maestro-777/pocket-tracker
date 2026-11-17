@@ -3609,7 +3609,7 @@
         document.getElementById('pt4-confidence-out').textContent=confidence==null?'—':Math.round(confidence*100)+'%'+(row&&row.confidenceCalibrated?' · статистика':' · нет выборки');
         var eligible=!!(row&&row.eligible&&row.confidence>=cfg.confidenceFloor&&dir!=='DRAW');
         var source=cfg.sourceMode;
-        var indicator=this && pt4Predictive.lastIndicator;
+        var indicator=pt4Predictive.lastIndicator;
         var sourceText=source==='indicators'?'Используются только индикаторы':source==='combined'?'Ожидание совпадения направлений':'Predictive Formula';
         if(source==='combined' && indicator && indicator.direction && dir.indexOf(indicator.direction)===0)sourceText='Совпадение индикаторов и прогноза';
         else if(source==='combined' && indicator && indicator.direction && dir!=='—' && indicator.direction!==dir.replace(/ .*/,''))sourceText='КОНФЛИКТ · вход запрещён';
@@ -3656,6 +3656,9 @@
     if (IS_TOP) {
         window.addEventListener('message', function(e) {
             var msgType = e.data && e.data.type;
+            } else if (msgType === 'POROBOT_SCAN') {
+                pt4Predictive.lastIndicator = e.data.scan || null;
+                renderPredictivePanel();
             } else if (msgType === 'POROBOT_PREDICTIVE_EVENT') {
                 handlePredictiveEvent(e.data);
             } else if (msgType === 'PT4_PREDICTIVE_READY') {
