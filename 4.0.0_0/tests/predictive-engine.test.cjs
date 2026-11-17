@@ -199,6 +199,7 @@ test('routes quotes and predictive state through one elected frame across all_fr
   const engine = fs.readFileSync(path.join(root, 'predictive-engine.js'), 'utf8');
 
   assert.match(injector, /PT4_PREDICTIVE_TICK_RELAY/);
+  assert.match(injector, /PT4_PREDICTIVE_FRAME_CLAIM/);
   assert.match(injector, /PT4_PREDICTIVE_TICK/);
   assert.match(injector, /if \(this\.predictiveConfig\.enabled\) claimPrimaryEngine\(\)/);
   assert.match(engine, /data\.type !== 'PT4_PREDICTIVE_TICK'/);
