@@ -3966,6 +3966,10 @@
             }
         }
 
+        _isPredictiveModeExclusive() {
+            return !!(this.predictiveConfig && this.predictiveConfig.enabled && this.predictiveConfig.sourceMode !== 'indicators');
+        }
+
         setPredictiveConfig(config) {
             const defaults = {
                 enabled: true, sourceMode: 'formula', assetMode: 'all', selectedAsset: '*',
@@ -4178,7 +4182,7 @@
                 };
                 this._multiLastEntryBar[asset] = barTs;
                 this._post('POROBOT_MULTI_SIGNAL', { signal: signal });
-                if (!this.config.autoTrade) continue;
+                if (!this.config.autoTrade || this._isPredictiveModeExclusive()) continue;
 
                 if (accountType !== 'demo' && accountType !== 'real') {
                     if (!this._multiAccountWarned) {
@@ -4453,7 +4457,7 @@
             const cooldownMs = Math.max(15000, expSec * 1000);
             if(this._lastSignal===sig.direction && Date.now()-this._lastSignalTime < cooldownMs) return;
             if(this._tradeBusy) return;
-            if (this.config?.autoTrade && frameHasTradeUI() && this._awaitingResult()) return;
+            if (!this._isPredictiveModeExclusive() && this.config?.autoTrade && frameHasTradeUI() && this._awaitingResult()) return;
             const bet = capBetToBalance(this.money.getNextBet());
             const expiration = parseInt(this.config?.expiration, 10) || 60;
             this._lastSignal=sig.direction; this._lastSignalTime=Date.now();
@@ -4467,7 +4471,7 @@
                 expiration: expiration, ts:Date.now()
             }});
             this.log(`📡 СИГНАЛ [${displayAsset}] ${sig.direction==='UP'?'▲ ВВЕРХ':'▼ ВНИЗ'} | ${sig.matchedCount}/${sig.totalCount} ${sig.filterMode || ''} | ${sig.matchedIndicators} | $${bet}${sig.confirmMode ? ' | ' + sig.confirmMode : ''}`);
-            if (this.config?.autoTrade && frameHasTradeUI()) {
+            if (!this._isPredictiveModeExclusive() && this.config?.autoTrade && frameHasTradeUI()) {
                 const needed = parseFloat(bet) || 0;
                 const info = getActiveBalanceInfo();
                 if (info.balance != null && needed > 0 && info.balance + 1e-9 < needed) {
@@ -4548,7 +4552,7 @@
 
             this.log('📡 ЛЮБОЙ [' + displayAsset + '] ' + fresh.length + ' сделок | ' + label + ' | $' + bet + ' каждая');
 
-            if (!(this.config?.autoTrade && frameHasTradeUI())) return;
+            if (this._isPredictiveModeExclusive() || !(this.config?.autoTrade && frameHasTradeUI())) return;
 
             const needed = parseFloat(bet) || 0;
             const balInfo = getActiveBalanceInfo();
