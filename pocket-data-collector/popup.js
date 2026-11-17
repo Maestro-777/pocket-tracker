@@ -68,6 +68,19 @@ $("analyze").addEventListener("click",async()=>{
     }
   }catch(e){$("analysis").textContent=e.message;}
 });
+$("checkIntegrity").addEventListener("click",async()=>{
+  try{
+    const tabId=await activeTab();
+    const asset=lastStatus?.pair&&lastStatus.pair!=="UNKNOWN"?lastStatus.pair:null;
+    const r=await chrome.runtime.sendMessage({type:"PDC_GET_INTEGRITY",tabId,asset,period:5});
+    if(!r?.ok)throw Error(r?.error||"Не удалось проверить историю.");
+    const coverage=r.coverage==null?"—":(r.coverage*100).toFixed(2)+"%";
+    const first=r.firstTime?new Date(r.firstTime).toLocaleString():"—";
+    const last=r.lastTime?new Date(r.lastTime).toLocaleString():"—";
+    const worst=r.gapSamples?.length?r.gapSamples.reduce((a,b)=>a.durationSec>b.durationSec?a:b):null;
+    $("integrityResult").textContent="Пара: "+(r.asset||"все пары")+". Свечей: "+number(r.total)+". Разрывов: "+number(r.gaps)+". Отсутствует 5-секундных интервалов: "+number(r.missingCandles)+". Максимальный разрыв: "+number(r.maxGapSec)+" сек. Расчётное покрытие временной сетки: "+coverage+". Дубликатов времени: "+number(r.duplicates)+". Первая свеча: "+first+". Последняя: "+last+"."+(worst?" Самый длинный показанный разрыв: "+new Date(worst.from).toLocaleString()+" → "+new Date(worst.to).toLocaleString()+" ("+worst.durationSec+" сек).":"");
+  }catch(e){$("integrityResult").textContent=e.message;}
+});
 $("detectSignal").addEventListener("click",async()=>{
   try{
     const candles=await getData();
