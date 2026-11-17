@@ -1197,6 +1197,7 @@ function normalizeSignalSubscription(raw, fallbackTabId = null) {
     strategyCandleOffsets: normalizeSignalOffsetMap(raw.strategyCandleOffsets, strategyIds, candleOffset),
     strategyCooldowns: normalizeSignalNumberMap(raw.strategyCooldowns, strategyIds, raw.cooldown || 0, { min: 0, max: 86400, integer: false }),
     localConfigRevision: Math.max(0, Math.round(Number(raw.localConfigRevision) || 0)),
+    localOnly: raw.localOnly === true,
     controllerTabId: Number.isInteger(tabId) && tabId > 0 ? tabId : null,
     updatedAt: Number(raw.updatedAt) || Date.now()
   };
@@ -1465,7 +1466,7 @@ function selectSignalController() {
 function signalSubscriptionSnapshot() {
   const controllerId = selectSignalController();
   const item = controllerId ? signalSubscriptions.get(controllerId) : null;
-  if (!item || item.enabled === false) return { enabled: false, assets: [], strategyId: '', strategyIds: [], strategyMode: 'best', candleMode: 'closed', candleOffset: -1, period: 60, duration: 60, strategyPeriods: {}, strategyDurations: {}, strategyCandleOffsets: {}, strategyCooldowns: {}, localConfigRevision: 0, controllerTabId: null };
+  if (!item || item.enabled === false) return { enabled: false, assets: [], strategyId: '', strategyIds: [], strategyMode: 'best', candleMode: 'closed', candleOffset: -1, period: 60, duration: 60, strategyPeriods: {}, strategyDurations: {}, strategyCandleOffsets: {}, strategyCooldowns: {}, localConfigRevision: 0, localOnly: false, controllerTabId: null };
   const assets = [...new Set((item.assets || []).filter(Boolean).map(String))];
   const values = Array.isArray(item.strategyIds) ? item.strategyIds : [item.strategyId];
   const strategyIds = [...new Set(values.filter(Boolean).map(String))];
@@ -1487,6 +1488,7 @@ function signalSubscriptionSnapshot() {
     strategyCandleOffsets: normalizeSignalOffsetMap(item.strategyCandleOffsets, strategyIds, candleOffset),
     strategyCooldowns: normalizeSignalNumberMap(item.strategyCooldowns, strategyIds, 0, { min: 0, max: 86400, integer: false }),
     localConfigRevision: Math.max(0, Math.round(Number(item.localConfigRevision) || 0)),
+    localOnly: item.localOnly === true,
     controllerTabId: controllerId
   };
 }
@@ -1808,9 +1810,17 @@ function scheduleSignalSocketReconnect(reason = 'temporary_connection_error') {
 }
 
 async function connectServerSignalSocket() {
-  // Autonomous expansion build: no dependency on the retired remote signal service.
+  // Local strategies are evaluated directly from Pocket Option candles in content.js.
+  // They do not require a remote WebSocket or an engine ACK.
+  const localSnapshot = signalSubscriptionSnapshot();
+  if (localSnapshot.enabled && localSnapshot.localOnly) {
+    closeServerSignalSocket('local_strategy_engine_active', false);
+    persistSignalDiagnostics({ status: 'online', localOnly: true, lastError: null });
+    void notifySignalSubscribers({ type: 'PT_SIGNAL_SOCKET_STATUS', status: 'online', analysisReady: true, localOnly: true }, { controllerOnly: true });
+    return { ok: true, status: 'online', analysisReady: true, localOnly: true };
+  }
   closeServerSignalSocket('local_only_signal_channel_disabled', false);
-  return { ok: true, status: 'disabled_local_only' };
+  return { ok: false, status: 'disabled_local_only', error: 'В автономной версии серверные стратегии отключены. Выберите только локальную 3-Candle EMA14.' };
   const connectBindingRevision = signalSocketBindingRevision;
   await signalDiagnosticsReady;
   await restoreSignalSubscriptionState();
@@ -5608,6 +5618,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             strategyCandleOffsets: message.payload?.strategyCandleOffsets && typeof message.payload.strategyCandleOffsets === 'object' ? { ...message.payload.strategyCandleOffsets } : {},
             strategyCooldowns: message.payload?.strategyCooldowns && typeof message.payload.strategyCooldowns === 'object' ? { ...message.payload.strategyCooldowns } : {},
             localConfigRevision: Math.max(0, Math.round(Number(message.payload?.localConfigRevision) || 0)),
+            localOnly: message.payload?.localOnly === true,
             updatedAt: Date.now()
           });
           if (message.payload?.enabled !== false) signalControllerTabId = tabId;
@@ -5628,6 +5639,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           // Acknowledge immediately. Acquiring a one-time WS ticket can take longer
           // than a content-script message timeout on a slow network. Connection outcome is
           // delivered asynchronously through PT_SIGNAL_SOCKET_STATUS.
+          if (subscription.localOnly) {
+            closeServerSignalSocket('local_strategy_engine_active', false);
+            persistSignalDiagnostics({ status: 'online', localOnly: true, lastError: null, subscribedAssets: subscription.assets.length, strategyIds: subscription.strategyIds });
+            sendResponse({ ok: true, status: 'online', analysisReady: true, localOnly: true });
+            void notifySignalSubscribers({ type: 'PT_SIGNAL_SOCKET_STATUS', status: 'online', analysisReady: true, localOnly: true }, { controllerOnly: true });
+            return;
+          }
           await closeSignalSocketIfBindingStale('subscribe_binding_check').catch(() => null);
           if (signalSocket?.readyState === WebSocket.OPEN) {
             sendSignalSubscription();
@@ -5778,6 +5796,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ ok: true, diagnostics: { ...signalDiagnostics } });
           return;
         case 'PT_SIGNAL_SOCKET_STATE': {
+          const localSubscription = signalSubscriptionSnapshot();
+          if (localSubscription.enabled && localSubscription.localOnly) {
+            sendResponse({ ok: true, status: 'online', analysisReady: true, localOnly: true, diagnosticsStatus: 'online' });
+            return;
+          }
           const now = Date.now();
           await closeSignalSocketIfBindingStale('content_status_probe_binding').catch(() => null);
           if (!signalSocket || ![WebSocket.OPEN, WebSocket.CONNECTING].includes(signalSocket.readyState)) {
