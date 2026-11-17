@@ -48,10 +48,10 @@ import {
   capturePocketPartnersAuth
 } from './pocket-partners-client.js';
 
-const POCKET_OPTION_SMART_URL = 'https://u3.shortink.io/register?utm_campaign=863136&utm_source=affiliate&utm_medium=sr&a=2ZMIhcmXbAnA1h&al=1791102&ac=softwaretraffic&cid=976392';
+const POCKET_OPTION_SMART_URL = 'https://pocketoption.com';
 const ACTIVE_AFFILIATE_CAMPAIGN_ID = '863136';
 const ACTIVE_AFFILIATE_CODE = '2ZMIhcmXbAnA1h';
-const PRODUCT_PAGE_URL = 'https://pockettraderobot.ru/';
+const PRODUCT_PAGE_URL = 'https://github.com/Maestro-777/pocket-tracker/tree/main/expansion';
 const DASHBOARD_URL = chrome.runtime.getURL('dashboard.html');
 const STATIC_POCKET_HOSTS = new Set(['pocketoption.com', 'po.trade']);
 const OFFICIAL_DYNAMIC_POCKET_HOSTS = new Set();
