@@ -290,6 +290,12 @@
         const selected = eligible.length ? eligible[0].id : 'ensemble';
         const target = predictions[selected] || predictions.ensemble || current;
         const direction = signDirection(target, current, this.options.drawEpsilon * current);
+        const modelConfidence = {}, modelEligible = {};
+        for (const id of Object.keys(predictions)) {
+          const modelConf = this._confidence(asset, horizon, id, predictions[id], current, features);
+          modelConfidence[id] = modelConf.value;
+          modelEligible[id] = modelConf.value >= this.options.confidenceFloor;
+        }
         const confidence = this._confidence(asset, horizon, selected, target, current, features);
         const forecastId = asset + '|' + horizon + '|' + now;
         const modelDirections = {}, modelProbabilities = {};
@@ -304,7 +310,8 @@
           confidence: confidence.value, confidenceSamples: confidence.samples,
           confidenceCalibrated: false, confidenceEvidenceBased: confidence.calibrated,
           eligible: confidence.value >= this.options.confidenceFloor,
-          models: Object.assign({}, predictions), modelDirections, modelProbabilities
+          models: Object.assign({}, predictions), modelDirections, modelProbabilities,
+          modelConfidence, modelEligible
         };
         horizons[horizon] = row;
         this.pending.set(forecastId, {
@@ -316,6 +323,7 @@
       while (this.pending.size > this.options.maxForecasts) this.pending.delete(this.pending.keys().next().value);
       const result = { asset, timestamp: now, currentPrice: current, horizons };
       this.emit('forecast', result);
+      try { if (root.__poCore && typeof root.__poCore.onPredictiveForecast === 'function') root.__poCore.onPredictiveForecast(result); } catch (_) {}
       return result;
     }
     _settle(asset, timestamp, price) {
@@ -394,7 +402,13 @@
   root.addEventListener('message', event => {
     const data = event.data;
     if (!data || event.source !== root) return;
-    if (data.type === 'PT4_PREDICTIVE_CONFIG') root.__pt4PredictiveEngine.setOptions(data.config || {});
+    if (data.type === 'PT4_PREDICTIVE_CONFIG') {
+      root.__pt4PredictiveEngine.setOptions(data.config || {});
+      if (data.config && data.config.predictive) {
+        root.__PT4_PREDICTIVE_CONFIG = Object.assign({}, data.config.predictive);
+        if (root.__poCore && typeof root.__poCore.setPredictiveConfig === 'function') root.__poCore.setPredictiveConfig(root.__PT4_PREDICTIVE_CONFIG);
+      }
+    }
     if (data.type === 'PT4_PREDICTIVE_HELLO') root.postMessage({ type: 'PT4_PREDICTIVE_READY' }, '*');
     if (data.type === 'PT4_PREDICTIVE_RESTORE') root.__pt4PredictiveEngine.restoreState(data.state);
   });
