@@ -7686,7 +7686,10 @@
       }, Math.max(9000, assets.length * 350)).catch((error) => ({ ok: false, error: String(error?.message || error) }));
       if (historyRequest?.ok === false) return { ok: false, error: historyRequest.error || `Не удалось запросить историю ${period} сек` };
       const deadline = Date.now() + Math.max(8000, Math.min(30000, assets.length * 2500));
-      const readyTarget = Math.min(historyOffset, 500);
+      // Wait for the requested depth, not merely the first 500 candles.
+      // The deadline below still allows partial history when Pocket has less data
+      // or the broker stream is slow.
+      const readyTarget = historyOffset;
       while (Date.now() < deadline) {
         const ready = assets.filter((asset) => {
           const snap = getMarketSnapshot(asset, period) || {};
