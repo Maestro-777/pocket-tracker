@@ -25,6 +25,9 @@ async function loadSettings() {
   $('minProfit').value = s.minProfit != null ? s.minProfit : 92;
   $('maxConcurrentTrades').value = s.maxConcurrentTrades != null ? s.maxConcurrentTrades : 4;
   $('includeOtc').checked = s.includeOtc !== false;
+  $('reverseEnabled').checked = !!s.reverseEnabled;
+  $('reverseWins').value = s.reverseWins != null ? Math.max(1, Math.min(10, parseInt(s.reverseWins, 10) || 3)) : 3;
+  $('reverseWinsValue').textContent = $('reverseWins').value;
 }
 async function saveSettings() {
   const minProfit = Number($('minProfit').value);
@@ -38,7 +41,9 @@ async function saveSettings() {
     multiPairTrading:$('multiPairTrading').checked,
     minProfit:Number.isFinite(minProfit)?Math.max(0,Math.min(100,minProfit)):92,
     maxConcurrentTrades:Number.isFinite(maxConcurrentTrades)?Math.max(1,Math.min(20,Math.round(maxConcurrentTrades))):4,
-    includeOtc:$('includeOtc').checked
+    includeOtc:$('includeOtc').checked,
+    reverseEnabled:$('reverseEnabled').checked,
+    reverseWins:Math.max(1,Math.min(10,parseInt($('reverseWins').value||'3',10)))
   };
   await chrome.storage.local.set(data);
   return data;
@@ -59,4 +64,4 @@ async function startBot() {
 }
 async function stopBot() { const tabId=await getQuotexTabId(); try{await chrome.runtime.sendMessage({type:'POROBOT_STOP',tabId});}catch(_){} setRunning(false); appendLog('Бот остановлен'); }
 chrome.runtime.onMessage.addListener(msg=>{if(msg?.type==='POROBOT_LOG')appendLog(msg.message);if(msg?.type==='POROBOT_STATS')appendLog('STATS: '+JSON.stringify(msg.stats));if(msg?.type==='PT4_ACCOUNT_MODE')renderAccount(msg.payload);});
-(async function init(){await loadSettings();setRunning(false);renderAccount({mode:'unknown'});await refreshAccount();$('start').addEventListener('click',()=>startBot().catch(e=>appendLog(String(e))));$('stop').addEventListener('click',()=>stopBot().catch(e=>appendLog(String(e))));setInterval(refreshAccount,2500);appendLog('Панель готова. Определение счёта выполняется автоматически.');})();
+(async function init(){await loadSettings();setRunning(false);renderAccount({mode:'unknown'});await refreshAccount();$('start').addEventListener('click',()=>startBot().catch(e=>appendLog(String(e))));$('stop').addEventListener('click',()=>stopBot().catch(e=>appendLog(String(e))));$('reverseWins').addEventListener('input',()=>{$('reverseWinsValue').textContent=$('reverseWins').value;});setInterval(refreshAccount,2500);appendLog('Панель готова. Определение счёта выполняется автоматически.');})();
