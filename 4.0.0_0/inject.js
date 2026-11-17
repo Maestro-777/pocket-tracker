@@ -3868,8 +3868,15 @@
             this._refreshMultiPairs(true);
         }
 
-        _refreshMultiPairs(force) {
-            if (!this.isRunning || !this.config?.multiPairTrading) return;
+        _refreshMultiPairs(force, predictiveOnly) {
+            predictiveOnly = predictiveOnly === true;
+            if (predictiveOnly) {
+                if (!this.predictiveConfig || !this.predictiveConfig.enabled || this.predictiveConfig.assetMode === 'current') return;
+                const now = Date.now();
+                if (!force && this._predictiveLastRefreshAt && now - this._predictiveLastRefreshAt < 10000) return;
+                this._predictiveLastRefreshAt = now;
+            } else if (!this.isRunning || !this.config?.multiPairTrading) return;
+            this._multiSubscribed = this._multiSubscribed || new Set();
             const ws = getActivePoSocket();
             if (!ws) {
                 const waitNow = Date.now();
@@ -3883,26 +3890,30 @@
                 this._multiSocket = ws;
                 this._multiSubscribed = new Set();
             }
-            const minProfitRaw = parseFloat(this.config.minProfit);
-            const minProfit = isFinite(minProfitRaw) ? Math.max(0, Math.min(100, minProfitRaw)) : 92;
-            const includeOtc = this.config.includeOtc !== false;
+            const minProfitRaw = parseFloat(this.config && this.config.minProfit);
+            const minProfit = predictiveOnly ? 0 : (isFinite(minProfitRaw) ? Math.max(0, Math.min(100, minProfitRaw)) : 92);
+            const includeOtc = predictiveOnly ? true : this.config.includeOtc !== false;
             const catalog = window.__poAssetCatalog || {};
             const next = new Map();
             Object.keys(catalog).forEach((key) => {
                 const item = catalog[key];
                 if (!item || !item.active || !isFxCurrencyPair(item.symbol || key)) return;
                 if (!includeOtc && /_OTC$/i.test(String(item.symbol || key))) return;
+                const normalized = normalizeAssetName(item.symbol || key);
+                if (predictiveOnly && this.predictiveConfig.assetMode === 'selected' && this.predictiveConfig.selectedAsset && this.predictiveConfig.selectedAsset !== '*' && normalized !== normalizeAssetName(this.predictiveConfig.selectedAsset)) return;
+                if (predictiveOnly && !/_OTC$/i.test(normalized)) return;
                 const payout = parseFloat(item.profit);
                 if (!isFinite(payout) || payout < minProfit) return;
-                next.set(normalizeAssetName(item.symbol || key), {
-                    symbol: normalizeAssetName(item.symbol || key),
+                next.set(normalized, {
+                    symbol: normalized,
                     raw: item.raw || toPoAssetId(item.symbol || key),
                     profit: payout,
                     label: item.label || item.symbol || key
                 });
             });
-            this._multiPairs = next;
-            const exp = parseInt(this.config?.expiration, 10) || 60;
+            if (predictiveOnly) this._predictivePairs = next;
+            else this._multiPairs = next;
+            const exp = parseInt(this.config && this.config.expiration, 10) || Number(this.predictiveConfig && this.predictiveConfig.horizonSeconds) || 60;
             const profile = getAnalysisProfile(exp, this._analysisTimeframeSeconds());
             let subscribed = 0;
             for (const [asset, item] of next) {
@@ -3918,7 +3929,13 @@
                 } catch (_) {}
             }
             const now = Date.now();
-            if (force || subscribed || now - this._multiLastRefreshAt > 15000) {
+            if (predictiveOnly) {
+                this._post('POROBOT_PREDICTIVE_ASSETS', { assets: Array.from(next.keys()) });
+                if (force || subscribed || now - (this._predictivePairsLogAt || 0) > 15000) {
+                    this._predictivePairsLogAt = now;
+                    this.log('🔮 Predictive OTC: ' + next.size + ' активных OTC-пар | новых подписок: ' + subscribed);
+                }
+            } else if (force || subscribed || now - this._multiLastRefreshAt > 15000) {
                 this._multiLastRefreshAt = now;
                 this.log('🌐 Мульти-пары: ' + next.size + ' валютных пар с доходностью ≥ ' + minProfit + '% | подписано новых: ' + subscribed);
             }
@@ -3961,6 +3978,12 @@
             this.predictiveConfig.confidenceFloor = Math.max(0.5, Math.min(0.95, Number(this.predictiveConfig.confidenceFloor) || 0.52));
             this.predictiveConfig.stake = Math.max(1, Math.min(100000, Number(this.predictiveConfig.stake) || 1));
             this.predictiveConfig.maxConcurrentTrades = Math.max(1, Math.min(20, parseInt(this.predictiveConfig.maxConcurrentTrades, 10) || 1));
+            if (this._predictiveRefreshTimer) { clearInterval(this._predictiveRefreshTimer); this._predictiveRefreshTimer = null; }
+            if (this.predictiveConfig.enabled && this.predictiveConfig.assetMode !== 'current') {
+                this._refreshMultiPairs(true, true);
+                const self = this;
+                this._predictiveRefreshTimer = setInterval(function() { self._refreshMultiPairs(false, true); }, 10000);
+            }
         }
 
         onPredictiveForecast(forecast) {
@@ -3973,6 +3996,7 @@
                 if (!currentAsset || currentAsset !== asset) return;
             }
             const horizon = Number(cfg.horizonSeconds) || 60;
+            if (cfg.assetMode !== 'current' && (!this._predictiveLastRefreshAt || Date.now() - this._predictiveLastRefreshAt > 10000)) this._refreshMultiPairs(false, true);
             const row = forecast.horizons && forecast.horizons[horizon];
             if (!row) return;
             const model = cfg.model === 'auto' ? row.model : cfg.model;
