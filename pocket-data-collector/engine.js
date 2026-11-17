@@ -96,7 +96,7 @@
     results.sort((a,b)=>{
       const aEligible=a.samples>=minSamples,bEligible=b.samples>=minSamples;
       if(aEligible!==bEligible)return aEligible?-1:1;
-      return (b.winRate-Math.max(0,a.winRate)) || (b.samples-a.samples);
+      return (b.winRate-a.winRate) || (b.samples-a.samples);
     });
     const chosen=results.find(r=>r.samples>=minSamples);
     if(!chosen)return {status:"insufficient",message:"Недостаточно исторических совпадений с известным исходом на горизонте экспирации. Сигнал не формируется.",expirySec,minSamples,results};
