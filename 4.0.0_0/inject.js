@@ -3958,8 +3958,9 @@
             const maxOpen = isFinite(maxRaw) ? Math.max(1, Math.min(20, maxRaw)) : 4;
             const minProfitRaw = parseFloat(this.config.minProfit);
             const minProfit = isFinite(minProfitRaw) ? Math.max(0, Math.min(100, minProfitRaw)) : 92;
-            const accountType = window._poLastWsAccountType;
             const balanceInfo = getActiveBalanceInfo();
+            // WS auth is preferred; explicit active-account DOM state is a safe fallback.
+            const accountType = window._poLastWsAccountType || detectActiveAccountType();
             const balance = balanceInfo && isFinite(parseFloat(balanceInfo.balance)) ? parseFloat(balanceInfo.balance) : null;
             const amount = capBetToBalance(parseFloat(this.config.baseBet) || 1);
             if (!this._multiModeLogged) {
