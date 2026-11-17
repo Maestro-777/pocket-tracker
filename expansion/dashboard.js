@@ -2037,6 +2037,7 @@ function accessDisplay(entitlement = currentEntitlement()) {
   const accessState = String(entitlement.accessState || '').toUpperCase();
   if (status === 'blocked' || accessState === 'BLOCKED') return { code: 'blocked', badge: 'ДОСТУП', plan: 'ЗАБЛОКИРОВАН', status: 'Статус: заблокирован', description: 'Обратитесь в поддержку', active: false };
   if (accessState === 'TRIAL_ACTIVE' || (entitlement.premium && source === 'trial' && status === 'active')) return { code: 'trial', badge: 'TRIAL', plan: 'TRIAL PREMIUM', status: 'Статус: активирован', description: 'Все функции · DEMO и REAL без лимитов · 24 часа', active: true };
+  if (source === 'local' && entitlement.premium && status === 'active') return { code: 'local', badge: 'LOCAL', plan: 'LOCAL', status: 'Автономный режим активен', description: 'Локальные функции без лицензионного сервера · поддерживаемые локальные стратегии', active: true };
   if (entitlement.premium && status === 'active') return { code: 'premium', badge: 'PREMIUM', plan: 'PREMIUM', status: 'Статус: активирован', description: source === 'paid' ? 'Платный Premium активен' : source === 'owner' ? 'Доступ владельца · все функции' : 'AI · все стратегии · без тарифных лимитов', active: true };
   if (accessState === 'PREMIUM_PAUSED' || (source !== 'free' && status === 'paused')) return { code: 'paused', badge: 'PREMIUM', plan: 'PREMIUM · ПАУЗА', status: 'Статус: временно приостановлен', description: reasonText(entitlement.pauseReason) || 'Доступен ограниченный FREE-режим только на DEMO', active: false };
   if (accessState === 'AFFILIATE_REGISTERED' || entitlement.affiliate?.registered) return { code: 'affiliate', badge: 'FREE', plan: 'FREE', status: 'Регистрация подтверждена', description: 'Только DEMO · до 30 активов · 50 сделок в сутки', active: true };
@@ -2872,9 +2873,11 @@ function renderConnectionCenter() {
     ? uiText(`до ${new Date(expiresAt).toLocaleDateString('ru-RU')}`, `until ${new Date(expiresAt).toLocaleDateString('en-GB')}`)
     : '';
   $('connectionAccessStatus').textContent = accessView.code === 'paused' ? 'PREMIUM · ПАУЗА' : accessView.plan;
-  $('connectionAccessText').textContent = ['premium','trial'].includes(accessView.code)
-    ? (accessView.code === 'trial' ? `Осталось ${formatTrialRemaining(currentTrialRemaining(entitlement))}` : (expiryText || uiText('Все функции доступны', 'All features available')))
-    : accessView.code === 'paused'
+  $('connectionAccessText').textContent = accessView.code === 'local'
+    ? uiText('Автономный режим · локальные функции', 'Offline mode · local features')
+    : ['premium','trial'].includes(accessView.code)
+      ? (accessView.code === 'trial' ? `Осталось ${formatTrialRemaining(currentTrialRemaining(entitlement))}` : (expiryText || uiText('Все функции доступны', 'All features available')))
+      : accessView.code === 'paused'
       ? uiText('Доступ временно приостановлен', 'Access temporarily paused')
       : accessView.code === 'blocked'
         ? uiText('Обратитесь в поддержку', 'Contact support')
