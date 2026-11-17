@@ -4161,6 +4161,7 @@
                 const sig = this._buildScanState(asset, ctx);
                 this._lastIndicatorByAsset = this._lastIndicatorByAsset || {};
                 this._lastIndicatorByAsset[normalizeAssetName(asset)] = { direction: sig && sig.direction || 'NEUTRAL', timestamp: Date.now() };
+                this._post('POROBOT_PREDICTIVE_INDICATOR', { asset: normalizeAssetName(asset), direction: sig && sig.direction || 'NEUTRAL', timestamp: Date.now() });
                 if (!sig || (sig.direction !== 'UP' && sig.direction !== 'DOWN')) continue;
                 signalCount++;
                 const barTs = ctx.candles[ctx.candles.length - 1].ts || 0;
