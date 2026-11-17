@@ -1150,7 +1150,7 @@
         <label>Модель<select id="pt4-model" class="pt4-input"><option value="auto">Автовыбор</option><option value="linear">Линейная</option><option value="exponential">Экспоненциальная</option><option value="polynomial">Полиномиальная</option><option value="momentum">Momentum</option><option value="cyclical">Циклическая</option><option value="ensemble">Комбинированная</option></select></label>
       </div>
       <div class="pt4-controls pt4-controls-3">
-        <label>Мин. уверенность <strong id="pt4-confidence-value">52%</strong><input id="pt4-confidence" class="pt4-input" type="range" min="50" max="95" step="1" value="52"></label>
+        <label>Мин. уверенность <strong id="pt4-confidence-value">60%</strong><input id="pt4-confidence" class="pt4-input" type="range" min="50" max="95" step="1" value="60"></label>
         <label>Счёт<select id="pt4-account" class="pt4-input"><option value="demo">DEMO</option><option value="real">REAL</option></select></label>
         <label>Ставка ($)<input id="pt4-stake" class="pt4-input" type="number" min="1" max="100000" step="0.5" value="1"></label>
       </div>
@@ -3502,7 +3502,7 @@
     var PT4_MODEL_NAMES = { linear:'Линейная', exponential:'Экспоненциальная', polynomial:'Полиномиальная', momentum:'Momentum', cyclical:'Циклическая', ensemble:'Ансамбль' };
     function pt4DefaultConfig() {
         return { enabled:true, sourceMode:'formula', assetMode:'all', selectedAsset:'*', horizonSeconds:60, model:'auto',
-            confidenceFloor:0.52, autoTrade:false, accountMode:'demo', stake:1, maxConcurrentTrades:1 };
+            confidenceFloor:0.60, autoTrade:false, accountMode:'demo', stake:1, maxConcurrentTrades:1 };
     }
     function pt4ReadConfig() {
         var selectedAsset = document.getElementById('pt4-asset').value || '*';
