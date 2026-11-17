@@ -1200,6 +1200,10 @@ function currentEntitlement() {
   return access?.entitlement || serverState?.entitlement || {};
 }
 
+function isLocalExpansionMode() {
+  return serverState?.localOnly === true || String(currentEntitlement()?.source || '').toLowerCase() === 'local';
+}
+
 let builderRules = [];
 let editingStrategyId = null;
 let pendingConfirmation = null;
@@ -2841,8 +2845,9 @@ function renderConnectionCenter() {
   const connected = isConnected();
   const reconnecting = Boolean(state?.connection?.requested && state?.connection?.reconnecting);
   const accessView = accessDisplay();
-  const serverOnline = Boolean(serverState?.online);
-  const serverReachable = Boolean(serverState?.serverReachable);
+  const localMode = isLocalExpansionMode();
+  const serverOnline = !localMode && Boolean(serverState?.online);
+  const serverReachable = !localMode && Boolean(serverState?.serverReachable);
   const subscriptions = Object.values(state?.market?.subscriptions || {});
   const selectedCount = selectedAssets.size;
   const selectedSubscriptions = subscriptions.filter((item) => selectedAssets.has(String(item?.asset || '')));
@@ -2856,7 +2861,7 @@ function renderConnectionCenter() {
   const autoEnabled = Boolean(settings.autoTrade?.enabled);
   const autoProblem = ['error', 'blocked', 'stopped'].includes(String(autoStatus?.state || ''));
 
-  const readiness = [connected, serverOnline, selectedCount > 0, strategyIds.length > 0];
+  const readiness = [connected, localMode || serverOnline, selectedCount > 0, strategyIds.length > 0];
   const readyCount = readiness.filter(Boolean).length;
   $('connectionReadiness').textContent = uiText(`${readyCount}/4 К ЗАПУСКУ`, `${readyCount}/4 READY`);
   $('connectionReadiness').classList.toggle('on', readyCount === readiness.length);
@@ -2880,17 +2885,21 @@ function renderConnectionCenter() {
             : uiText('TRIAL активируется автоматически', 'Trial activates automatically');
   connectionTileState('connectionAccessTile', accessView.code === 'blocked' ? 'error' : ['paused','expired'].includes(accessView.code) ? 'warn' : 'ok');
 
-  $('connectionServerStatus').textContent = runtimeCompatibility.mixed
-    ? uiText('Перезапуск', 'Restart required')
+  $('connectionServerStatus').textContent = localMode
+    ? uiText('Локально', 'Local')
+    : runtimeCompatibility.mixed
+      ? uiText('Перезапуск', 'Restart required')
+      : serverOnline
+        ? uiText('Онлайн', 'Online')
+        : serverReachable
+          ? uiText('Сервер доступен', 'Server reachable')
+          : uiText('Офлайн', 'Offline');
+  $('connectionServerText').textContent = localMode
+    ? uiText('Внешний сервер не используется · локальный режим активен', 'External server is not used · local mode active')
     : serverOnline
-    ? uiText('Онлайн', 'Online')
-    : serverReachable
-      ? uiText('Сервер доступен', 'Server reachable')
-      : uiText('Офлайн', 'Offline');
-  $('connectionServerText').textContent = serverOnline
-    ? uiText('Лицензия и сигналы доступны', 'Licence and signals available')
-    : friendlyServerConnectionError(serverState?.lastError);
-  connectionTileState('connectionServerTile', runtimeCompatibility.mixed ? 'warn' : serverOnline ? 'ok' : serverReachable ? 'warn' : serverState ? 'error' : 'warn');
+      ? uiText('Лицензия и сигналы доступны', 'Licence and signals available')
+      : friendlyServerConnectionError(serverState?.lastError);
+  connectionTileState('connectionServerTile', localMode ? 'ok' : runtimeCompatibility.mixed ? 'warn' : serverOnline ? 'ok' : serverReachable ? 'warn' : serverState ? 'error' : 'warn');
 
   $('connectionAssetsStatus').textContent = uiText(`${selectedCount} выбрано`, `${selectedCount} selected`);
   $('connectionAssetsText').textContent = selectedCount
@@ -2951,7 +2960,7 @@ function renderConnectionCenter() {
   else if (state?.connection?.requested && !connected) issues.push(uiText('аккаунт Pocket Option не подключён', 'Pocket Option account is not connected'));
   if (runtimeCompatibility.mixed) {
     issues.push(uiText('требуется перезапустить расширение после обновления файлов', 'restart the extension after updating its files'));
-  } else if (serverState && !serverOnline) {
+  } else if (serverState && !serverOnline && !localMode) {
     issues.push(serverReachable
       ? uiText('сервер доступен, обновляется сессия текущего UID', 'the server is reachable and is refreshing the current UID session')
       : uiText('сервер Pocket TRADE ROBOT временно недоступен', 'Pocket TRADE ROBOT server is temporarily unavailable'));
@@ -5424,24 +5433,27 @@ function compareVersions(left, right) {
 
 function renderServerPanels() {
   const entitlement = currentEntitlement();
-  const online = Boolean(serverState?.online);
-  const reachable = Boolean(serverState?.serverReachable);
+  const localMode = isLocalExpansionMode();
+  const online = !localMode && Boolean(serverState?.online);
+  const reachable = !localMode && Boolean(serverState?.serverReachable);
   const accessView = accessDisplay(entitlement);
   if ($('serverOnlineTag')) {
-    $('serverOnlineTag').textContent = online ? 'ONLINE' : reachable ? 'SYNC' : 'OFFLINE';
+    $('serverOnlineTag').textContent = localMode ? 'LOCAL' : online ? 'ONLINE' : reachable ? 'SYNC' : 'OFFLINE';
     $('serverOnlineTag').classList.toggle('on', online);
   }
   if ($('serverPlan')) $('serverPlan').textContent = accessView.code === 'paused' ? 'PREMIUM · ПАУЗА' : accessView.plan;
-  if ($('serverSource')) $('serverSource').textContent = ({ owner: 'Владелец', affiliate: 'По регистрации и депозиту', paid: 'Платный доступ', manual: 'Выдан вручную', trial: 'Пробный доступ', free: 'Бесплатный' })[entitlement.source] || entitlement.source || 'Бесплатный';
+  if ($('serverSource')) $('serverSource').textContent = localMode ? 'Локальный владелец' : ({ owner: 'Владелец', affiliate: 'По регистрации и депозиту', paid: 'Платный доступ', manual: 'Выдан вручную', trial: 'Пробный доступ', free: 'Бесплатный' })[entitlement.source] || entitlement.source || 'Бесплатный';
   if ($('serverLicenseStatus')) $('serverLicenseStatus').textContent = accessView.status.replace('Статус: ', '');
   if ($('serverDevices')) $('serverDevices').textContent = 'UID only';
-  if ($('serverLicenseMessage')) $('serverLicenseMessage').textContent = !online
-    ? friendlyServerConnectionError(serverState?.lastError)
-    : (entitlement.display?.message || entitlement.pauseReason)
-      ? rebrandLegacyVisibleText(entitlement.display?.message || reasonText(entitlement.pauseReason))
-      : entitlement.premium
-        ? 'Premium-доступ подтверждён.'
-        : 'Ожидание серверного статуса доступа.';
+  if ($('serverLicenseMessage')) $('serverLicenseMessage').textContent = localMode
+    ? 'Локальный режим активен. Лицензионный сервер не используется; внешние серверные сигналы и AI недоступны.'
+    : !online
+      ? friendlyServerConnectionError(serverState?.lastError)
+      : (entitlement.display?.message || entitlement.pauseReason)
+        ? rebrandLegacyVisibleText(entitlement.display?.message || reasonText(entitlement.pauseReason))
+        : entitlement.premium
+          ? 'Premium-доступ подтверждён.'
+          : 'Ожидание серверного статуса доступа.';
   const affiliate = entitlement.affiliate || {};
   if ($('getAffiliatePremium')) {
     $('getAffiliatePremium').disabled = Boolean(entitlement.premium); // v1.0.59: public affiliate link can be generated even before serverState has registrationUrl
@@ -6593,13 +6605,15 @@ function renderNotifications() {
   const unread = notificationHistory.filter((item) => !item.read).length;
   $('notificationUnreadBadge').textContent = uiText(`${unread} новых`, `${unread} new`);
   if ($('notificationConnection')) $('notificationConnection').textContent = isConnected() ? uiText('Подключено','Connected') : state?.connection?.reconnecting ? uiText('Переподключение','Reconnecting') : uiText('Отключено','Disconnected');
-  if ($('notificationServer')) $('notificationServer').textContent = runtimeCompatibility.mixed
-    ? uiText('Нужен перезапуск','Restart required')
-    : serverState?.online
-    ? uiText('Онлайн','Online')
-    : serverState?.serverReachable
-      ? uiText('Обновление сессии','Session refresh')
-      : uiText('Офлайн','Offline');
+  if ($('notificationServer')) $('notificationServer').textContent = isLocalExpansionMode()
+    ? uiText('Локально','Local')
+    : runtimeCompatibility.mixed
+      ? uiText('Нужен перезапуск','Restart required')
+      : serverState?.online
+        ? uiText('Онлайн','Online')
+        : serverState?.serverReachable
+          ? uiText('Обновление сессии','Session refresh')
+          : uiText('Офлайн','Offline');
   if ($('notificationAuto')) $('notificationAuto').textContent = settings.autoTrade?.enabled ? uiText('Включена','Enabled') : uiText('Выключена','Disabled');
   if ($('notificationLastTime')) $('notificationLastTime').textContent = notificationHistory[0]?.createdAt ? formatTime(Date.parse(notificationHistory[0].createdAt)) : '—';
   $('notificationFeed').innerHTML = list.length ? list.map((item) => { const actionUrl = safeHttpsUrl(item.actionUrl); return `<article class="notificationItem ${item.read ? '' : 'unread'}" data-kind="${escapeHtml(item.kind)}"><span class="notificationIcon">${item.kind === 'trade' ? '↗' : item.kind === 'access' ? '♛' : item.kind === 'strategy' ? 'ƒ' : item.kind === 'connection' ? '⌁' : 'i'}</span><div><b>${escapeHtml(item.title)}</b><p>${escapeHtml(item.message)}</p>${actionUrl ? `<a class="notificationLink" href="${escapeHtml(actionUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.buttonText || 'Открыть')} →</a>` : ''}</div><time>${formatTime(Date.parse(item.createdAt))}</time></article>`; }).join('') : '<div class="empty">Событий пока нет.</div>';
@@ -7203,8 +7217,9 @@ function buildDiagnosticReport(diagnostic) {
     `Переподключение: ${diagnosticText(connection.reconnecting)}`,
     `WebSocket авторизован: ${diagnosticText(socket.authenticated)}`,
     `WebSocket readyState: ${diagnosticText(socket.readyState)}`,
-    `Сервер Pocket TRADE ROBOT онлайн: ${diagnosticText(diagnostic.serverState?.online)}`,
-    `API сервера доступен: ${diagnosticText(diagnostic.serverState?.serverReachable)}`,
+    `Локальный режим: ${diagnosticText(diagnostic.serverState?.localOnly === true)}`,
+    `Сервер Pocket TRADE ROBOT онлайн: ${diagnosticText(diagnostic.serverState?.localOnly ? false : diagnostic.serverState?.online)}`,
+    `API сервера доступен: ${diagnosticText(diagnostic.serverState?.localOnly ? false : diagnostic.serverState?.serverReachable)}`,
     `Активный API адрес: ${diagnosticText(diagnostic.serverState?.apiBase)}`,
     `UID серверной сессии: ${diagnosticText(diagnostic.serverState?.sessionUid)}`,
     `Последняя ошибка сервера: ${diagnosticText(diagnostic.serverState?.lastError)}`,
@@ -8087,7 +8102,7 @@ function renderRemoteControl() {
   if ($('remoteAssets')) $('remoteAssets').textContent = String(selectedAssets.size || settings.selectedAssets?.length || 0);
   const strategyIds = Array.isArray(settings.autoTrade?.strategyIds) && settings.autoTrade.strategyIds.length ? settings.autoTrade.strategyIds : [settings.autoTrade?.strategyId].filter(Boolean);
   if ($('remoteStrategies')) $('remoteStrategies').textContent = strategyIds.length ? strategyIds.join(', ') : '—';
-  if ($('remoteServer')) $('remoteServer').textContent = remote.serverOnline || serverState?.online ? 'online' : 'offline';
+  if ($('remoteServer')) $('remoteServer').textContent = isLocalExpansionMode() ? 'disabled' : remote.serverOnline || serverState?.online ? 'online' : 'offline';
   if ($('remoteToggle')) {
     $('remoteToggle').checked = enabled;
     $('remoteToggle').disabled = remoteControlBusy || (!allowed && !enabled);
