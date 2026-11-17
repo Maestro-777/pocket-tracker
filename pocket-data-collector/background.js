@@ -289,6 +289,7 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
       }else if(msg.kind==="BRIDGE_ERROR"){s.lastError=msg.payload?.message||"Ошибка bridge";}
       return {ok:true};
     }
+    if(msg.type==="PDC_AUTO_TOGGLE"){if(tabId==null)return {ok:false,error:"Вкладка не найдена"};const st=getState(tabId);if(msg.enabled){if(st.accountType!=="DEMO")return {ok:false,error:"Автоторговля заблокирована: активный DEMO-счёт не подтверждён"};st.auto={...st.auto,enabled:true,amount:Math.min(1,Math.max(0.01,Number(msg.amount)||1)),maxTrades:Math.min(3,Math.max(1,Number(msg.maxTrades)||3)),trades:0,lastAttemptBar:0,lastTradeAt:0,lastResult:"Ожидание сигнала",pending:false};}else{st.auto.enabled=false;st.auto.pending=false;st.auto.lastResult="Автостоп включён";}return {ok:true,auto:st.auto};}
     if(msg.type==="PDC_GET_STATUS"){
       if(tabId==null)return {ok:false};
       const status=getStatus(tabId);
@@ -296,7 +297,7 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
       status.storedCandles=stats.total;
       status.pairCandles=stats.pair5;
       status.assetCount=stats.assets;
-      status.byPeriod=stats.byPeriod;
+      status.byPeriod=stats.byPeriod;status.auto=getState(tabId).auto;
       return {ok:true,...status};
     }
     if(msg.type==="PDC_GET_CANDLES"){
