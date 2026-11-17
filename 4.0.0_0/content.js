@@ -3710,6 +3710,13 @@
             } else if (msgType === 'POROBOT_PREDICTIVE_INDICATOR') {
                 pt4Predictive.indicators[String(e.data.asset||'').toUpperCase()]={direction:e.data.direction,timestamp:Number(e.data.timestamp)||Date.now()};
                 renderPredictivePanel();
+            } else if (msgType === 'POROBOT_PREDICTIVE_FILTER') {
+                if(e.data.mode==='selected'){
+                    Object.keys(pt4Predictive.latest).forEach(function(a){if(a!==e.data.selectedAsset)delete pt4Predictive.latest[a];});
+                    Object.keys(pt4Predictive.warmup).forEach(function(a){if(a!==e.data.selectedAsset)delete pt4Predictive.warmup[a];});
+                    pt4Predictive.lastAsset=e.data.selectedAsset;
+                }
+                renderPredictivePanel();
             } else if (msgType === 'POROBOT_PREDICTIVE_WARMUP') {
                 pt4Predictive.warmup[e.data.asset]=e.data;
                 if(Number(e.data.samples)<Number(e.data.required))delete pt4Predictive.latest[e.data.asset];
