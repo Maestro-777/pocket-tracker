@@ -3520,6 +3520,7 @@
     function pt4ApplyConfig(c) {
         var v=Object.assign(pt4DefaultConfig(),c||{}); pt4Predictive.config=v;
         document.getElementById('pt4-source').value=v.sourceMode;
+        pt4UpdateModeControls();
         document.getElementById('pt4-horizon').value=String(v.horizonSeconds);
         document.getElementById('pt4-model').value=v.model;
         document.getElementById('pt4-confidence').value=Math.round(v.confidenceFloor*100);
@@ -3541,9 +3542,17 @@
         ids.forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('change',function(){pt4Predictive.config=pt4ReadConfig();});});
         document.getElementById('pt4-confidence').addEventListener('input',function(){document.getElementById('pt4-confidence-value').textContent=this.value+'%';});
         document.getElementById('pt4-save').addEventListener('click',savePredictiveConfig);
+        document.getElementById('pt4-source').addEventListener('change',pt4UpdateModeControls);
         try { chrome.storage.local.get(['pt4PredictiveConfig'],function(data){if(data&&data.pt4PredictiveConfig)pt4ApplyConfig(data.pt4PredictiveConfig);else pt4ApplyConfig(pt4DefaultConfig());}); }
         catch(_) { pt4ApplyConfig(pt4DefaultConfig()); }
         window.postMessage({type:'PT4_PREDICTIVE_HELLO'},'*');
+    }
+    function pt4UpdateModeControls() {
+        var indicatorOnly = document.getElementById('pt4-source').value === 'indicators';
+        var auto = document.getElementById('pt4-auto-trade');
+        auto.disabled = indicatorOnly;
+        auto.title = indicatorOnly ? 'В режиме «Только индикаторы» сделки контролируются основным модулем сигналов.' : '';
+        if (indicatorOnly) document.getElementById('pt4-signal-status').textContent = 'Только индикаторы: автоторговля управляется основным модулем';
     }
     function savePredictiveConfig() {
         var c=pt4ReadConfig();
@@ -3611,7 +3620,7 @@
         var eligible=!!(row&&(cfg.model==='auto'?row.eligible:(row.modelEligible&&row.modelEligible[cfg.model]))&&confidence>=cfg.confidenceFloor&&dir!=='DRAW');
         var source=cfg.sourceMode;
         var indicator=pt4Predictive.lastIndicator;
-        var sourceText=source==='indicators'?'Используются только индикаторы':source==='combined'?'Ожидание совпадения направлений':'Predictive Formula';
+        var sourceText=source==='indicators'?'Только индикаторы · сделки управляются основным модулем':source==='combined'?'Ожидание совпадения направлений':'Predictive Formula';
         if(source==='combined' && indicator && indicator.direction && dir.indexOf(indicator.direction)===0)sourceText='Совпадение индикаторов и прогноза';
         else if(source==='combined' && indicator && indicator.direction && dir!=='—' && indicator.direction!==dir.replace(/ .*/,''))sourceText='КОНФЛИКТ · вход запрещён';
         document.getElementById('pt4-signal-status').textContent=sourceText+(eligible?' · порог пройден':' · нет допуска');
