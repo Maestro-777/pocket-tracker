@@ -366,7 +366,8 @@
       }
       const result = { asset, timestamp: now, currentPrice: current, horizons };
       this.emit('forecast', result);
-      try { if (root.__poCore && typeof root.__poCore.onPredictiveForecast === 'function') root.__poCore.onPredictiveForecast(result); } catch (_) {}
+      // Trade execution is deliberately not called from the quote owner.
+      // inject.js relays the immutable forecast to the elected trade-capable frame.
       return result;
     }
     _settle(asset, timestamp, price) {
@@ -468,7 +469,7 @@
   // This prevents each all_frames instance from building a separate history/statistics set.
   root.addEventListener('message', event => {
     const data = event.data;
-    if (!data || event.source !== root.top || data.type !== 'PT4_PREDICTIVE_TICK' ||
+    if (!data || root !== root.top || event.source !== root || data.type !== 'PT4_PREDICTIVE_TICK' ||
         !data.tick || !data.tick.asset || !/_otc$/i.test(data.tick.asset)) return;
     const result = root.__pt4PredictiveEngine.ingest(data.tick);
     if (result) root.postMessage({ type: 'POROBOT_PREDICTIVE_UPDATE', forecast: result }, '*');
