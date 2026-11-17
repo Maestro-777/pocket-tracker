@@ -6645,6 +6645,9 @@
     const strategyMode = effectiveAutoStrategyMode(auto, strategyIds);
     const unsupportedLocalStrategies = strategyIds.filter((id) => !isLocalThreeCandleStrategy(id));
     if (unsupportedLocalStrategies.length) {
+      await safeRuntimeMessage({ type: 'PT_SIGNAL_UNSUBSCRIBE' }).catch(() => null);
+      autoRuntime.subscribedKey = '';
+      autoRuntime.lastSubscriptionAt = 0;
       return {
         ok: false,
         status: 'disabled_local_only',
