@@ -3560,11 +3560,15 @@
         if(c.autoTrade && (!Number.isFinite(c.stake)||c.stake<=0)){appendLog('Predictive: некорректная ставка.');return;}
         pt4Predictive.config=c;
         try { chrome.storage.local.set({pt4PredictiveConfig:c},function(){
-            if(chrome.runtime.lastError){appendLog('Predictive: не удалось сохранить настройки — '+chrome.runtime.lastError.message);return;}
+            var storageError=chrome.runtime.lastError;
             window.postMessage({type:'PT4_PREDICTIVE_CONFIG',config:{enabled:true,confidenceFloor:c.confidenceFloor,minEvaluationSamples:30,predictive:c}},'*');
             document.getElementById('pt4-signal-status').textContent=c.autoTrade?'Автоторговля включена в настройках':'Автоторговля выключена';
-            appendLog('Predictive: настройки сохранены.');
-        }); } catch(error) { appendLog('Predictive: не удалось сохранить настройки — '+(error&&error.message||'storage')); }
+            if(storageError)appendLog('Predictive: настройки применены, но не сохранены — '+storageError.message);
+            else appendLog('Predictive: настройки сохранены.');
+        }); } catch(error) {
+            window.postMessage({type:'PT4_PREDICTIVE_CONFIG',config:{enabled:true,confidenceFloor:c.confidenceFloor,minEvaluationSamples:30,predictive:c}},'*');
+            appendLog('Predictive: настройки применены только до перезагрузки — '+(error&&error.message||'storage'));
+        }
     }
     function restorePredictiveState() {
         if(pt4Predictive.restored)return;
