@@ -1173,7 +1173,7 @@
     </div>
     <div class="pt4-card">
       <div class="pt4-heading"><strong>Модели и независимая статистика</strong><span id="pt4-sample-count">0 проверок</span></div>
-      <div class="pt4-table-wrap"><table class="pt4-table"><thead><tr><th>Модель</th><th>Цена</th><th>Напр.</th><th>Точность</th><th>N</th></tr></thead><tbody id="pt4-model-rows"><tr><td colspan="5">Ожидание первых прогнозов</td></tr></tbody></table></div>
+      <div class="pt4-table-wrap"><table class="pt4-table"><thead><tr><th>Модель</th><th>Цена</th><th>Напр.</th><th>Точность</th><th>N</th><th>MAE</th><th>Brier</th></tr></thead><tbody id="pt4-model-rows"><tr><td colspan="7">Ожидание первых прогнозов</td></tr></tbody></table></div>
       <div class="pt4-footnote">Точность считается только по завершённым прогнозам. При недостаточной выборке значение не показывается.</div>
     </div>
   </div>
@@ -3660,8 +3660,10 @@
             var stat=statsMap[asset+'|'+horizon+'|'+model],n=stat?stat.decisive:0;
             decisiveTotal=Math.max(decisiveTotal,n);
             var accuracy=n>=30?Math.round(stat.wins/n*100)+'%':'Недостаточно данных';
+            var mae=stat&&stat.n>0?(stat.mae/stat.n*100).toFixed(3)+'%':'—';
+            var brier=stat&&n>0?(stat.brier/n).toFixed(3):'—';
             var direction=pred==null?'—':pred>forecast.currentPrice?'▲':pred<forecast.currentPrice?'▼':'—';
-            [PT4_MODEL_NAMES[model],pred==null?'—':pt4FormatPrice(pred),direction,accuracy,String(n)].forEach(function(v){var td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
+            [PT4_MODEL_NAMES[model],pred==null?'—':pt4FormatPrice(pred),direction,accuracy,String(n),mae,brier].forEach(function(v){var td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
             tbody.appendChild(tr);
         });
         document.getElementById('pt4-sample-count').textContent=decisiveTotal+' проверок на модель';
