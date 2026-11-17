@@ -35,8 +35,8 @@
   class PredictiveEngine {
     constructor(options = {}) {
       this.options = Object.assign({
-        enabled: true, minSamples: 80, maxTicks: 12000, maxForecasts: 3000,
-        confidenceFloor: 0.52, forecastIntervalMs: 1000,
+        enabled: true, minSamples: 80, maxTicks: 12000, maxForecasts: 10000,
+        confidenceFloor: 0.52, forecastIntervalMs: 5000,
         minEvaluationSamples: 30, maxSettlementDelayMs: 15000,
         maxProjectionVolatility: 4, drawEpsilon: 1e-10
       }, options);
@@ -50,7 +50,13 @@
     onUpdate(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
     emit(type, data) {
       for (const fn of this.listeners) { try { fn(type, data); } catch (_) {} }
-      try { root.postMessage({ type: 'POROBOT_PREDICTIVE_EVENT', eventType: type, payload: data, state: this.exportState() }, '*'); } catch (_) {}
+      try {
+        const now = Date.now();
+        const includeState = type !== 'forecast' || now - (this._lastStateExportAt || 0) >= 5000;
+        const message = { type: 'POROBOT_PREDICTIVE_EVENT', eventType: type, payload: data };
+        if (includeState) { message.state = this.exportState(); this._lastStateExportAt = now; }
+        root.postMessage(message, '*');
+      } catch (_) {}
     }
     exportState() {
       return {
