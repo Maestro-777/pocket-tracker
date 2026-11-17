@@ -4659,6 +4659,17 @@ async function persistFocusedAutoStrategyProfile({ notify = false } = {}) {
 }
 
 function renderAutoStrategyOptions() {
+  const localNotice = $('autoLocalEngineNotice');
+  if (localNotice) {
+    const localMode = String(currentEntitlement()?.source || '').toLowerCase() === 'local';
+    localNotice.hidden = !localMode;
+    localNotice.textContent = localMode
+      ? uiText(
+          'Автономный режим: автоторговля работает только с локально реализованной стратегией 3-Candle EMA14. Серверные стратегии и AI не запускаются и не заменяются приблизительными сигналами.',
+          'Offline mode: auto trading supports only the locally implemented 3-Candle EMA14 strategy. Server strategies and AI are not run or replaced with approximate signals.'
+        )
+      : '';
+  }
   const auto = { ...DEFAULT_AUTO, ...(settings.autoTrade || {}) };
   const selected = new Set(Array.isArray(auto.strategyIds) && auto.strategyIds.length ? auto.strategyIds.map(String) : [auto.strategyId || settings.activeStrategyId].filter(Boolean).map(String));
   if (!focusedAutoProfileStrategyId || !selected.has(String(focusedAutoProfileStrategyId))) focusedAutoProfileStrategyId = [...selected][0] || null;
