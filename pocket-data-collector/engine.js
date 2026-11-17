@@ -61,7 +61,7 @@
   // Scores historical analogues only after their complete +expiry horizon is available.
   // A candidate is never scored using candles that belong to the current query pattern.
   function evaluateExpiry(candles,opts={}){
-    const expirySec=Math.max(1,Math.min(300,Number(opts.expirySec)||10));
+    const expirySec=Math.max(1,Math.min(300,Number(opts.expirySec)||15));
     const threshold=clamp((Number(opts.threshold)||80)/100,.5,.99);
     const minSamples=Math.max(5,Math.min(200,Number(opts.minSamples)||20));
     const lengths=(opts.lengths||[8,10,12,16,20,24,30,40]).map(Number).filter(n=>n>=4&&n<=50);
