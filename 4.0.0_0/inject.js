@@ -3991,7 +3991,21 @@
             this.predictiveConfig.maxConcurrentTrades = Math.max(1, Math.min(20, parseInt(this.predictiveConfig.maxConcurrentTrades, 10) || 1));
             // Predictive must elect the same trade-capable frame even when the ordinary
             // indicator bot is stopped. The deepest eligible frame wins, as in 3.6.0.
-            if (this.predictiveConfig.enabled) claimPrimaryEngine();
+            if (this._predictiveOwnerTimer) { clearInterval(this._predictiveOwnerTimer); this._predictiveOwnerTimer = null; }
+            if (this.predictiveConfig.enabled) {
+                claimPrimaryEngine();
+                const self = this;
+                // Pocket Option can finish mounting its trade controls after content scripts.
+                // Retry election until the actual trade-capable frame has appeared.
+                this._predictiveOwnerTimer = setInterval(function() {
+                    if (!self.predictiveConfig || !self.predictiveConfig.enabled) {
+                        clearInterval(self._predictiveOwnerTimer);
+                        self._predictiveOwnerTimer = null;
+                        return;
+                    }
+                    claimPrimaryEngine();
+                }, 2000);
+            }
             if (this._predictiveRefreshTimer) { clearInterval(this._predictiveRefreshTimer); this._predictiveRefreshTimer = null; }
             if (this.predictiveConfig.enabled && this.predictiveConfig.assetMode !== 'current' && isPrimarySignalFrame()) {
                 this._refreshMultiPairs(true, true);
