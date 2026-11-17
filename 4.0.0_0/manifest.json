@@ -53,12 +53,22 @@
       "js": [
         "market/ext-host.js",
         "content.js",
-        "account-mode.js",
         "market/qrcode.js",
         "market/market.js"
       ],
       "run_at": "document_start",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "https://pocketoption.com/*",
+        "https://*.pocketoption.com/*"
+      ],
+      "js": [
+        "account-mode.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [
