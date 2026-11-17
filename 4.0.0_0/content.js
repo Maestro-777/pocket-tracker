@@ -1012,7 +1012,21 @@
             <span class="pos-switch-ui" aria-hidden="true"><span class="pos-switch-knob"></span></span>
           </span>
         </label>
-        <div class="pos-risk-hint">Для одновременных сделок используется фиксированная базовая ставка. Прогрессивный мани-менеджмент в этом режиме не применяется.</div>
+        <div class="pos-reverse-card">
+          <label class="pos-toggle-row" for="pos-reverse-enabled">
+            <span><b>REVERS</b><small>После серии побед менять направление на противоположное</small></span>
+            <span class="pos-switch pos-switch-sm">
+              <input type="checkbox" id="pos-reverse-enabled" role="switch" aria-checked="false">
+              <span class="pos-switch-ui" aria-hidden="true"><span class="pos-switch-knob"></span></span>
+            </span>
+          </label>
+          <div class="pos-fg">
+            <label for="pos-reverse-wins">Переключать после побед подряд: <b id="pos-reverse-wins-value">3</b></label>
+            <input type="range" id="pos-reverse-wins" min="1" max="10" step="1" value="3" style="width:100%">
+          </div>
+          <div class="pos-risk-hint">После достижения порога бот переключает режим. Следующая такая же серия побед переключит его обратно. Поражение сбрасывает счётчик серии.</div>
+        </div>
+        <div class="pos-risk-hint">Для одновременных сделок используется фиксированная базовая ставка; прогрессивный мани-менеджмент не применяется.</div>
       </div>
       <label class="pos-toggle-row pos-risk-enable-row" for="pos-risk-enable">
         <span data-i18n="risk_enable">Ограничить Take Profit / Take Loss</span>
@@ -2114,7 +2128,9 @@
             multiPairTrading: !!document.getElementById('pos-multi-pair')?.checked,
             minProfit:       parseFloat(document.getElementById('pos-min-profit')?.value || '92'),
             maxConcurrentTrades: parseInt(document.getElementById('pos-max-concurrent')?.value || '4', 10),
-            includeOtc:      !!document.getElementById('pos-include-otc')?.checked
+            includeOtc:      !!document.getElementById('pos-include-otc')?.checked,
+            reverseEnabled:  !!document.getElementById('pos-reverse-enabled')?.checked,
+            reverseWins:     parseInt(document.getElementById('pos-reverse-wins')?.value || '3', 10)
         };
         if (config.autoTrade && window._poAccountType === 'real') {
             if (window.confirm('Вы включаете автоторговлю на REAL-счёте. Сделки по нескольким валютным парам могут открываться почти одновременно. Продолжить?')) {
@@ -3096,22 +3112,46 @@
             if (multiPairEl) multiPairEl.checked = data.multiPairTrading !== false;
             var otcEl = document.getElementById('pos-include-otc');
             if (otcEl) otcEl.checked = data.includeOtc !== false;
+            var reverseEl = document.getElementById('pos-reverse-enabled');
+            if (reverseEl) {
+                reverseEl.checked = !!data.reverseEnabled;
+                reverseEl.setAttribute('aria-checked', reverseEl.checked ? 'true' : 'false');
+            }
+            var reverseWinsEl = document.getElementById('pos-reverse-wins');
+            if (reverseWinsEl) reverseWinsEl.value = data.reverseWins != null ? Math.max(1, Math.min(10, parseInt(data.reverseWins, 10) || 3)) : 3;
+            var reverseWinsValue = document.getElementById('pos-reverse-wins-value');
+            if (reverseWinsValue && reverseWinsEl) reverseWinsValue.textContent = reverseWinsEl.value;
             signalExpirationSec = normalizeExpiration(data.expiration);
-            ['pos-multi-pair', 'pos-min-profit', 'pos-max-concurrent', 'pos-include-otc'].forEach(function(id) {
+            ['pos-multi-pair', 'pos-min-profit', 'pos-max-concurrent', 'pos-include-otc', 'pos-reverse-enabled', 'pos-reverse-wins'].forEach(function(id) {
                 var el = document.getElementById(id);
                 if (!el || el._posBound) return;
                 el._posBound = true;
                 el.addEventListener('change', function() {
+                    if (id === 'pos-reverse-wins') {
+                        var output = document.getElementById('pos-reverse-wins-value');
+                        if (output) output.textContent = el.value;
+                    }
+                    if (id === 'pos-reverse-enabled') el.setAttribute('aria-checked', el.checked ? 'true' : 'false');
                     var patch = {
                         multiPairTrading: !!(document.getElementById('pos-multi-pair') || {}).checked,
                         minProfit: parseFloat((document.getElementById('pos-min-profit') || {}).value || '92'),
                         maxConcurrentTrades: parseInt((document.getElementById('pos-max-concurrent') || {}).value || '4', 10),
-                        includeOtc: !!(document.getElementById('pos-include-otc') || {}).checked
+                        includeOtc: !!(document.getElementById('pos-include-otc') || {}).checked,
+                        reverseEnabled: !!(document.getElementById('pos-reverse-enabled') || {}).checked,
+                        reverseWins: Math.max(1, Math.min(10, parseInt((document.getElementById('pos-reverse-wins') || {}).value || '3', 10)))
                     };
                     saveSettings(patch);
                     if (window._posRunning) sendCoreCmd({ cmd: 'PATCH_CONFIG', patch: patch });
                 });
             });
+            var reverseRange = document.getElementById('pos-reverse-wins');
+            if (reverseRange && !reverseRange._posInputBound) {
+                reverseRange._posInputBound = true;
+                reverseRange.addEventListener('input', function() {
+                    var output = document.getElementById('pos-reverse-wins-value');
+                    if (output) output.textContent = reverseRange.value;
+                });
+            }
             var autoEl = document.getElementById('pos-auto-trade');
             if (autoEl) {
                 autoEl.checked = !!data.autoTrade;
