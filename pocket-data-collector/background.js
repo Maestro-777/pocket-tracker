@@ -62,7 +62,7 @@ function mergeCandle(oldBar,newBar) {
   }
   if (newBar.source === "tick-stream") {
     const useNewClose=(newBar.closeTime||0)>=(oldBar.closeTime||0);
-    const useNewOpen=(oldBar.openTime||Infinity)>(newBar.openTime||Infinity);
+    const useNewOpen=oldBar.openTime!=null&&newBar.openTime!=null&&newBar.openTime<oldBar.openTime;
     return {...oldBar,
       open:useNewOpen?newBar.open:oldBar.open,openTime:useNewOpen?newBar.openTime:oldBar.openTime,
       high:Math.max(oldBar.high,newBar.high),low:Math.min(oldBar.low,newBar.low),
