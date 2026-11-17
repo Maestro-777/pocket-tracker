@@ -390,6 +390,9 @@
 
     function claimPrimaryEngine() {
         if (!shouldRunSignalEngine()) return false;
+        // Announce eligible trade frames to the top coordinator. This also works when
+        // a Pocket Option iframe is cross-origin and cannot mutate window.top directly.
+        try { window.top.postMessage({ type: 'PT4_PREDICTIVE_FRAME_CLAIM', depth: getFrameDepth() }, '*'); } catch (_) {}
         try {
             const top = window.top;
             if (!top.__poEngineClaim) top.__poEngineClaim = { depth: -1, win: null };
@@ -4699,8 +4702,17 @@
     if (window === window.top) {
         window.addEventListener('message', function(e) {
             const d = e.data;
-            if (!d || d.type !== 'PT4_PREDICTIVE_TICK_RELAY' || !d.tick) return;
-            if (!/^https:\/\/([a-z0-9-]+\.)*pocketoption\.com$/i.test(e.origin || '')) return;
+            if (!d || !/^https:\/\/([a-z0-9-]+\.)*pocketoption\.com$/i.test(e.origin || '')) return;
+            if (d.type === 'PT4_PREDICTIVE_FRAME_CLAIM') {
+                const depth = Number(d.depth);
+                if (!Number.isFinite(depth) || depth < 0 || e.source === null) return;
+                const current = window.__poEngineClaim;
+                if (!current || !current.win || depth >= Number(current.depth || 0)) {
+                    window.__poEngineClaim = { depth, win: e.source };
+                }
+                return;
+            }
+            if (d.type !== 'PT4_PREDICTIVE_TICK_RELAY' || !d.tick) return;
             const claim = window.__poEngineClaim;
             const owner = claim && claim.win ? claim.win : window;
             try { owner.postMessage({ type: 'PT4_PREDICTIVE_TICK', tick: d.tick }, '*'); }
