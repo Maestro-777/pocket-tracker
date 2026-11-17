@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Pocket Pattern Lab",
+  "version": "0.1.0",
+  "description": "Локальный анализ повторяющихся OTC-паттернов Heikin Ashi для Pocket Option.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://pocketoption.com/*",
+    "https://*.pocketoption.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://pocketoption.com/*",
+        "https://*.pocketoption.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
