@@ -141,7 +141,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     // RELAY: Broadcast messages to all frames in the specified tab (from panel / UI)
-    if (request.type === 'POROBOT_START' || request.type === 'POROBOT_STOP' || request.type === 'POROBOT_CORE_CMD' || request.type === 'BOT_FOCUS_PAIR') {
+    if (request.type === 'POROBOT_START' || request.type === 'POROBOT_STOP' || request.type === 'POROBOT_CORE_CMD' || request.type === 'BOT_FOCUS_PAIR' || request.type === 'PT4_PREDICTIVE_CONFIG_BROADCAST' || request.type === 'PT4_PREDICTIVE_RESTORE_BROADCAST') {
         const targetTabId = request.tabId || (sender.tab && sender.tab.id);
         if (targetTabId) {
             chrome.tabs.sendMessage(targetTabId, request).catch(e => {
