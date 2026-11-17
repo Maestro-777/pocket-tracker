@@ -987,6 +987,32 @@
           </span>
         </span>
       </label>
+      <div class="pos-multi-pair-settings">
+        <label class="pos-toggle-row" for="pos-multi-pair">
+          <span>Сканировать все валютные пары</span>
+          <span class="pos-switch pos-switch-sm">
+            <input type="checkbox" id="pos-multi-pair" checked>
+            <span class="pos-switch-ui" aria-hidden="true"><span class="pos-switch-knob"></span></span>
+          </span>
+        </label>
+        <div class="pos-frow">
+          <div class="pos-fg">
+            <label for="pos-min-profit">Минимальная доходность (%)</label>
+            <input type="number" id="pos-min-profit" min="0" max="100" step="1" value="92">
+          </div>
+          <div class="pos-fg">
+            <label for="pos-max-concurrent">Макс. одновременных сделок</label>
+            <input type="number" id="pos-max-concurrent" min="1" max="20" step="1" value="4">
+          </div>
+        </div>
+        <label class="pos-toggle-row" for="pos-include-otc">
+          <span>Включать OTC-пары</span>
+          <span class="pos-switch pos-switch-sm">
+            <input type="checkbox" id="pos-include-otc" checked>
+            <span class="pos-switch-ui" aria-hidden="true"><span class="pos-switch-knob"></span></span>
+          </span>
+        </label>
+      </div>
       <label class="pos-toggle-row pos-risk-enable-row" for="pos-risk-enable">
         <span data-i18n="risk_enable">Ограничить Take Profit / Take Loss</span>
         <span class="pos-switch pos-switch-sm">
@@ -2072,6 +2098,10 @@
             htfFilter:       !!document.getElementById('pos-htf-filter')?.checked,
             chartOverlay:    !!document.getElementById('pos-chart-ind-sync')?.checked,
             selectedPairs:   [],
+            multiPairTrading: !!document.getElementById('pos-multi-pair')?.checked,
+            minProfit:       parseFloat(document.getElementById('pos-min-profit')?.value || '92'),
+            maxConcurrentTrades: parseInt(document.getElementById('pos-max-concurrent')?.value || '4', 10),
+            includeOtc:      !!document.getElementById('pos-include-otc')?.checked
         };
         Object.assign(config, collectRiskSettings());
         if (config.autoTrade) beginAutoTradeSession();
@@ -3037,7 +3067,28 @@
             }
             sv('pos-max-steps',      data.maxSteps);
             sv('pos-expiration',     normalizeExpiration(data.expiration));
+            sv('pos-min-profit', data.minProfit != null ? data.minProfit : 92);
+            sv('pos-max-concurrent', data.maxConcurrentTrades != null ? data.maxConcurrentTrades : 4);
+            var multiPairEl = document.getElementById('pos-multi-pair');
+            if (multiPairEl) multiPairEl.checked = data.multiPairTrading !== false;
+            var otcEl = document.getElementById('pos-include-otc');
+            if (otcEl) otcEl.checked = data.includeOtc !== false;
             signalExpirationSec = normalizeExpiration(data.expiration);
+            ['pos-multi-pair', 'pos-min-profit', 'pos-max-concurrent', 'pos-include-otc'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (!el || el._posBound) return;
+                el._posBound = true;
+                el.addEventListener('change', function() {
+                    var patch = {
+                        multiPairTrading: !!(document.getElementById('pos-multi-pair') || {}).checked,
+                        minProfit: parseFloat((document.getElementById('pos-min-profit') || {}).value || '92'),
+                        maxConcurrentTrades: parseInt((document.getElementById('pos-max-concurrent') || {}).value || '4', 10),
+                        includeOtc: !!(document.getElementById('pos-include-otc') || {}).checked
+                    };
+                    saveSettings(patch);
+                    if (window._posRunning) sendCoreCmd({ cmd: 'PATCH_CONFIG', patch: patch });
+                });
+            });
             var autoEl = document.getElementById('pos-auto-trade');
             if (autoEl) {
                 autoEl.checked = !!data.autoTrade;
@@ -3357,6 +3408,30 @@
                 try { chrome.runtime.sendMessage({ type: 'POROBOT_SIGNAL', signal: e.data.signal }); } catch(_) {}
             } else if (msgType === 'POROBOT_TRADE_RESULT') {
                 autoRecordResult(e.data.result, e.data.profit, { nextBet: e.data.nextBet, mmStep: e.data.mmStep, mm: e.data.mm });
+            } else if (msgType === 'POROBOT_MULTI_SIGNAL') {
+                var ms = e.data.signal || {};
+                appendLog('🔎 [' + (ms.asset || '?') + '] ' + (ms.direction || 'NEUTRAL') + ' | выплата ' + (ms.payout || 0) + '%');
+            } else if (msgType === 'POROBOT_MULTI_TRADE_OPEN') {
+                var mo = e.data.trade || {};
+                appendLog('🤖 Открыта [' + (mo.asset || '?') + '] ' + (mo.direction || '') + ' | $' + (parseFloat(mo.amount) || 0).toFixed(2));
+            } else if (msgType === 'POROBOT_MULTI_TRADE_RESULT') {
+                var mt = e.data.trade || {};
+                if (mt.result === 'WIN' || mt.result === 'LOSE') {
+                    var mp = parseFloat(mt.profit) || 0;
+                    var mtime = new Date();
+                    var mts = String(mtime.getHours()).padStart(2,'0') + ':' + String(mtime.getMinutes()).padStart(2,'0') + ':' + String(mtime.getSeconds()).padStart(2,'0');
+                    applySessionPnl(mt.result, mp);
+                    updateStreak(mt.result);
+                    addTradeToJournal({ time: mts, asset: mt.asset || '?', direction: mt.direction || '', bet: mt.amount || 0, result: mt.result, profit: mp.toFixed(2), strategy: 'Multi-pair · payout ' + (mt.payout || 0) + '%' });
+                    renderAssetStats();
+                    renderIndStats();
+                    posTelemetryTrade({ asset: mt.asset, direction: mt.direction, amount: mt.amount }, mt.result, mp, 'multi_pair', true);
+                    appendLog((mt.result === 'WIN' ? '✅' : '❌') + ' [' + mt.asset + '] ' + mt.result + ' | P&L: ' + (mp >= 0 ? '+' : '-') + '$' + Math.abs(mp).toFixed(2));
+                    showTradeReaction(mt.result);
+                    checkAutoTradeGuards();
+                } else if (mt.result === 'DRAW') {
+                    appendLog('➖ [' + (mt.asset || '?') + '] Возврат ставки');
+                }
             } else if (msgType === 'POROBOT_SCAN') {
                 updateLiveScan(e.data.scan);
             } else if (msgType === 'POROBOT_ASSET') {
@@ -3398,7 +3473,7 @@
     } else {
         window.addEventListener('message', function(e) {
             var msgType = e.data && e.data.type;
-            if (msgType === 'POROBOT_LOG' || msgType === 'POROBOT_STATS' || msgType === 'POROBOT_TRADE' || msgType === 'POROBOT_SIGNAL' || msgType === 'POROBOT_TRADE_RESULT' || msgType === 'POROBOT_ASSET' || msgType === 'POROBOT_SCAN' || msgType === 'POROBOT_BALANCE' || msgType === 'POROBOT_AUTO_STOP') {
+            if (msgType === 'POROBOT_LOG' || msgType === 'POROBOT_STATS' || msgType === 'POROBOT_TRADE' || msgType === 'POROBOT_SIGNAL' || msgType === 'POROBOT_TRADE_RESULT' || msgType === 'POROBOT_MULTI_SIGNAL' || msgType === 'POROBOT_MULTI_TRADE_OPEN' || msgType === 'POROBOT_MULTI_TRADE_RESULT' || msgType === 'POROBOT_ASSET' || msgType === 'POROBOT_SCAN' || msgType === 'POROBOT_BALANCE' || msgType === 'POROBOT_AUTO_STOP') {
                 try { window.top.postMessage(e.data, '*'); } catch(_) {}
             }
         });
