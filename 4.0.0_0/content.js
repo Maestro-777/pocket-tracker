@@ -3710,6 +3710,7 @@
                 renderPredictivePanel();
             } else if (msgType === 'POROBOT_PREDICTIVE_WARMUP') {
                 pt4Predictive.warmup[e.data.asset]=e.data;
+                if(Number(e.data.samples)<Number(e.data.required))delete pt4Predictive.latest[e.data.asset];
                 pt4Predictive.lastAsset=e.data.asset;
                 renderPredictivePanel();
             } else if (msgType === 'POROBOT_PREDICTIVE_ASSETS') {
