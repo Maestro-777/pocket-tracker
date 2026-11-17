@@ -40,7 +40,7 @@
     const query=features.slice(end-length);
     const matches=[];
     // Historical windows end before the current query and do not overlap it.
-    for(let i=length;i<=end-length*2;i++){
+    for(let i=length;i<=end-length;i++){
       const candidate=features.slice(i-length,i);
       const similarity=score(query,candidate);
       if(similarity>=threshold){
