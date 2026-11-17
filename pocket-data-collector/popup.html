@@ -20,6 +20,15 @@
 <div class="buttons"><button id="analyze" class="primary">Найти сходства</button><button id="exportCsv" class="secondary">Экспорт выборки CSV</button><button id="exportJson" class="secondary">Экспорт всей базы JSON</button><button id="exportAllCsv" class="secondary">Экспорт всей базы CSV</button></div>
 <div id="analysis" class="analysis">Анализ пока не запускался.</div>
 </section>
+<section class="panel">
+<div class="head"><div><h2>Сигнал по экспирации 10 секунд</h2><p>Автоматически сравнивает несколько длин паттерна и считает исторические исходы после похожих участков. Это аналитика, не размещение ордеров.</p></div><span class="tag">ТОЛЬКО АНАЛИЗ</span></div>
+<div class="settings">
+<label>Экспирация, секунд<input id="expirySec" type="number" min="1" max="300" value="10"></label>
+<label>Минимум исторических совпадений<input id="minSamples" type="number" min="5" max="200" value="20"></label>
+</div>
+<div class="buttons"><button id="detectSignal" class="primary">Определить сигнал</button></div>
+<div id="signalResult" class="analysis">Сигнал ещё не рассчитывался. Автоматический подбор паттерна включён.</div>
+</section>
 <section class="panel"><div class="head"><div><h2>Найденные исторические сходства</h2><p>Сравнивается форма Heikin Ashi: цвет, тело, тени и диапазон.</p></div><span id="matchCount" class="tag">0 совпадений</span></div><div id="matches" class="matches"><div class="empty">Пока нет результатов.</div></div></section>
 <footer><span>READ-ONLY · NO TRADING · LOCAL DATABASE</span><span>v1.1.0</span></footer>
 </main><script src="engine.js"></script><script src="popup.js"></script></body></html>
