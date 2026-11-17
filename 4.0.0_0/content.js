@@ -902,7 +902,7 @@
     <button class="pos-tab active" data-tab="trading" data-i18n="tab_signals">Сигналы</button>
     <button class="pos-tab" data-tab="journal" data-i18n="tab_journal">Журнал</button>
     <button class="pos-tab" data-tab="stats" data-i18n="tab_stats">Аналитика</button>
-    <button class="pos-tab" data-tab="predictive">ПРОГНОЗ</button>
+    <button class="pos-tab" data-tab="predictive">PREDICTIVE</button>
     <button class="pos-tab" data-tab="settings" data-i18n="tab_settings">Настройки</button>
   </div>
 
