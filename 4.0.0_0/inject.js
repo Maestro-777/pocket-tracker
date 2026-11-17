@@ -3971,7 +3971,7 @@
             const requestId = String(data.requestId ?? data.request_id ?? '');
             const trade = requestId && this._multiPendingByRequestId && this._multiPendingByRequestId.get(requestId);
             if (!trade) return false;
-            const id = data.id ?? data.orderId ?? data.order_id;
+            const id = data.id ?? data.dealId ?? data.deal_id ?? data.orderId ?? data.order_id ?? data.ticket;
             if (id == null) return true;
             this._multiPendingByRequestId.delete(requestId);
             trade.id = String(id);
@@ -4003,6 +4003,8 @@
                 const token = asset && this._multiOpenByAsset ? this._multiOpenByAsset.get(asset) : null;
                 if (token && String(token).indexOf('req:') === 0) {
                     trade = this._multiPendingByRequestId.get(String(token).slice(4)) || null;
+                } else if (token && this._multiTradesById) {
+                    trade = this._multiTradesById.get(String(token)) || null;
                 }
             }
             if (!trade) return false;
