@@ -2858,7 +2858,7 @@ function renderConnectionCenter() {
     ? settings.autoTrade.strategyIds.map(String)
     : [settings.autoTrade?.strategyId || settings.activeStrategyId].filter(Boolean).map(String);
   const strategyItems = tradeStrategies().filter((item) => strategyIds.includes(String(item.id)));
-  const strategyReady = Boolean(strategyItems.length && strategyItems.every((item) => item.engineReady));
+  const strategyReady = Boolean(strategyItems.length && strategyItems.every(strategyEngineReadyForCurrentMode));
   const autoEnabled = Boolean(settings.autoTrade?.enabled);
   const autoProblem = ['error', 'blocked', 'stopped'].includes(String(autoStatus?.state || ''));
 
@@ -2983,6 +2983,12 @@ function premiumStrategiesAvailable() {
   const entitlement = currentEntitlement();
   const features = entitlement.features || {};
   return Boolean(entitlement.premium || access.premium || features.premiumStrategies || features.ai);
+}
+
+function strategyEngineReadyForCurrentMode(item) {
+  if (!item?.engineReady) return false;
+  if (!isLocalExpansionMode()) return true;
+  return isThreeCandleStrategyConfig(item.config && typeof item.config === 'object' ? item.config : item, item.title || item.name || '');
 }
 
 function strategyLockedForAccess(item) {
@@ -4375,7 +4381,7 @@ function renderStrategies() {
   const cards = items.map((item) => {
     const locked = strategyLockedForAccess(item);
     const active = activeIds.has(item.id);
-    const engineReady = Boolean(item.engineReady);
+    const engineReady = strategyEngineReadyForCurrentMode(item);
     const needsSave = Boolean(item.custom && !engineReady);
     const stateText = locked ? 'Premium' : active ? 'Выбрана' : needsSave ? 'Сохранить' : engineReady ? 'Выбрать' : 'Недоступна';
     const kind = item.custom ? 'Моя' : item.ai ? 'AI' : item.premium ? 'Premium' : 'Базовая';
@@ -4420,7 +4426,7 @@ function renderAutoTrade() {
   $('autoState').classList.toggle('on', enabled && (diagnosticsOnline || !['blocked', 'error', 'stopped'].includes(autoStatus?.state)));
   const strategyIds = Array.isArray(auto.strategyIds) && auto.strategyIds.length ? auto.strategyIds : [auto.strategyId].filter(Boolean);
   const selectedStrategies = tradeStrategies().filter((item) => strategyIds.includes(item.id));
-  const engineReady = Boolean(selectedStrategies.length && selectedStrategies.every((item) => item.engineReady));
+  const engineReady = Boolean(selectedStrategies.length && selectedStrategies.every(strategyEngineReadyForCurrentMode));
   const lastSignalMessageAt = Date.parse(signalDiagnostics?.lastMessageAt || '');
   const lastEngineAt = Date.parse(signalDiagnostics?.lastEngineAt || '');
   const signalFresh = [lastSignalMessageAt, lastEngineAt].some((value) => Number.isFinite(value) && Date.now() - value <= 90000);
