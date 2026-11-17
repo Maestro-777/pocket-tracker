@@ -121,8 +121,10 @@
       if (!series) { series = []; this.series.set(asset, series); }
       const last = series[series.length - 1];
       if (last && timestamp <= last.t) return null;
-      if (last && timestamp - last.t > 30000) { series.length = 0; this.lastForecastAt.delete(asset); }
+      const resetWarmup = !!(last && timestamp - last.t > 30000);
+      if (resetWarmup) { series.length = 0; this.lastForecastAt.delete(asset); }
       series.push({ t: timestamp, p: price });
+      if (resetWarmup) root.postMessage({ type: 'POROBOT_PREDICTIVE_WARMUP', asset, samples: series.length, required: this.options.minSamples }, '*');
       if (series.length > this.options.maxTicks) series.splice(0, series.length - this.options.maxTicks);
       this._settle(asset, timestamp, price);
       if (series.length < this.options.minSamples) {
