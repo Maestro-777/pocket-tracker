@@ -4091,7 +4091,7 @@
                     delete self._predictiveLastTradeAt[cooldownKey];
                     self.log('⚠️ Predictive [' + signal.asset + ']: платформа не подтвердила ордер в течение срока ожидания.');
                 }, (signal.horizonSeconds + 30) * 1000);
-                this._post('POROBOT_PREDICTIVE_TRADE_OPEN', { trade });
+                this._post('POROBOT_PREDICTIVE_TRADE_REQUEST', { trade });
                 this.log('🤖 Predictive [' + signal.asset + '] ' + tradeDirection + ' · ' + signal.model +
                     ' · ' + Math.round(signal.confidence * 100) + '% · $' + amount.toFixed(2) +
                     ' · ' + signal.horizonSeconds + 'с');
