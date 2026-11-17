@@ -30,6 +30,15 @@ const entitlement = () => ({
 
 const uidFromBridge = bridge => bridge?.account?.uid == null ? null : String(bridge.account.uid);
 const nowIso = () => new Date().toISOString();
+
+// Serialize read-modify-write operations: MV3 may dispatch concurrent handlers,
+// while chrome.storage.local does not provide compare-and-swap semantics.
+let localStorageMutationTail = Promise.resolve();
+function serializeLocalStorageMutation(task) {
+  const run = localStorageMutationTail.then(task, task);
+  localStorageMutationTail = run.catch(() => null);
+  return run;
+}
 const read = async key => (await chrome.storage.local.get(key))[key];
 
 function makeState(patch = {}) {
@@ -66,7 +75,7 @@ export async function bindServerAccountContext(bridgeState) {
   const state = makeState({
     accountConnected: Boolean(uid), pocketUid: uid, sessionUid: uid,
     accountMode: bridgeState?.account?.mode || null, accountKey: uid,
-    authenticated: true, sessionToken: 'local-owner',
+    authenticated: Boolean(uid), sessionToken: uid ? 'local-owner' : null,
     entitlement: entitlement(), strategies
   });
   await chrome.storage.local.set({ ptServerState: state });
@@ -82,11 +91,13 @@ export async function getServerState({ sync = false } = {}) {
   if (sync) return syncServer();
   const saved = await read('ptServerState');
   const bridge = await read('poBridgeState');
-  const uid = uidFromBridge(bridge) || saved?.pocketUid || null;
+  // An existing bridge snapshot is authoritative even when uid is null;
+  // never resurrect the previous account from a cached server-state snapshot.
+  const uid = bridge && typeof bridge === 'object' ? uidFromBridge(bridge) : (saved?.pocketUid || null);
   return makeState({
     ...(saved || {}), version: 2, clientBuild: BUILD, localOnly: true,
     accountConnected: Boolean(uid), pocketUid: uid, sessionUid: uid,
-    authenticated: true, sessionToken: 'local-owner',
+    authenticated: Boolean(uid), sessionToken: uid ? 'local-owner' : null,
     entitlement: entitlement()
   });
 }
@@ -103,37 +114,75 @@ export async function getReferralProgram() {
 }
 
 export async function requestTradePermit(payload = {}) {
-  const consent = await getLegalConsent();
-  if (!consent.accepted) return { ok: false, allowed: false, reason: 'LEGAL_CONSENT_REQUIRED', error: 'Сначала подтвердите локальные условия и риски.' };
-  const ticket = crypto.randomUUID() + crypto.randomUUID();
-  const tickets = (await read(TICKETS_KEY)) || {};
-  tickets[ticket] = { createdAt: Date.now(), expiresAt: Date.now() + 60000, payload };
-  await chrome.storage.local.set({ [TICKETS_KEY]: tickets });
-  return { ok: true, allowed: true, reason: 'LOCAL_ALLOWED', executionTicket: ticket, expiresInSeconds: 60, entitlement: entitlement() };
+  return serializeLocalStorageMutation(async () => {
+    const consent = await getLegalConsent();
+    if (!consent.accepted) return { ok: false, allowed: false, reason: 'LEGAL_CONSENT_REQUIRED', error: 'Сначала подтвердите локальные условия и риски.' };
+    const bridge = await read('poBridgeState');
+    const uid = uidFromBridge(bridge);
+    if (!uid) return { ok: false, allowed: false, reason: 'ACCOUNT_NOT_CONNECTED', error: 'Сначала подключите аккаунт Pocket Option.' };
+
+    const asset = String(payload.asset || '').trim();
+    const rawAction = String(payload.action || '').trim().toLowerCase();
+    const action = ['put', 'sell'].includes(rawAction) ? 'put' : ['call', 'buy'].includes(rawAction) ? 'call' : '';
+    const amount = Number(payload.amount);
+    const duration = Number(payload.duration);
+    const requestId = String(payload.requestId || '').trim();
+    if (!asset || !action || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(duration) || duration < 1 || duration > 86400 || !requestId) {
+      return { ok: false, allowed: false, reason: 'INVALID_TRADE_PAYLOAD', error: 'Некорректные параметры сделки: проверьте актив, направление, сумму, экспирацию и ID запроса.' };
+    }
+
+    const now = Date.now();
+    const stored = (await read(TICKETS_KEY)) || {};
+    const tickets = Object.fromEntries(Object.entries(stored).filter(([, item]) => Number(item?.expiresAt) > now));
+    if (Object.keys(tickets).length >= 1000) {
+      return { ok: false, allowed: false, reason: 'LOCAL_TICKET_CAPACITY', error: 'Слишком много незавершённых локальных заявок. Повторите попытку через минуту.' };
+    }
+    const ticket = crypto.randomUUID() + crypto.randomUUID();
+    tickets[ticket] = { createdAt: now, expiresAt: now + 60000, payload: { ...payload, asset, action, amount, duration, requestId, accountUid: uid } };
+    await chrome.storage.local.set({ [TICKETS_KEY]: tickets });
+    return { ok: true, allowed: true, reason: 'LOCAL_ALLOWED', executionTicket: ticket, expiresInSeconds: 60, entitlement: entitlement() };
+  });
 }
 
 export async function consumeTradeExecutionTicket(ticket) {
-  const tickets = (await read(TICKETS_KEY)) || {};
-  const record = tickets[String(ticket || '')];
-  if (!record || record.expiresAt < Date.now()) return { ok: false, error: 'Локальный билет сделки недействителен или истёк.' };
-  delete tickets[String(ticket)];
-  await chrome.storage.local.set({ [TICKETS_KEY]: tickets });
-  const p = record.payload || {};
-  const rawAction = String(p.action || '').toLowerCase();
-  const action = ['put', 'sell'].includes(rawAction) ? 'put' : ['call', 'buy'].includes(rawAction) ? 'call' : rawAction;
-  return { ok: true, permit: {
-    ok: true, asset: String(p.asset || ''), action,
-    amount: Number(p.amount), duration: Number(p.duration),
-    requestId: String(p.requestId || ''), strategyId: p.strategyId || null,
-    source: p.source || null, consumedAt: nowIso(), localOnly: true
-  } };
+  return serializeLocalStorageMutation(async () => {
+    const tickets = (await read(TICKETS_KEY)) || {};
+    const key = String(ticket || '');
+    const record = tickets[key];
+    if (!record) return { ok: false, error: 'Локальный билет сделки недействителен или уже использован.' };
+    delete tickets[key];
+    await chrome.storage.local.set({ [TICKETS_KEY]: tickets });
+    if (!Number.isFinite(Number(record.expiresAt)) || Number(record.expiresAt) <= Date.now()) {
+      return { ok: false, error: 'Срок действия локального билета сделки истёк.' };
+    }
+    const p = record.payload || {};
+    const bridge = await read('poBridgeState');
+    const uid = uidFromBridge(bridge);
+    const rawAction = String(p.action || '').toLowerCase();
+    const action = ['put', 'sell'].includes(rawAction) ? 'put' : ['call', 'buy'].includes(rawAction) ? 'call' : '';
+    const amount = Number(p.amount);
+    const duration = Number(p.duration);
+    if (!uid || String(p.accountUid || '') !== uid) {
+      return { ok: false, error: 'Аккаунт Pocket Option изменился после проверки допуска. Запросите новый билет.' };
+    }
+    if (!String(p.asset || '').trim() || !action || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(duration) || duration < 1 || duration > 86400) {
+      return { ok: false, error: 'Параметры локального билета сделки повреждены или некорректны.' };
+    }
+    return { ok: true, permit: {
+      ok: true, asset: String(p.asset).trim(), action, amount, duration,
+      requestId: String(p.requestId || ''), strategyId: p.strategyId || null,
+      source: p.source || null, consumedAt: nowIso(), localOnly: true
+    } };
+  });
 }
 
 export async function reportTrade(payload = {}) {
-  const trades = (await read(TRADES_KEY)) || [];
-  trades.push({ ...payload, reportedAt: nowIso(), localOnly: true });
-  await chrome.storage.local.set({ [TRADES_KEY]: trades.slice(-5000) });
-  return { ok: true, localOnly: true };
+  return serializeLocalStorageMutation(async () => {
+    const trades = (await read(TRADES_KEY)) || [];
+    trades.push({ ...payload, reportedAt: nowIso(), localOnly: true });
+    await chrome.storage.local.set({ [TRADES_KEY]: trades.slice(-5000) });
+    return { ok: true, localOnly: true };
+  });
 }
 
 export async function getSignalSocketTicket() {
@@ -141,9 +190,16 @@ export async function getSignalSocketTicket() {
 }
 
 export async function deleteAccountData() {
-  const keys = [ 'ptServerState', 'ptRemoteControl', 'ptAffiliatePrepared', TICKETS_KEY, STRATEGIES_KEY, TRADES_KEY ];
+  const keys = [
+    'ptServerState', 'ptRemoteControl', 'ptAffiliatePrepared',
+    TICKETS_KEY, STRATEGIES_KEY, TRADES_KEY, LEGAL_KEY,
+    'poTradeLedger', 'poRobotTradeRegistry', 'poUsageStats', 'poProfitStats',
+    'ptSignalDiagnostics', 'ptNotificationHistory', 'ptSeenServerNotifications',
+    'ptSeenServerBroadcasts', 'ptAccessNotification', 'ptLastAccessNotificationKey',
+    'ptLastFreeDailyLimitNoticeKey', 'ptTradeTesterHistory', 'ptTradeTesterResults'
+  ];
   await chrome.storage.local.remove(keys);
-  return { ok: true, localOnly: true };
+  return { ok: true, localOnly: true, consentReset: true };
 }
 
 export async function saveCustomStrategy(payload = {}) {
