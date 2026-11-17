@@ -3721,7 +3721,7 @@
                 appendLog('🧠 Predictive [' + (ps.asset || '?') + '] ' + (ps.direction || '—') + ' · ' + (ps.model || '') + ' · ' + Math.round((ps.confidence || 0) * 100) + '% · ' + (ps.horizonSeconds || 0) + 'с');
             } else if (msgType === 'POROBOT_PREDICTIVE_TRADE_REQUEST') {
                 var pt = e.data.trade || {};
-                appendLog('📨 Predictive: заявка отправлена [' + (pt.asset || '?') + '] ' + (pt.direction || '') + ' · 
+                appendLog('📨 Predictive: заявка отправлена [' + (pt.asset || '?') + '] ' + (pt.direction || '') + ' · $' + (Number(pt.amount) || 0).toFixed(2));
             } else if (msgType === 'POROBOT_PREDICTIVE_EVENT') {
                 handlePredictiveEvent(e.data);
             } else if (msgType === 'PT4_PREDICTIVE_READY') {
