@@ -900,6 +900,9 @@
                     if (!asset || isNaN(price) || price <= 0) continue;
                     const detail = { type: 'POROBOT_WS_PRICE', asset, price, timestamp: ts * 1000 };
                     window.postMessage(detail, '*');
+                    // All frames may own a PO socket, but only the elected primary frame
+                    // is allowed to feed the single Predictive history/statistics stream.
+                    try { window.top.postMessage({ type: 'PT4_PREDICTIVE_TICK_RELAY', tick: detail }, '*'); } catch (_) {}
                     core.onPrice(detail);
                     count++;
                 }
@@ -3983,6 +3986,9 @@
             this.predictiveConfig.confidenceFloor = Math.max(0.5, Math.min(0.95, Number(this.predictiveConfig.confidenceFloor) || 0.60));
             this.predictiveConfig.stake = Math.max(1, Math.min(100000, Number(this.predictiveConfig.stake) || 1));
             this.predictiveConfig.maxConcurrentTrades = Math.max(1, Math.min(20, parseInt(this.predictiveConfig.maxConcurrentTrades, 10) || 1));
+            // Predictive must elect the same trade-capable frame even when the ordinary
+            // indicator bot is stopped. The deepest eligible frame wins, as in 3.6.0.
+            if (this.predictiveConfig.enabled) claimPrimaryEngine();
             if (this._predictiveRefreshTimer) { clearInterval(this._predictiveRefreshTimer); this._predictiveRefreshTimer = null; }
             if (this.predictiveConfig.enabled && this.predictiveConfig.assetMode !== 'current' && isPrimarySignalFrame()) {
                 this._refreshMultiPairs(true, true);
@@ -4686,6 +4692,22 @@
                 }
             }
         } catch (err) { console.error('[PocketOption Signal][CORE] cmd error', err); }
+    }
+
+    // Top-frame coordinator for cross-frame quote routing. Mirrors the 3.6.0
+    // primary-frame pattern, while keeping one Predictive Engine history owner.
+    if (window === window.top) {
+        window.addEventListener('message', function(e) {
+            const d = e.data;
+            if (!d || d.type !== 'PT4_PREDICTIVE_TICK_RELAY' || !d.tick) return;
+            if (e.origin !== window.location.origin) return;
+            const claim = window.__poEngineClaim;
+            const owner = claim && claim.win ? claim.win : window;
+            try { owner.postMessage({ type: 'PT4_PREDICTIVE_TICK', tick: d.tick }, '*'); }
+            catch (_) {
+                try { window.postMessage({ type: 'PT4_PREDICTIVE_TICK', tick: d.tick }, '*'); } catch (_) {}
+            }
+        });
     }
 
     window.addEventListener('message', (e) => {
