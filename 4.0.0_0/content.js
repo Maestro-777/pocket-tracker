@@ -3498,7 +3498,7 @@
 
 
     // ── PREDICTIVE ENGINE UI / STORAGE ────────────────────────────────
-    var pt4Predictive = { latest: {}, warmup: {}, state: null, config: null, saveTimer: null, lastIndicator: null, restored: false };
+    var pt4Predictive = { latest: {}, warmup: {}, indicators: {}, state: null, config: null, saveTimer: null, lastIndicator: null, restored: false };
     var PT4_MODEL_NAMES = { linear:'Линейная', exponential:'Экспоненциальная', polynomial:'Полиномиальная', momentum:'Momentum', cyclical:'Циклическая', ensemble:'Ансамбль' };
     function pt4DefaultConfig() {
         return { enabled:true, sourceMode:'formula', assetMode:'all', selectedAsset:'*', horizonSeconds:60, model:'auto',
@@ -3631,7 +3631,7 @@
         document.getElementById('pt4-confidence-out').textContent=confidence==null?'—':Math.round(confidence*100)+'%'+(confidenceSamples>=30?' · n='+confidenceSamples:' · мало данных');
         var eligible=!!(row&&(cfg.model==='auto'?row.eligible:(row.modelEligible&&row.modelEligible[cfg.model]))&&confidence>=cfg.confidenceFloor&&dir!=='DRAW');
         var source=cfg.sourceMode;
-        var indicator=pt4Predictive.lastIndicator;
+        var indicator=pt4Predictive.indicators[asset] || pt4Predictive.lastIndicator;
         var sourceText=source==='indicators'?'Только индикаторы · сделки управляются основным модулем':source==='combined'?'Ожидание совпадения направлений':'Predictive Formula';
         if(source==='indicators') eligible=false;
         if(source==='combined' && indicator && indicator.direction && dir.indexOf(indicator.direction)===0)sourceText='Совпадение индикаторов и прогноза';
@@ -3700,6 +3700,11 @@
             var msgType = e.data && e.data.type;
             if (msgType === 'POROBOT_SCAN') {
                 pt4Predictive.lastIndicator = e.data.scan || null;
+                var scanAsset = e.data.scan && (e.data.scan.wsAsset || e.data.scan.asset);
+                if(scanAsset)pt4Predictive.indicators[String(scanAsset).toUpperCase()]={direction:e.data.scan.direction,timestamp:Date.now()};
+                renderPredictivePanel();
+            } else if (msgType === 'POROBOT_PREDICTIVE_INDICATOR') {
+                pt4Predictive.indicators[String(e.data.asset||'').toUpperCase()]={direction:e.data.direction,timestamp:Number(e.data.timestamp)||Date.now()};
                 renderPredictivePanel();
             } else if (msgType === 'POROBOT_PREDICTIVE_WARMUP') {
                 pt4Predictive.warmup[e.data.asset]=e.data;
