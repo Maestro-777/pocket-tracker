@@ -4499,7 +4499,7 @@
 
         _handleAnyMultiTrades(scanAsset, sig) {
             if (this._tradeBusy) return;
-            if (this.config?.autoTrade && frameHasTradeUI() && this._awaitingResult()) return;
+            if (!this._isPredictiveModeExclusive() && this.config?.autoTrade && frameHasTradeUI() && this._awaitingResult()) return;
             const signals = Array.isArray(sig.multiSignals) ? sig.multiSignals : [];
             if (!signals.length) return;
 
