@@ -256,3 +256,12 @@ Predictive is hosted by one elected engine owner, not one independent history pe
 - Ordinary per-frame `core.onPrice` handling remains intact for the existing indicator engine. Predictive quote routing is additive and does not replace the existing WebSocket interceptor or order handlers.
 
 Automated regression tests cover the routed tick contract and the presence of the cross-frame configuration/event bridges. They do not replace testing in an authenticated Pocket Option browser session.
+
+
+## Quote owner and trade executor separation (2026-11-17 follow-up)
+
+The top frame is the single owner of Predictive quote ingestion, forecast history, pending evaluations and model statistics. Every frame that receives Pocket Option `quotes/stream` relays normalized OTC ticks to the top-frame coordinator; the coordinator dispatches them to the top-frame engine only.
+
+The trade-capable frame is a separate role. The coordinator relays each immutable forecast to the elected trade frame using `PT4_PREDICTIVE_TRADE_FORECAST`; that frame calls the existing core's `onPredictiveForecast` and existing order protocol. Trade-frame election retries while Predictive is enabled because Pocket Option may mount trade controls after extension scripts have loaded.
+
+This avoids making data collection depend on trade-frame election timing and keeps one source of truth for forecast evaluation. Automated tests check source-level contracts; an authenticated browser session is still required to verify actual Pocket Option frame/socket behavior.
