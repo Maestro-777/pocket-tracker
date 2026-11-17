@@ -4300,7 +4300,7 @@
             const status = String(deal.status || deal.result || deal.state || '').toLowerCase();
             const result = status === 'draw' || status === 'equal' ? 'DRAW' : (status === 'win' || net > 0 ? 'WIN' : 'LOSE');
             const profit = result === 'WIN' ? net : (result === 'LOSE' ? -trade.amount : 0);
-            this._recordReverseResult(result);
+            if (trade.source !== 'predictive') this._recordReverseResult(result);
             this._post('POROBOT_MULTI_TRADE_RESULT', { trade: {
                 id: id == null ? null : String(id),
                 asset: trade.asset,
