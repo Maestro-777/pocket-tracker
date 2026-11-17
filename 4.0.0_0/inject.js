@@ -164,12 +164,13 @@
                 symbol = row[1];
                 label = row[2] || row[1];
                 profit = parseFloat(row[5]);
-                active = row[14] === true || row[14] === 1 || row[14] === '1' || String(row[14]).toLowerCase() === 'true';
+                active = !!row[14]; // Same truthy active flag used by 1.1.7_0.
             } else if (typeof row === 'object') {
                 symbol = row.symbol || row.asset || row.code || row.s || '';
                 label = row.name || row.title || row.label || row.n || symbol;
                 profit = parseFloat(row.profit ?? row.payout ?? row.percentProfit);
-                active = row.active === true || row.isActive === true || row.active === 1 || row.active === '1' || String(row.active).toLowerCase() === 'true';
+                const activeValue = row.active ?? row.isActive ?? row.enabled ?? row.tradable;
+                active = activeValue === true || activeValue === 1 || activeValue === '1' || String(activeValue).toLowerCase() === 'true';
             }
             if (!symbol) continue;
             rememberRawAsset(symbol);
