@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pocket Signal Client</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="eyebrow">SIGNALBOTS · MANUAL CLIENT</div>
+      <h1>Pocket Signal Client</h1>
+      <p class="muted">Получение серверного сигнала. Автоторговля отключена.</p>
+    </header>
+
+    <section class="controls">
+      <label>Валютная пара
+        <select id="pair">
+          <option>EURUSD</option><option>GBPUSD</option>
+          <option>AUDUSD</option><option>EURJPY</option><option>GBPJPY</option>
+          <option>AUDCAD</option><option>AUDCHF</option><option>AUDJPY</option>
+          <option>CHFJPY</option><option>EURAUD</option><option>EURCAD</option>
+          <option>EURCHF</option><option>EURGBP</option><option>GBPAUD</option>
+          <option>UKOIL</option>
+        </select>
+      </label>
+      <label>Таймфрейм
+        <select id="tf">
+          <option value="1M">1 минута</option>
+          <option value="3M">3 минуты</option>
+          <option value="5M">5 минут</option>
+          <option value="30M">30 минут</option>
+          <option value="1H">1 час</option>
+          <option value="4H">4 часа</option>
+        </select>
+      </label>
+      <label>Ключ / unlock-ссылка <span class="muted">(или оставьте пустым для проверки входа)</span>
+        <input id="key" type="password" autocomplete="off" placeholder="SB-… или ссылка SignalBots с lt=">
+      </label>
+      <button id="getSignal">Получить сигнал</button>
+    </section>
+
+    <section id="result" class="result idle" aria-live="polite">
+      <div class="muted">Сигнал ещё не запрашивался</div>
+    </section>
+    <details>
+      <summary>Ответ сервера (JSON)</summary>
+      <pre id="raw">—</pre>
+    </details>
+    <footer>Только чтение сигнала · Без подключения к Pocket Option · Без сделок</footer>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

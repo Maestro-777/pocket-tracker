@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SignalBots AI Signals</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+    <!-- License / trial gate. -->
+    <div class="gate" data-screen="gate" hidden></div>
+
+    <!-- Main app. -->
+    <div data-screen="app" hidden>
+      <header class="app-head">
+        <img class="app-logo" src="icons/mark_96.png" alt="SignalBots">
+        <div class="app-brand">
+          <div class="app-name" data-app-name>SignalBots</div>
+          <div class="app-tagline" data-app-tagline>AI binary-option signals</div>
+        </div>
+        <span class="app-status" data-app-status></span>
+        <div class="app-actions" data-app-actions></div>
+      </header>
+
+      <!-- One status row: connection + identity + license match on the left, the
+           Demo/Real switch and live balance on the right — OTC bot only. It sits
+           above the tabs because it describes the whole session, not the Signal
+           tab: the account it reports is the one History is a record of too. -->
+      <div class="statusbar" data-broker-status hidden></div>
+
+      <nav class="app-tabs" role="tablist">
+        <button class="app-tab" data-tab="signal" role="tab" aria-selected="true">Signal</button>
+        <button class="app-tab" data-tab="history" role="tab" aria-selected="false">History</button>
+      </nav>
+
+      <div class="app-body">
+        <section class="panel" data-panel="signal"></section>
+        <section class="panel" data-panel="history" hidden></section>
+      </div>
+    </div>
+
+    <!-- Register / Telegram / Landing. -->
+    <footer class="app-foot" data-foot hidden></footer>
+  </div>
+
+  <!-- Premium-request modal overlay. -->
+  <div class="modal-overlay" data-modal hidden></div>
+
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
