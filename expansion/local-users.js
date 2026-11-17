@@ -144,7 +144,7 @@ if (typeof document !== 'undefined' && document.documentElement?.dataset?.localU
     $('authHint').textContent = setupMode
       ? 'Первый созданный пользователь автоматически получает роль owner.'
       : 'Учётные записи и роли хранятся только в локальном профиле Chrome.';
-    $('roleField').hidden = !snapshot.user || snapshot.user.role !== 'owner';
+    if ($('roleField')) $('roleField').hidden = !snapshot.user || snapshot.user.role !== 'owner';
     form.hidden = Boolean(snapshot.user);
     logout.hidden = !snapshot.user;
     if (snapshot.user) {

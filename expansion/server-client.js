@@ -10,20 +10,20 @@ const TICKETS_KEY = 'expLocalTradeTickets';
 const STRATEGIES_KEY = 'expLocalStrategies';
 const TRADES_KEY = 'expLocalTradeReports';
 
-const entitlement = () => ({
-  plan: 'LOCAL',
-  premium: true,
+const entitlement = (user = null) => ({
+  plan: user ? 'LOCAL' : 'LOCAL_LOCKED',
+  premium: Boolean(user),
   source: 'local',
   status: 'active',
   accessState: 'LOCAL_ACTIVE',
   registrationRequired: false,
-  realTradingAllowed: true,
+  realTradingAllowed: Boolean(user && ['owner', 'trader'].includes(user.role)),
   pauseReason: null,
   expiresAt: null,
   limits: { maxAssets: null, maxDailyTrades: null, maxDevices: null },
   features: {
-    ai: true, strategyBuilder: true, autoTrading: true, realTrading: true,
-    basicStrategies: true, premiumStrategies: true, strategyTester: false,
+    ai: Boolean(user), strategyBuilder: Boolean(user && user.role !== 'viewer'), autoTrading: Boolean(user && ['owner', 'trader'].includes(user.role)), realTrading: Boolean(user && ['owner', 'trader'].includes(user.role)),
+    basicStrategies: true, premiumStrategies: Boolean(user), strategyTester: false,
     remoteControl: false
   },
   devices: { used: 1, allowed: null },
@@ -39,8 +39,8 @@ const read = async key => (await chrome.storage.local.get(key))[key];
 function makeState(patch = {}) {
   return {
     version: 1, clientBuild: BUILD, online: true, serverReachable: true,
-    accountConnected: false, authenticated: true, lastHealthAt: nowIso(),
-    lastSyncAt: nowIso(), lastError: null, sessionToken: 'local-session',
+    accountConnected: false, authenticated: false, lastHealthAt: nowIso(),
+    lastSyncAt: nowIso(), lastError: null, sessionToken: null,
     sessionUid: null, pocketUid: null, accountMode: null, accountKey: null,
     apiBase: 'local://extension', wsUrl: null, adminUrl: null, supportUrl: SUPPORT_URL,
     entitlement: entitlement(), strategies: [], deletedCustomStrategyIds: [],
@@ -66,7 +66,8 @@ export async function getRuntimeInfo() {
 
 export async function bindServerAccountContext(bridgeState) {
   const uid = uidFromBridge(bridgeState);
-  const state = makeState({ accountConnected: Boolean(uid), pocketUid: uid, sessionUid: uid, accountMode: bridgeState?.account?.mode || null, accountKey: uid });
+  const user = await getCurrentUser();
+  const state = makeState({ accountConnected: Boolean(uid), pocketUid: uid, sessionUid: uid, accountMode: bridgeState?.account?.mode || null, accountKey: uid, authenticated: Boolean(user), sessionToken: user ? `local:${user.id}` : null, entitlement: entitlement(user) });
   await chrome.storage.local.set({ ptServerState: state });
   return state;
 }
@@ -79,14 +80,18 @@ export async function syncServer() {
 export async function getServerState({ sync = false } = {}) {
   if (sync) return syncServer();
   const saved = await read('ptServerState');
-  if (saved?.localOnly) return { ...makeState(saved), entitlement: entitlement() };
   const bridge = await read('poBridgeState');
-  return makeState({ accountConnected: Boolean(uidFromBridge(bridge)), pocketUid: uidFromBridge(bridge), sessionUid: uidFromBridge(bridge) });
+  const user = await getCurrentUser();
+  const uid = uidFromBridge(bridge) || saved?.pocketUid || null;
+  return makeState({ ...(saved || {}), accountConnected: Boolean(uid), pocketUid: uid, sessionUid: uid, authenticated: Boolean(user), sessionToken: user ? `local:${user.id}` : null, entitlement: entitlement(user) });
 }
 
 export async function getServerAccess() {
+  const user = await getCurrentUser();
   const serverState = await getServerState();
-  return { serverState, entitlement: entitlement() };
+  const access = entitlement(user);
+  serverState.entitlement = access;
+  return { serverState, entitlement: access, localUser: user };
 }
 
 export async function getReferralProgram() {
