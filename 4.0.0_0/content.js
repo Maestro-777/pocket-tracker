@@ -1175,6 +1175,7 @@
       <div class="pt4-heading"><strong>Модели и независимая статистика</strong><span id="pt4-sample-count">0 проверок</span></div>
       <div class="pt4-table-wrap"><table class="pt4-table"><thead><tr><th>Модель</th><th>Цена</th><th>Напр.</th><th>Точность</th><th>N</th><th>MAE</th><th>Brier</th></tr></thead><tbody id="pt4-model-rows"><tr><td colspan="7">Ожидание первых прогнозов</td></tr></tbody></table></div>
       <div class="pt4-footnote">Точность считается только по завершённым прогнозам. При недостаточной выборке значение не показывается.</div>
+      <div id="pt4-last-result" class="pt4-footnote">Последняя фактическая проверка: —</div>
     </div>
   </div>
 
@@ -3631,6 +3632,7 @@
         document.getElementById('pt4-signal-status').textContent=sourceText+(eligible?' · порог пройден':' · нет допуска');
         renderPredictiveChart(forecast);
         renderPredictiveModels(forecast,horizon,asset);
+        renderPredictiveLastResult(asset,horizon);
     }
     function renderPredictiveChart(forecast) {
         var canvas=document.getElementById('pt4-chart');if(!canvas)return;
@@ -3648,6 +3650,22 @@
         points.forEach(function(p,i){ctx.beginPath();ctx.arc(px(p.x),py(p.y),i?5:7,0,Math.PI*2);ctx.fillStyle=i?'#d4af37':'#f8fafc';ctx.fill();});
         ctx.fillStyle='#9ca3af';ctx.font='15px sans-serif';ctx.fillText('NOW',20,h-5);
         [60,120,180,240,300].forEach(function(sec){ctx.fillText((sec/60)+'m',px(sec)-12,h-5);});
+    }
+    function renderPredictiveLastResult(asset,horizon) {
+        var el=document.getElementById('pt4-last-result');if(!el)return;
+        var history=pt4Predictive.state&&pt4Predictive.state.history||[];
+        var record=null;
+        for(var i=history.length-1;i>=0;i--){
+            if(history[i]&&history[i].asset===asset&&Number(history[i].horizon)===Number(horizon)){record=history[i];break;}
+        }
+        if(!record){el.textContent='Последняя фактическая проверка: —';return;}
+        if(record.status!=='SETTLED'){
+            el.textContent='Последняя проверка: прогноз недействителен ('+(record.status||'UNKNOWN')+').';
+            return;
+        }
+        el.textContent='Факт: '+pt4FormatPrice(record.actualPrice)+' · '+record.actualDirection+
+            ' · модель '+(PT4_MODEL_NAMES[record.model]||record.model)+
+            ' · ошибка '+(Number(record.actualError)*100).toFixed(3)+'%.';
     }
     function renderPredictiveModels(forecast,horizon,asset) {
         var tbody=document.getElementById('pt4-model-rows');if(!tbody)return;
