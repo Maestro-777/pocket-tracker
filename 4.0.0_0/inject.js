@@ -3481,7 +3481,7 @@
             let lastTs=0;
             const COOLDOWN=8000;
             this._resultObserver=new MutationObserver(mutations=>{
-                if (self.config?.multiPairTrading) return;
+                if (self._multiModeEverUsed) return;
                 for(const mut of mutations) {
                     for(const node of mut.addedNodes) {
                         if(node.nodeType!==1) continue;
@@ -3778,6 +3778,7 @@
 
 
         _startMultiPairTrading() {
+            this._multiModeEverUsed = true;
             this._multiPairs = this._multiPairs || new Map();
             this._multiSubscribed = this._multiSubscribed || new Set();
             this._multiOpenByAsset = this._multiOpenByAsset || new Map();
