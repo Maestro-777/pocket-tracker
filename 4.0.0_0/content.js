@@ -3519,6 +3519,16 @@
             maxConcurrentTrades:Math.max(1,Math.min(20,parseInt(document.getElementById('pt4-max-trades').value,10)||1))
         };
     }
+    function pt4BroadcastConfig(config) {
+        var message = { enabled:true, confidenceFloor:config.confidenceFloor, minEvaluationSamples:30, predictive:config };
+        window.postMessage({ type:'PT4_PREDICTIVE_CONFIG', config:message }, '*');
+        try { chrome.runtime.sendMessage({ type:'PT4_PREDICTIVE_CONFIG_BROADCAST', config:message }); } catch(_) {}
+    }
+    function pt4BroadcastRestore(state) {
+        if (!state) return;
+        try { chrome.runtime.sendMessage({ type:'PT4_PREDICTIVE_RESTORE_BROADCAST', state:state }); }
+        catch(_) { window.postMessage({ type:'PT4_PREDICTIVE_RESTORE', state:state }, '*'); }
+    }
     function pt4ApplyConfig(c) {
         var v=Object.assign(pt4DefaultConfig(),c||{}); pt4Predictive.config=v;
         document.getElementById('pt4-source').value=v.sourceMode;
@@ -3534,10 +3544,7 @@
         var asset=document.getElementById('pt4-asset');
         if(v.selectedAsset && !Array.from(asset.options).some(function(o){return o.value===v.selectedAsset;})) { var opt=document.createElement('option'); opt.value=v.selectedAsset; opt.textContent=v.selectedAsset; asset.appendChild(opt); }
         if(v.selectedAsset) asset.value=v.selectedAsset;
-        window.postMessage({type:'PT4_PREDICTIVE_CONFIG',config:{
-            enabled:true, confidenceFloor:v.confidenceFloor, minEvaluationSamples:30,
-            predictive:v
-        }},'*');
+        pt4BroadcastConfig(v);
     }
     function initPredictiveUI() {
         var ids=['pt4-source','pt4-horizon','pt4-model','pt4-confidence','pt4-auto-trade','pt4-account','pt4-stake','pt4-max-trades','pt4-asset'];
@@ -3563,12 +3570,12 @@
         pt4Predictive.config=c;
         try { chrome.storage.local.set({pt4PredictiveConfig:c},function(){
             var storageError=chrome.runtime.lastError;
-            window.postMessage({type:'PT4_PREDICTIVE_CONFIG',config:{enabled:true,confidenceFloor:c.confidenceFloor,minEvaluationSamples:30,predictive:c}},'*');
+            pt4BroadcastConfig(c);
             document.getElementById('pt4-signal-status').textContent=c.autoTrade?'Автоторговля включена в настройках':'Автоторговля выключена';
             if(storageError)appendLog('Predictive: настройки применены, но не сохранены — '+storageError.message);
             else appendLog('Predictive: настройки сохранены.');
         }); } catch(error) {
-            window.postMessage({type:'PT4_PREDICTIVE_CONFIG',config:{enabled:true,confidenceFloor:c.confidenceFloor,minEvaluationSamples:30,predictive:c}},'*');
+            pt4BroadcastConfig(c);
             appendLog('Predictive: настройки применены только до перезагрузки — '+(error&&error.message||'storage'));
         }
     }
@@ -3576,7 +3583,7 @@
         if(pt4Predictive.restored)return;
         pt4Predictive.restored=true;
         try { chrome.storage.local.get(['pt4PredictiveState','pt4PredictiveConfig'],function(data){
-            if(data&&data.pt4PredictiveState)window.postMessage({type:'PT4_PREDICTIVE_RESTORE',state:data.pt4PredictiveState},'*');
+            if(data&&data.pt4PredictiveState)pt4BroadcastRestore(data.pt4PredictiveState);
             if(data&&data.pt4PredictiveConfig)pt4ApplyConfig(data.pt4PredictiveConfig);
         }); } catch(_) {}
     }
@@ -3817,7 +3824,7 @@
     } else {
         window.addEventListener('message', function(e) {
             var msgType = e.data && e.data.type;
-            if (msgType === 'POROBOT_LOG' || msgType === 'POROBOT_STATS' || msgType === 'POROBOT_TRADE' || msgType === 'POROBOT_SIGNAL' || msgType === 'POROBOT_TRADE_RESULT' || msgType === 'POROBOT_MULTI_SIGNAL' || msgType === 'POROBOT_MULTI_TRADE_OPEN' || msgType === 'POROBOT_MULTI_TRADE_RESULT' || msgType === 'POROBOT_ASSET' || msgType === 'POROBOT_SCAN' || msgType === 'POROBOT_BALANCE' || msgType === 'POROBOT_AUTO_STOP') {
+            if (msgType === 'POROBOT_LOG' || msgType === 'POROBOT_STATS' || msgType === 'POROBOT_TRADE' || msgType === 'POROBOT_SIGNAL' || msgType === 'POROBOT_TRADE_RESULT' || msgType === 'POROBOT_MULTI_SIGNAL' || msgType === 'POROBOT_MULTI_TRADE_OPEN' || msgType === 'POROBOT_MULTI_TRADE_RESULT' || msgType === 'POROBOT_ASSET' || msgType === 'POROBOT_SCAN' || msgType === 'POROBOT_BALANCE' || msgType === 'POROBOT_AUTO_STOP' || msgType === 'POROBOT_PREDICTIVE_UPDATE' || msgType === 'POROBOT_PREDICTIVE_EVENT' || msgType === 'POROBOT_PREDICTIVE_WARMUP' || msgType === 'POROBOT_PREDICTIVE_ASSETS' || msgType === 'POROBOT_PREDICTIVE_FILTER' || msgType === 'POROBOT_PREDICTIVE_INDICATOR' || msgType === 'POROBOT_PREDICTIVE_SIGNAL' || msgType === 'POROBOT_PREDICTIVE_TRADE_REQUEST' || msgType === 'PT4_PREDICTIVE_READY') {
                 try { window.top.postMessage(e.data, '*'); } catch(_) {}
             }
         });
@@ -3831,6 +3838,14 @@
             }
             // Windows-приложение выключило бота (bridge/bridge-client.js): останавливаем
             // автоторговлю и убираем оверлей. На pocketoption.com не приходит — там статические скрипты.
+            if (request.type === 'PT4_PREDICTIVE_CONFIG_BROADCAST') {
+                if (request.config) window.postMessage({ type:'PT4_PREDICTIVE_CONFIG', config:request.config }, '*');
+                return;
+            }
+            if (request.type === 'PT4_PREDICTIVE_RESTORE_BROADCAST') {
+                if (request.state) window.postMessage({ type:'PT4_PREDICTIVE_RESTORE', state:request.state }, '*');
+                return;
+            }
             if (request.type === 'POS_BRIDGE_OFF') {
                 relayCoreCmd({ cmd: 'STOP' });
                 var bridgePanel = IS_TOP && document.getElementById('pos-panel');
