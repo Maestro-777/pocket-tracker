@@ -3871,7 +3871,7 @@
         _refreshMultiPairs(force, predictiveOnly) {
             predictiveOnly = predictiveOnly === true;
             if (predictiveOnly) {
-                if (!this.predictiveConfig || !this.predictiveConfig.enabled || this.predictiveConfig.assetMode === 'current') return;
+                if (!isPrimarySignalFrame() || !this.predictiveConfig || !this.predictiveConfig.enabled || this.predictiveConfig.assetMode === 'current') return;
                 const now = Date.now();
                 if (!force && this._predictiveLastRefreshAt && now - this._predictiveLastRefreshAt < 10000) return;
                 this._predictiveLastRefreshAt = now;
@@ -3988,7 +3988,7 @@
 
         onPredictiveForecast(forecast) {
             const cfg = this.predictiveConfig;
-            if (!cfg || !cfg.enabled || cfg.sourceMode === 'indicators' || !forecast || !/_OTC$/i.test(forecast.asset || '')) return;
+            if (!isPrimarySignalFrame() || !cfg || !cfg.enabled || cfg.sourceMode === 'indicators' || !forecast || !/_OTC$/i.test(forecast.asset || '')) return;
             const asset = normalizeAssetName(forecast.asset);
             if (cfg.selectedAsset && cfg.selectedAsset !== '*' && normalizeAssetName(cfg.selectedAsset) !== asset) return;
             if (cfg.assetMode === 'current') {
