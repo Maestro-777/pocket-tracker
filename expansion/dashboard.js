@@ -4159,7 +4159,11 @@ function runLocalStrategyTester(payload = {}, catalog = []) {
         const record = history[`${asset}|${period}`] || {};
         const candles = (Array.isArray(record.candles) ? record.candles : [])
           .map((c) => ({ time: Number(c.time), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) }))
-          .filter((c) => Number.isFinite(c.time) && [c.open,c.high,c.low,c.close].every(Number.isFinite) && c.high >= c.low)
+          .filter((c) => Number.isFinite(c.time)
+            && [c.open,c.high,c.low,c.close].every(Number.isFinite)
+            && c.high >= c.low
+            && c.high >= Math.max(c.open, c.close)
+            && c.low <= Math.min(c.open, c.close))
           .sort((a,b) => a.time-b.time)
           .filter((c,i,a) => i === 0 || c.time !== a[i-1].time);
         if (candles.length < Math.max(emaPeriod + count + 2, 20)) { skipped += expirations.length; continue; }
