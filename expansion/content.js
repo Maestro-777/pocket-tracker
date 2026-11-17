@@ -7702,10 +7702,15 @@
         const cachedCandles = Array.isArray(cached?.records?.[asset]?.historyItems)
           ? cached.records[asset].historyItems
           : [];
+        const currentCandleTime = finiteNumber(snap.currentCandle?.time);
         const mergedByTime = new Map();
         for (const raw of [...cachedCandles, ...candles, ...recent]) {
           if (!raw || raw.time == null) continue;
-          mergedByTime.set(Number(raw.time), raw);
+          const candleTime = Number(raw.time);
+          // recentCandles may include the still-forming candle. Backtests must
+          // never treat that candle as closed or use its partial OHLC as a signal.
+          if (currentCandleTime != null && candleTime >= currentCandleTime) continue;
+          mergedByTime.set(candleTime, raw);
         }
         const normalized = [...mergedByTime.values()]
           .map((candle) => ({
@@ -7717,7 +7722,11 @@
             volume: Number(candle.volume || 0),
             ticks: Number(candle.ticks || 0)
           }))
-          .filter((candle) => candle.time && [candle.open, candle.high, candle.low, candle.close].every(Number.isFinite))
+          .filter((candle) => candle.time
+            && [candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)
+            && candle.high >= candle.low
+            && candle.high >= Math.max(candle.open, candle.close)
+            && candle.low <= Math.min(candle.open, candle.close))
           .sort((a, b) => a.time - b.time)
           .slice(-historyOffset);
         records[`${asset}|${period}`] = {
