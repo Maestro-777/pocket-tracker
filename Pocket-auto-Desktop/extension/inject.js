@@ -3817,6 +3817,156 @@
             });
         }
 
+        _diagnosticSnapshot(scanAsset, ctx, sig) {
+            const config = this.config || {};
+            const profile = (ctx && ctx.profile) || getAnalysisProfile(
+                parseInt(config.expiration, 10) || 60,
+                this._analysisTimeframeSeconds()
+            );
+            const indicators = this._indicatorList();
+            const params = {};
+
+            indicators.forEach((rawId) => {
+                const id = String(rawId || '').toUpperCase();
+                switch (id) {
+                    case 'RSI':
+                        params[id] = {
+                            period: this._getParam(id, 'period', 14, profile.rsiPeriod),
+                            oversold: this._getParam(id, 'oversold', 30),
+                            overbought: this._getParam(id, 'overbought', 70)
+                        };
+                        break;
+                    case 'SMA':
+                        params[id] = {
+                            fast: this._getParam(id, 'fast', 5, profile.smaFast),
+                            slow: this._getParam(id, 'slow', 14, profile.smaSlow)
+                        };
+                        break;
+                    case 'EMA':
+                        params[id] = {
+                            fast: this._getParam(id, 'fast', 5, profile.emaFast),
+                            slow: this._getParam(id, 'slow', 21, profile.emaSlow)
+                        };
+                        break;
+                    case 'BB':
+                        params[id] = {
+                            period: this._getParam(id, 'period', 20, profile.bbPeriod),
+                            dev: this._getParam(id, 'dev', 2)
+                        };
+                        break;
+                    case 'MACD':
+                        params[id] = {
+                            fast: this._getParam(id, 'fast', 12, profile.macdFast),
+                            slow: this._getParam(id, 'slow', 26, profile.macdSlow),
+                            signal: this._getParam(id, 'signal', 9, profile.macdSig)
+                        };
+                        break;
+                    case 'STOCH':
+                        params[id] = {
+                            kPeriod: this._getParam(id, 'kPeriod', 14, profile.stochK),
+                            dPeriod: this._getParam(id, 'dPeriod', 3, profile.stochD),
+                            oversold: this._getParam(id, 'oversold', 20),
+                            overbought: this._getParam(id, 'overbought', 80)
+                        };
+                        break;
+                    case 'CCI':
+                        params[id] = {
+                            period: this._getParam(id, 'period', 20, profile.cciPeriod),
+                            level: this._getParam(id, 'level', 100)
+                        };
+                        break;
+                    case 'TREND':
+                        params[id] = { period: this._getParam(id, 'period', 5, profile.trendPeriod) };
+                        break;
+                    case 'PSAR':
+                        params[id] = {
+                            fastEma: this._getParam(id, 'fastEma', 3, profile.emaFast),
+                            slowEma: this._getParam(id, 'slowEma', 10, profile.emaSlow),
+                            rsiPeriod: profile.rsiPeriod
+                        };
+                        break;
+                    case 'SENTIMENT':
+                        params[id] = { threshold: this._getParam(id, 'threshold', 60) };
+                        break;
+                }
+            });
+
+            const htf = ctx && ctx.htf ? {
+                ready: !!ctx.htf.ready,
+                direction: ctx.htf.direction || 'NEUTRAL',
+                seconds: ctx.htf.sec || null
+            } : null;
+
+            return {
+                timestamp: Date.now(),
+                asset: scanAsset || null,
+                config: {
+                    indicators: indicators.slice(),
+                    filterMode: String(config.filterMode || 'ALL').toUpperCase(),
+                    confirmMode: getConfirmMode(config),
+                    triggerPolicy: config.triggerPolicy || 'auto',
+                    expirationSeconds: parseInt(config.expiration, 10) || 60,
+                    analysisTimeframeSeconds: this._analysisTimeframeSeconds(),
+                    htfFilter: !!config.htfFilter,
+                    multiPairTrading: !!config.multiPairTrading,
+                    minProfit: config.minProfit != null ? config.minProfit : null,
+                    includeOtc: config.includeOtc !== false,
+                    maxConcurrentTrades: config.maxConcurrentTrades != null ? config.maxConcurrentTrades : null,
+                    autoTrade: !!config.autoTrade,
+                    moneyManagement: config.moneyManagement || 'fixed',
+                    baseBet: parseFloat(config.baseBet) || 1,
+                    indConfig: JSON.parse(JSON.stringify(config.indConfig || {}))
+                },
+                effectiveIndicatorParams: params,
+                profile: {
+                    expirationSeconds: profile.exp,
+                    candleSeconds: profile.candleSec,
+                    minimumCandles: profile.minCandles,
+                    rsiPeriod: profile.rsiPeriod,
+                    smaFast: profile.smaFast,
+                    smaSlow: profile.smaSlow,
+                    emaFast: profile.emaFast,
+                    emaSlow: profile.emaSlow,
+                    bollingerPeriod: profile.bbPeriod,
+                    macdFast: profile.macdFast,
+                    macdSlow: profile.macdSlow,
+                    macdSignal: profile.macdSig,
+                    stochasticK: profile.stochK,
+                    stochasticD: profile.stochD,
+                    cciPeriod: profile.cciPeriod,
+                    trendPeriod: profile.trendPeriod
+                },
+                context: {
+                    ready: !!(ctx && ctx.ready),
+                    candleCount: ctx ? ctx.candleCount : 0,
+                    tickCount: ctx ? ctx.tickCount : 0,
+                    minimumCandles: ctx ? ctx.minRequired : profile.minCandles,
+                    candleSeconds: ctx ? ctx.candleSec : profile.candleSec,
+                    htf
+                },
+                decision: sig ? {
+                    direction: sig.direction || 'NEUTRAL',
+                    matchedCount: sig.matchedCount || 0,
+                    totalCount: sig.totalCount || indicators.length,
+                    matchedIndicators: sig.matchedIndicators || '',
+                    indicators: sig.indicators || [],
+                    filterMode: sig.filterMode || String(config.filterMode || 'ALL').toUpperCase(),
+                    confirmMode: sig.confirmMode || null,
+                    rejectReason: sig.rejectReason || null,
+                    multiSignals: sig.multiSignals || []
+                } : null,
+                recentClosedCandles: ctx && Array.isArray(ctx.candles)
+                    ? ctx.candles.slice(-3).map(candle => ({
+                        timestamp: candle.ts,
+                        open: candle.open,
+                        high: candle.high,
+                        low: candle.low,
+                        close: candle.close
+                    }))
+                    : []
+            };
+        }
+
         _buildScanState(scanAsset, ctx) {
             const list=this._indicatorList();
             const mode=(this.config?.filterMode||'ALL').toUpperCase();
@@ -4004,9 +4154,13 @@
                 tickPairs++;
 
                 const ctx = this._getAnalysisContext(asset);
-                if (!ctx || !ctx.ready || !ctx.candles || !ctx.candles.length) continue;
-                readyPairs++;
+                if (!ctx || !ctx.candles) continue;
                 const sig = this._buildScanState(asset, ctx);
+                this._post('POROBOT_DIAG_SCAN', {
+                    scan: this._diagnosticSnapshot(asset, ctx, sig)
+                });
+                if (!ctx.ready || !ctx.candles.length) continue;
+                readyPairs++;
                 if (!sig || (sig.direction !== 'UP' && sig.direction !== 'DOWN')) continue;
                 signalCount++;
                 const barTs = ctx.candles[ctx.candles.length - 1].ts || 0;
@@ -4019,7 +4173,8 @@
                     amount: amount,
                     indicators: sig.matchedIndicators || '',
                     expiration: expSec,
-                    timestamp: now
+                    timestamp: now,
+                    diagnostics: this._diagnosticSnapshot(asset, ctx, sig)
                 };
                 this._multiLastEntryBar[asset] = barTs;
                 this._post('POROBOT_MULTI_SIGNAL', { signal: signal });
@@ -4275,7 +4430,8 @@
                 tickCount: ctx.tickCount,
                 minRequired: ctx.minRequired,
                 candleSec: ctx.candleSec,
-                ready: ctx.ready || onlySentiment
+                ready: ctx.ready || onlySentiment,
+                diagnostics: this._diagnosticSnapshot(scanAsset, ctx, sig)
             }});
             if(!ctx.ready && !onlySentiment) {
                 this._maybeRequestHistory(false);
@@ -4306,7 +4462,8 @@
                 direction:sig.direction,
                 amount:parseFloat(bet||1), indicator:sig.matchedIndicators,
                 matchedCount:sig.matchedCount, totalCount:sig.totalCount,
-                expiration: expiration, ts:Date.now()
+                expiration: expiration, ts:Date.now(),
+                diagnostics: this._diagnosticSnapshot(scanAsset, ctx, sig)
             }});
             this.log(`📡 СИГНАЛ [${displayAsset}] ${sig.direction==='UP'?'▲ ВВЕРХ':'▼ ВНИЗ'} | ${sig.matchedCount}/${sig.totalCount} ${sig.filterMode || ''} | ${sig.matchedIndicators} | $${bet}${sig.confirmMode ? ' | ' + sig.confirmMode : ''}`);
             if (this.config?.autoTrade && frameHasTradeUI()) {
@@ -4385,7 +4542,8 @@
                 totalCount: sig.totalCount,
                 expiration: expiration,
                 multiTrade: true,
-                ts: now
+                ts: now,
+                diagnostics: this._diagnosticSnapshot(scanAsset, ctx, sig)
             }});
 
             this.log('📡 ЛЮБОЙ [' + displayAsset + '] ' + fresh.length + ' сделок | ' + label + ' | $' + bet + ' каждая');
