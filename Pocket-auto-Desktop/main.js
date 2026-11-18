@@ -56,6 +56,7 @@ let lastRecoveryAt = 0;
 let lastRecoveryWarningAt = 0;
 let recoveryAttempts = 0;
 const persistedTelemetryIds = new Set();
+let telemetryCursor = { sessionId: null, signals: 0, trades: 0 };
 
 // Set before app readiness so Chromium receives the background scheduling switch.
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -132,17 +133,53 @@ function persistTelemetryEvents(telemetry) {
 async function flushPageTelemetry() {
   if (!siteWindow || siteWindow.isDestroyed()) return;
   try {
+    const cursor = JSON.stringify(telemetryCursor);
     const telemetry = await siteWindow.webContents.executeJavaScript(`(() => {
       const probe = window.__PT_DESKTOP_BG_PROBE__;
       const value = probe && probe.telemetry;
-      return value ? {
+      const cursor = ${cursor};
+      if (!value) return null;
+      const sameSession = cursor.sessionId === value.sessionId;
+      const signalAfter = sameSession ? cursor.signals : 0;
+      const tradeAfter = sameSession ? cursor.trades : 0;
+      return {
         sessionId: value.sessionId,
-        signals: value.signals || [],
-        trades: value.trades || []
-      } : null;
+        signals: (value.signals || []).filter(item => (item.sequence || 0) > signalAfter),
+        trades: (value.trades || []).filter(item => (item.sequence || 0) > tradeAfter)
+      };
     })()`, true);
+    if (!telemetry) return;
+    if (telemetryCursor.sessionId !== telemetry.sessionId) {
+      telemetryCursor = { sessionId: telemetry.sessionId, signals: 0, trades: 0 };
+    }
+    for (const event of telemetry.signals || []) {
+      telemetryCursor.signals = Math.max(telemetryCursor.signals, Number(event.sequence) || 0);
+    }
+    for (const event of telemetry.trades || []) {
+      telemetryCursor.trades = Math.max(telemetryCursor.trades, Number(event.sequence) || 0);
+    }
     persistTelemetryEvents(telemetry);
   } catch (_) {}
+}
+
+async function readPageScanSnapshot() {
+  if (!siteWindow || siteWindow.isDestroyed()) return null;
+  try {
+    return await siteWindow.webContents.executeJavaScript(`(() => {
+      const probe = window.__PT_DESKTOP_BG_PROBE__;
+      const value = probe && probe.telemetry;
+      if (!value) return null;
+      return {
+        sessionId: value.sessionId,
+        scanCount: value.scanCount || 0,
+        lastScanAt: value.lastScanAt || 0,
+        lastScan: value.lastScan || null,
+        perAssetLastScan: value.perAssetLastScan || {}
+      };
+    })()`, true);
+  } catch (_) {
+    return null;
+  }
 }
 
 function buildHealthSummary(status, reason, elapsedMs, tickDelta, scanDelta) {
@@ -261,7 +298,8 @@ async function runAutoHealthCheck(reason) {
       engineAsset: summary.engineAsset,
       latestScan: summary.latestScan,
       analysis: summary.analysis,
-      config: summary.config
+      config: summary.config,
+      perAssetLastScan: (await readPageScanSnapshot())?.perAssetLastScan || {}
     });
 
     writeLog('АВТОПРОВЕРКА ' + summary.status +
@@ -608,7 +646,7 @@ async function readPageProbe() {
           scanCount: Number(probe.telemetry.scanCount) || 0,
           lastScanAt: Number(probe.telemetry.lastScanAt) || 0,
           lastScan: probe.telemetry.lastScan || null,
-          perAssetLastScan: probe.telemetry.perAssetLastScan || {},
+          perAssetScanCount: Object.keys(probe.telemetry.perAssetLastScan || {}).length,
           signalCount: Number(probe.telemetry.signalSequence) || 0,
           tradeCount: Number(probe.telemetry.tradeSequence) || 0
         } : null
