@@ -6,6 +6,10 @@
 
 - Electron-приложение с отдельной панелью состояния.
 - Постоянный профиль Chromium: авторизация Pocket Option сохраняется между запусками.
+- Точные URL счетов: DEMO `/ru/cabinet/demo-quick-high-low/`, REAL `/ru/cabinet/quick-high-low/RUB/`.
+- Переключение DEMO/REAL из панели; переход на REAL требует отдельного подтверждения.
+- Обычный Chrome User-Agent без явного маркера Electron.
+- Диагностика `did-fail-load`, перенаправлений, ошибок консоли и текущего URL.
 - Загрузка локальной копии расширения при каждом старте приложения.
 - Исходные `inject.js`, `content.js`, `account-mode.js` и CSS берутся из Pocket-auto 4.0.
 - Поддержка DEMO/REAL-детектора и исходного торгового ядра.
