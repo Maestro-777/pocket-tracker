@@ -53,6 +53,52 @@ function renderStatus(status) {
     setText('timerInfo', 'Ожидание контрольного скрипта');
   }
 
+  const core = page.probe && page.probe.core ? page.probe.core : {};
+  const telemetry = page.probe && page.probe.telemetry ? page.probe.telemetry : {};
+  const health = status.health || null;
+  const healthPill = byId('autoHealthState');
+  if (health) {
+    healthPill.textContent = health.status || 'Проверено';
+    healthPill.className = 'pill ' + (health.level || 'neutral');
+    setText('healthTime', new Date(health.at).toLocaleString());
+    setText('healthTimer', health.tickDelta == null
+      ? 'Базовая проверка · таймер ' + (health.timerOk ? 'работает' : 'не отвечает')
+      : 'Тиков за интервал: ' + health.tickDelta + ' · задержка ' + (health.timerAgeMs == null ? '—' : health.timerAgeMs + ' мс'));
+  } else {
+    healthPill.textContent = 'Ожидание проверки';
+    healthPill.className = 'pill neutral';
+    setText('healthTime', 'Ожидание');
+    setText('healthTimer', 'Первая проверка через 20 секунд после запуска');
+  }
+
+  const transportOk = !!page.webSocketOpen || !!(page.probe && page.probe.webSocketOpen) ||
+    (core.quoteAgeMs != null && core.quoteAgeMs <= 30000);
+  setText('healthSocket', transportOk ? 'Подключение есть' : (page.online === false ? 'Нет сети' : 'Нет связи'));
+  setText('healthQuoteAge', core.quoteAgeMs == null
+    ? 'Котировки ещё не получены'
+    : 'Последняя котировка: ' + (core.quoteAgeMs < 1000 ? core.quoteAgeMs + ' мс' : Math.round(core.quoteAgeMs / 1000) + ' сек. назад'));
+
+  setText('healthEngine', !core.loaded ? 'Не обнаружено'
+    : core.running ? 'Сканер активен' : 'Ядро загружено, сканер выключен');
+  setText('healthAsset', core.asset ? 'Актив: ' + core.asset : 'Актив не определён');
+
+  setText('healthScans', telemetry.scanCount || 0);
+  setText('healthScanDelta', health && health.scanDelta != null
+    ? 'Сканов за интервал: +' + health.scanDelta
+    : 'Сканов за интервал: собирается база');
+  setText('healthSignals', (telemetry.signalCount || 0) + ' / ' + (telemetry.tradeCount || 0));
+  setText('profileState', status.site && status.site.profilePath ? 'Профиль сохранён' : 'Постоянная сессия');
+  setText('statsPath', status.statsDirectory ? 'Файлы статистики: ' + status.statsDirectory : 'Папка статистики будет показана после запуска');
+
+  const warnings = health
+    ? (health.critical || []).concat(health.warnings || [])
+    : [];
+  const warningBox = byId('healthWarnings');
+  warningBox.textContent = warnings.length
+    ? warnings.join(' · ')
+    : health ? 'Ошибок автоматической проверки не обнаружено.' : 'Первая автоматическая проверка ещё не выполнена.';
+  warningBox.className = 'health-warnings ' + (health && health.level ? health.level : 'neutral');
+
   const throttleText = site.backgroundThrottling === false ? 'throttling выключен' : 'throttling включён/неизвестен';
   setText('visibilityState', (site.visible ? 'Окно видно' : 'Окно скрыто') +
     ' · visibility: ' + (page.visibilityState || '—') + ' · ' + throttleText);
@@ -101,6 +147,18 @@ byId('openReal').addEventListener('click', async () => {
   setText('siteLoadInfo', 'Открываю REAL-счёт...');
   const result = await window.ptApp.openAccount('REAL');
   if (!result.ok) setText('siteLoadInfo', 'Не удалось открыть REAL: ' + result.reason);
+});
+byId('openStatsFolder').addEventListener('click', async () => {
+  const result = await window.ptApp.openStatsFolder();
+  if (!result.ok) setTestResult('Не удалось открыть статистику: ' + (result.error || 'ошибка'), 'bad');
+});
+byId('restartApp').addEventListener('click', async () => {
+  const confirmed = window.confirm(
+    'Перезапустить Electron? Торговый анализатор будет остановлен, постоянный профиль авторизации сохранится.'
+  );
+  if (!confirmed) return;
+  const result = await window.ptApp.restartApp();
+  if (!result.ok) setTestResult('Перезапуск запрещён: ' + (result.reason || 'ошибка'), 'bad');
 });
 byId('showSite').addEventListener('click', () => window.ptApp.showSite());
 byId('hideSite').addEventListener('click', () => window.ptApp.hideSite());
