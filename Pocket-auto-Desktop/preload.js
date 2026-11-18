@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('ptApp', {
   getStatus: () => ipcRenderer.invoke('app:get-status'),
   showSite: () => ipcRenderer.invoke('app:show-site'),
+  openAccount: mode => ipcRenderer.invoke('app:open-account', mode),
   hideSite: () => ipcRenderer.invoke('app:hide-site'),
   reloadSite: () => ipcRenderer.invoke('app:reload-site'),
   runBackgroundTest: () => ipcRenderer.invoke('app:background-test'),
