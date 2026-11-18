@@ -9,7 +9,14 @@ const {
   session
 } = require('electron');
 
-const START_URL = 'https://pocketoption.com/ru/cabinet/demo-quick-high-low/';
+const ACCOUNT_URLS = {
+  DEMO: 'https://pocketoption.com/ru/cabinet/demo-quick-high-low/',
+  REAL: 'https://pocketoption.com/ru/cabinet/quick-high-low/RUB/'
+};
+const DEFAULT_ACCOUNT = 'DEMO';
+const START_URL = ACCOUNT_URLS[DEFAULT_ACCOUNT];
+const CHROME_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/' +
+  process.versions.chrome + ' Safari/537.36';
 const PARTITION = 'persist:pocket-tracker-desktop';
 const EXTENSION_DIR = path.join(__dirname, 'extension');
 
@@ -21,6 +28,8 @@ let appQuitting = false;
 let statusTimer = null;
 let statusBusy = false;
 let backgroundTestRunning = false;
+let selectedAccount = DEFAULT_ACCOUNT;
+let lastLoadError = null;
 let logFile = null;
 
 // Set before app readiness so Chromium receives the background scheduling switch.
@@ -72,6 +81,9 @@ async function boot() {
   createDashboardWindow();
 
   const poSession = session.fromPartition(PARTITION);
+  // Use a regular Chromium UA rather than exposing Electron in the HTTP User-Agent.
+  poSession.setUserAgent(CHROME_USER_AGENT, 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7');
+  writeLog('Chromium: ' + process.versions.chrome + '; User-Agent Electron скрыт.');
   try {
     extensionInfo = await poSession.extensions.loadExtension(EXTENSION_DIR);
     writeLog('Расширение загружено: ' + extensionInfo.name + ' (' + extensionInfo.id + ')');
@@ -157,15 +169,45 @@ function createSiteWindow(poSession) {
     return { action: 'deny' };
   });
 
+  siteWindow.webContents.on('did-start-navigation', (_event, url, _inPlace, isMainFrame) => {
+    if (isMainFrame) {
+      lastLoadError = null;
+      writeLog('Начата навигация Pocket Option: ' + url);
+      void publishStatus();
+    }
+  });
+
+  siteWindow.webContents.on('did-redirect-navigation', (_event, url, _inPlace, isMainFrame) => {
+    if (isMainFrame) writeLog('Перенаправление Pocket Option: ' + url);
+  });
+
+  siteWindow.webContents.on('dom-ready', () => {
+    writeLog('Pocket Option: DOM готов — ' + siteWindow.webContents.getURL());
+    void publishStatus();
+  });
+
+  siteWindow.webContents.on('did-navigate', (_event, url) => {
+    lastLoadError = null;
+    writeLog('Pocket Option: переход завершён — ' + url);
+    void publishStatus();
+  });
+
   siteWindow.webContents.on('did-finish-load', () => {
+    lastLoadError = null;
     writeLog('Pocket Option: страница загружена — ' + siteWindow.webContents.getURL());
     void publishStatus();
   });
 
   siteWindow.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
-    if (isMainFrame) {
-      writeLog('Ошибка загрузки сайта (' + code + '): ' + description + ' — ' + url);
-    }
+    lastLoadError = {
+      code,
+      description,
+      url,
+      isMainFrame: !!isMainFrame,
+      at: new Date().toISOString()
+    };
+    writeLog('Ошибка загрузки сайта (' + code + ', ' +
+      (isMainFrame ? 'главный фрейм' : 'вложенный фрейм') + '): ' + description + ' — ' + url);
     void publishStatus();
   });
 
@@ -176,8 +218,9 @@ function createSiteWindow(poSession) {
 
   siteWindow.webContents.on('console-message', (_event, details) => {
     const message = typeof details === 'string' ? details : details && details.message;
-    if (message && /PocketOption Signal|Pocket Tracker Desktop/i.test(message)) {
-      writeLog('[PAGE] ' + message);
+    const level = details && typeof details.level === 'number' ? details.level : 0;
+    if (message && (level >= 2 || /PocketOption Signal|Pocket Tracker Desktop/i.test(message))) {
+      writeLog('[PAGE ' + level + '] ' + message);
     }
   });
 
@@ -258,6 +301,8 @@ async function getStatus() {
       visible: siteAlive ? siteWindow.isVisible() : false,
       minimized: siteAlive ? siteWindow.isMinimized() : false,
       backgroundThrottling: siteAlive ? siteWindow.webContents.getBackgroundThrottling() : null,
+      selectedAccount,
+      lastLoadError,
       page: page
     },
     backgroundTestRunning: backgroundTestRunning
@@ -284,6 +329,36 @@ ipcMain.handle('app:show-site', () => {
   siteWindow.show();
   siteWindow.focus();
   return { ok: true };
+});
+
+ipcMain.handle('app:open-account', async (_event, accountMode) => {
+  const mode = String(accountMode || '').toUpperCase();
+  const url = ACCOUNT_URLS[mode];
+  if (!url) return { ok: false, reason: 'Неизвестный тип счёта.' };
+  if (!siteWindow || siteWindow.isDestroyed()) {
+    return { ok: false, reason: 'Окно Pocket Option не запущено.' };
+  }
+
+  selectedAccount = mode;
+  lastLoadError = null;
+  writeLog('Запрошено открытие ' + mode + '-счёта: ' + url);
+  siteWindow.show();
+  siteWindow.focus();
+  try {
+    await siteWindow.loadURL(url);
+    return { ok: true, mode, url };
+  } catch (error) {
+    lastLoadError = {
+      code: 'LOAD_URL_REJECTED',
+      description: String(error),
+      url,
+      isMainFrame: true,
+      at: new Date().toISOString()
+    };
+    writeLog('Не удалось открыть ' + mode + '-счёт: ' + String(error));
+    void publishStatus();
+    return { ok: false, reason: String(error) };
+  }
 });
 
 ipcMain.handle('app:hide-site', () => {
