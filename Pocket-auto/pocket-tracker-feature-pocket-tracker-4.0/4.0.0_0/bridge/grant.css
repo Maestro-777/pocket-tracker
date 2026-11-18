@@ -1,0 +1,149 @@
+/* PocketOption Signal — страница запроса доступа ко всем сайтам (bridge/grant.html).
+   Палитра и тон — единые с css/bot-ui.css (q-bg, q-gold и т.д.), адаптировано под
+   отдельную страницу расширения (без #pos-panel-скоупа). */
+:root {
+  --g-bg: #09090b;
+  --g-surface: rgba(255, 255, 255, 0.04);
+  --g-border: rgba(255, 255, 255, 0.08);
+  --g-border-strong: rgba(255, 255, 255, 0.14);
+  --g-text: #fafafa;
+  --g-muted: #a1a1aa;
+  --g-dim: #71717a;
+  --g-gold: #d4af37;
+  --g-gold-light: #f5e6a8;
+  --g-gold-soft: rgba(212, 175, 55, 0.14);
+  --g-gold-glow: rgba(212, 175, 55, 0.35);
+  --g-up: #34d399;
+  --g-up-soft: rgba(52, 211, 153, 0.12);
+  --g-down: #f87171;
+  --g-radius: 18px;
+  --g-radius-sm: 12px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background:
+    radial-gradient(120% 70% at 100% 0%, rgba(212, 175, 55, 0.10), transparent 55%),
+    linear-gradient(180deg, #111113 0%, var(--g-bg) 100%);
+  color: var(--g-text);
+  font: 15px/1.55 'Segoe UI', Inter, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  padding: clamp(24px, 6vw, 36px);
+  border-radius: var(--g-radius);
+  background: var(--g-surface);
+  border: 1px solid var(--g-border);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  text-align: center;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.card img {
+  display: block;
+  margin: 0 auto 16px;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  box-shadow: 0 10px 28px var(--g-gold-glow);
+}
+
+h1 {
+  margin: 0 0 10px;
+  font-size: clamp(18px, 4vw, 21px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--g-text);
+}
+
+p {
+  margin: 0 0 20px;
+  color: var(--g-muted);
+  font-size: 13.5px;
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 220px;
+  min-height: 44px;
+  margin: 0 auto;
+  padding: 13px 28px;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  font: 700 14.5px/1 inherit;
+  letter-spacing: 0.01em;
+  color: #111;
+  background: linear-gradient(180deg, var(--g-gold-light) 0%, var(--g-gold) 48%, #b8941f 100%);
+  box-shadow: 0 10px 28px var(--g-gold-glow), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
+}
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px var(--g-gold-glow);
+}
+button:active {
+  transform: translateY(0);
+  filter: brightness(0.96);
+}
+button:focus-visible {
+  outline: 2px solid var(--g-gold-light);
+  outline-offset: 3px;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+  box-shadow: none;
+  transform: none;
+}
+button[hidden] { display: none; }
+
+/* grant.js пишет статус как обычный текст, без класса успеха/ошибки — цвет нейтральный.
+   Если понадобится явно красить успех/отказ, дайте grant.js добавлять классы
+   .is-ok / .is-err на #status, здесь они уже готовы. */
+.status {
+  min-height: 1.4em;
+  margin-top: 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--g-muted);
+}
+.status:empty { margin-top: 0; }
+.status.is-ok { color: var(--g-up); }
+.status.is-err { color: var(--g-down); }
+
+@media (prefers-reduced-motion: reduce) {
+  button { transition: none; }
+}
+
+/* на случай переполнения на очень узких окнах — единый вид скроллбара, как в css/bot-ui.css */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(212, 175, 55, 0.4) rgba(255, 255, 255, 0.04);
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.04); }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.35), rgba(232, 201, 106, 0.55));
+  border-radius: 999px;
+  border: 1px solid rgba(212, 175, 55, 0.15);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.55), rgba(232, 201, 106, 0.75));
+}
