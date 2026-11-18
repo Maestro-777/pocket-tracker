@@ -6,7 +6,8 @@ const {
   app,
   BrowserWindow,
   ipcMain,
-  session
+  session,
+  shell
 } = require('electron');
 
 const ACCOUNT_URLS = {
@@ -19,6 +20,13 @@ const CHROME_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit
   process.versions.chrome + ' Safari/537.36';
 const PARTITION = 'persist:pocket-tracker-desktop';
 const EXTENSION_DIR = path.join(__dirname, 'extension');
+const HEALTH_INTERVAL_MS = 5 * 60 * 1000;
+const STATUS_INTERVAL_MS = 2500;
+const TELEMETRY_FLUSH_INTERVAL_MS = 5000;
+const RECOVERY_POLL_INTERVAL_MS = 10000;
+const RECOVERY_GRACE_MS = 90000;
+const RECOVERY_COOLDOWN_MS = 5 * 60 * 1000;
+const MAX_RECOVERY_ATTEMPTS = 3;
 
 let dashboardWindow = null;
 let siteWindow = null;
@@ -31,6 +39,23 @@ let backgroundTestRunning = false;
 let selectedAccount = DEFAULT_ACCOUNT;
 let lastLoadError = null;
 let logFile = null;
+let statsDirectory = null;
+let poSession = null;
+let healthTimer = null;
+let telemetryTimer = null;
+let recoveryTimer = null;
+let lastPageSnapshot = null;
+let lastHealthSummary = null;
+let lastHealthAt = 0;
+let previousHealthProbe = null;
+let healthCheckBusy = false;
+let shutdownStarted = false;
+let socketMissingSince = 0;
+let transportHealthySince = 0;
+let lastRecoveryAt = 0;
+let lastRecoveryWarningAt = 0;
+let recoveryAttempts = 0;
+const persistedTelemetryIds = new Set();
 
 // Set before app readiness so Chromium receives the background scheduling switch.
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -73,14 +98,296 @@ function writeLog(message) {
   }
 }
 
+function appendJsonLine(kind, record) {
+  if (!statsDirectory) return;
+  const day = new Date().toISOString().slice(0, 10);
+  const file = path.join(statsDirectory, kind + '-' + day + '.jsonl');
+  try {
+    fs.appendFileSync(file, JSON.stringify(record) + '\n', 'utf8');
+  } catch (error) {
+    writeLog('Не удалось сохранить статистику ' + kind + ': ' + String(error));
+  }
+}
+
+function persistTelemetryEvents(telemetry) {
+  if (!telemetry || !telemetry.sessionId) return;
+  const events = []
+    .concat(Array.isArray(telemetry.signals) ? telemetry.signals : [])
+    .concat(Array.isArray(telemetry.trades) ? telemetry.trades : []);
+
+  for (const event of events) {
+    if (!event || !event.id || persistedTelemetryIds.has(event.id)) continue;
+    persistedTelemetryIds.add(event.id);
+    const kind = String(event.type || '').includes('TRADE') ? 'trades' : 'signals';
+    appendJsonLine(kind, event);
+  }
+
+  if (persistedTelemetryIds.size > 12000) {
+    const keep = Array.from(persistedTelemetryIds).slice(-6000);
+    persistedTelemetryIds.clear();
+    for (const id of keep) persistedTelemetryIds.add(id);
+  }
+}
+
+async function flushPageTelemetry() {
+  if (!siteWindow || siteWindow.isDestroyed()) return;
+  try {
+    const telemetry = await siteWindow.webContents.executeJavaScript(`(() => {
+      const probe = window.__PT_DESKTOP_BG_PROBE__;
+      const value = probe && probe.telemetry;
+      return value ? {
+        sessionId: value.sessionId,
+        signals: value.signals || [],
+        trades: value.trades || []
+      } : null;
+    })()`, true);
+    persistTelemetryEvents(telemetry);
+  } catch (_) {}
+}
+
+function buildHealthSummary(status, reason, elapsedMs, tickDelta, scanDelta) {
+  const site = status.site || {};
+  const page = site.page || {};
+  const probe = page.probe || {};
+  const core = probe.core || {};
+  const telemetry = probe.telemetry || {};
+  const now = Date.now();
+  const timerAgeMs = probe.lastTickAt ? now - probe.lastTickAt : null;
+  const quoteAgeMs = core.quoteAgeMs == null ? null : core.quoteAgeMs;
+  const transportOk = !!page.webSocketOpen ||
+    !!probe.webSocketOpen ||
+    (quoteAgeMs != null && quoteAgeMs <= 30000);
+  const timerOk = !!probe.lastTickAt && timerAgeMs <= 3500 &&
+    (tickDelta == null || elapsedMs < 10000 || tickDelta >= Math.floor(elapsedMs / 1000 * 0.70));
+  const scanExpected = core.running && elapsedMs >= 10000
+    ? Math.max(1, Math.floor(elapsedMs / 1500 * 0.30))
+    : 0;
+  const scanOk = !core.running || scanDelta == null || scanDelta >= scanExpected;
+
+  const critical = [];
+  const warnings = [];
+  if (!status.extension || !status.extension.loaded) critical.push('Расширение не загружено');
+  if (!probe.lastTickAt || !timerOk) critical.push('Контрольный фоновый таймер не отвечает');
+  if (probe.online === false) warnings.push('Windows сообщает об отсутствии сети');
+  if (!transportOk) warnings.push('WebSocket не подключён или котировки устарели');
+  if (!core.loaded) critical.push('QuotexCore не обнаружен');
+  if (core.running && !scanOk) warnings.push('Сканер работает реже ожидаемого');
+  if (core.running && quoteAgeMs != null && quoteAgeMs > 30000) warnings.push('Последняя котировка старше 30 секунд');
+  if (!core.running) warnings.push('Сканер не запущен в интерфейсе; сигналы пока не анализируются');
+
+  const statusText = critical.length
+    ? 'Ошибка'
+    : warnings.length
+      ? (core.running || !warnings.every(x => x.startsWith('Сканер не запущен')) ? 'Есть замечания' : 'Ожидание сканера')
+      : 'В норме';
+  const level = critical.length ? 'bad' : warnings.length ? 'warning' : 'good';
+
+  return {
+    at: new Date(now).toISOString(),
+    reason,
+    status: statusText,
+    level,
+    elapsedMs,
+    timerOk,
+    timerAgeMs,
+    tickDelta,
+    online: probe.online !== false,
+    webSocketOpen: transportOk,
+    webSocketOpenCount: probe.webSocketOpenCount || page.webSocketCount || 0,
+    engineLoaded: !!core.loaded,
+    engineRunning: !!core.running,
+    engineAsset: core.asset || null,
+    autoTrade: !!core.autoTrade,
+    quoteAgeMs,
+    trackedAssetCount: core.trackedAssetCount || 0,
+    freshAssets: core.assetsWithFreshQuotes || [],
+    scanCount: telemetry.scanCount || 0,
+    scanDelta,
+    scanOk,
+    signalCount: telemetry.signalCount || 0,
+    tradeCount: telemetry.tradeCount || 0,
+    latestScanAt: telemetry.lastScanAt || 0,
+    latestScan: telemetry.lastScan || null,
+    analysis: core.analysis || null,
+    config: core.config || null,
+    warnings,
+    critical
+  };
+}
+
+async function runAutoHealthCheck(reason) {
+  if (healthCheckBusy || appQuitting) return;
+  healthCheckBusy = true;
+  try {
+    const status = await getStatus();
+    const page = status.site && status.site.page ? status.site.page : {};
+    const probe = page.probe || {};
+    const telemetry = probe.telemetry || {};
+    const now = Date.now();
+    const elapsedMs = lastHealthAt ? now - lastHealthAt : 0;
+    const tickDelta = previousHealthProbe && probe.ticks != null
+      ? Math.max(0, probe.ticks - previousHealthProbe.ticks)
+      : null;
+    const scanDelta = previousHealthProbe && telemetry.scanCount != null
+      ? Math.max(0, telemetry.scanCount - previousHealthProbe.scanCount)
+      : null;
+
+    const summary = buildHealthSummary(status, reason, elapsedMs, tickDelta, scanDelta);
+    lastHealthSummary = summary;
+    lastHealthAt = now;
+    previousHealthProbe = {
+      ticks: probe.ticks || 0,
+      scanCount: telemetry.scanCount || 0
+    };
+
+    appendJsonLine('health', {
+      schemaVersion: 1,
+      ...summary,
+      extension: status.extension || {},
+      site: {
+        url: page.url || null,
+        loading: !!(status.site && status.site.loading),
+        visible: !!(status.site && status.site.visible),
+        documentVisibility: page.visibilityState || null
+      }
+    });
+    appendJsonLine('scans', {
+      schemaVersion: 1,
+      at: summary.at,
+      windowMs: elapsedMs,
+      scanCount: summary.scanCount,
+      scanDelta,
+      engineRunning: summary.engineRunning,
+      engineAsset: summary.engineAsset,
+      latestScan: summary.latestScan,
+      analysis: summary.analysis,
+      config: summary.config
+    });
+
+    writeLog('АВТОПРОВЕРКА ' + summary.status +
+      ' | таймер: ' + (tickDelta == null ? 'база' : '+' + tickDelta) +
+      ' | сканирование: ' + (scanDelta == null ? 'база' : '+' + scanDelta) +
+      ' | WebSocket: ' + (summary.webSocketOpen ? 'есть' : 'нет') +
+      ' | QuotexCore: ' + (summary.engineRunning ? 'работает' : 'не запущено'));
+
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      dashboardWindow.webContents.send('app:health', summary);
+    }
+  } catch (error) {
+    writeLog('Ошибка автоматической проверки: ' + String(error));
+  } finally {
+    healthCheckBusy = false;
+    void publishStatus();
+  }
+}
+
+function monitorConnectionRecovery() {
+  if (appQuitting || !siteWindow || siteWindow.isDestroyed() || siteWindow.webContents.isLoading()) return;
+  const page = lastPageSnapshot;
+  const probe = page && page.probe;
+  if (!probe) return;
+
+  const now = Date.now();
+  const core = probe.core || {};
+  if (probe.online === false) {
+    if (!socketMissingSince) {
+      socketMissingSince = now;
+      writeLog('Сеть недоступна; автоматическое восстановление ждёт возвращения подключения.');
+    }
+    return;
+  }
+
+  const transportOk = !!page.webSocketOpen ||
+    !!probe.webSocketOpen ||
+    (core.quoteAgeMs != null && core.quoteAgeMs <= 30000);
+  if (transportOk) {
+    if (!transportHealthySince) transportHealthySince = now;
+    if (now - transportHealthySince >= 120000) {
+      socketMissingSince = 0;
+      recoveryAttempts = 0;
+      lastRecoveryAt = 0;
+    }
+    return;
+  }
+
+  transportHealthySince = 0;
+  if (!socketMissingSince) {
+    socketMissingSince = now;
+    writeLog('WebSocket/котировки не обнаружены; начато ожидание восстановления.');
+    return;
+  }
+  if (now - socketMissingSince < RECOVERY_GRACE_MS) return;
+
+  if (core.running || core.autoTrade || core.tradeBusy) {
+    if (now - lastRecoveryWarningAt > 60000) {
+      lastRecoveryWarningAt = now;
+      writeLog('ВНИМАНИЕ: соединение не восстановилось, но перезагрузка страницы пропущена — торговое ядро/автоторговля активны.');
+    }
+    return;
+  }
+  if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) return;
+  if (now - lastRecoveryAt < RECOVERY_COOLDOWN_MS) return;
+
+  recoveryAttempts += 1;
+  lastRecoveryAt = now;
+  writeLog('Автовосстановление соединения: перезагрузка страницы, попытка ' +
+    recoveryAttempts + '/' + MAX_RECOVERY_ATTEMPTS + '. Авторизация хранится в постоянном профиле.');
+  siteWindow.webContents.reload().catch(error => {
+    writeLog('Ошибка автоматической перезагрузки: ' + String(error));
+  });
+}
+
+async function gracefulShutdown() {
+  if (statusTimer) clearInterval(statusTimer);
+  if (healthTimer) clearInterval(healthTimer);
+  if (telemetryTimer) clearInterval(telemetryTimer);
+  if (recoveryTimer) clearInterval(recoveryTimer);
+
+  writeLog('Начато корректное завершение. Останавливаю анализатор и сохраняю профиль Chromium.');
+  try {
+    if (siteWindow && !siteWindow.isDestroyed()) {
+      await siteWindow.webContents.executeJavaScript(`(() => {
+        const core = window.__poCore;
+        if (core && typeof core.stop === 'function') {
+          core.stop();
+          return 'QuotexCore stopped';
+        }
+        return 'QuotexCore not running';
+      })()`, true);
+    }
+  } catch (error) {
+    writeLog('Не удалось отправить команду остановки ядру: ' + String(error));
+  }
+
+  try {
+    if (poSession && typeof poSession.flushStorageData === 'function') {
+      await poSession.flushStorageData();
+    }
+    writeLog('Профиль Chromium сохранён: ' +
+      (poSession && typeof poSession.getStoragePath === 'function'
+        ? poSession.getStoragePath()
+        : PARTITION));
+  } catch (error) {
+    writeLog('Предупреждение при сохранении профиля: ' + String(error));
+  }
+
+  try {
+    await flushPageTelemetry();
+  } catch (_) {}
+  await sleep(200);
+  app.exit(0);
+}
+
 async function boot() {
   const logDir = path.join(app.getPath('userData'), 'logs');
   fs.mkdirSync(logDir, { recursive: true });
   logFile = path.join(logDir, 'desktop.log');
+  statsDirectory = path.join(app.getPath('userData'), 'stats');
+  fs.mkdirSync(statsDirectory, { recursive: true });
 
   createDashboardWindow();
 
-  const poSession = session.fromPartition(PARTITION);
+  poSession = session.fromPartition(PARTITION);
   // Use Windows system proxy settings explicitly, matching the OS-level route
   // used by desktop browsers where possible. Never bypass TLS validation.
   try {
@@ -94,6 +401,9 @@ async function boot() {
   // Use a regular Chromium UA rather than exposing Electron in the HTTP User-Agent.
   poSession.setUserAgent(CHROME_USER_AGENT, 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7');
   writeLog('Chromium: ' + process.versions.chrome + '; User-Agent Electron скрыт.');
+  writeLog('Постоянный профиль: ' +
+    (typeof poSession.getStoragePath === 'function' ? poSession.getStoragePath() : PARTITION));
+  writeLog('Каталог статистики: ' + statsDirectory);
   try {
     extensionInfo = await poSession.extensions.loadExtension(EXTENSION_DIR);
     writeLog('Расширение загружено: ' + extensionInfo.name + ' (' + extensionInfo.id + ')');
@@ -105,7 +415,17 @@ async function boot() {
   createSiteWindow(poSession);
   statusTimer = setInterval(() => {
     void publishStatus();
-  }, 2500);
+  }, STATUS_INTERVAL_MS);
+  telemetryTimer = setInterval(() => {
+    void flushPageTelemetry();
+  }, TELEMETRY_FLUSH_INTERVAL_MS);
+  healthTimer = setInterval(() => {
+    void runAutoHealthCheck('5-minute');
+  }, HEALTH_INTERVAL_MS);
+  recoveryTimer = setInterval(monitorConnectionRecovery, RECOVERY_POLL_INTERVAL_MS);
+  setTimeout(() => {
+    void runAutoHealthCheck('startup');
+  }, 20000);
 
   app.on('activate', () => {
     if (dashboardWindow && !dashboardWindow.isDestroyed()) dashboardWindow.show();
@@ -276,9 +596,25 @@ async function readPageProbe() {
       probe: probe ? {
         ticks: Number(probe.ticks) || 0,
         lastTickAt: Number(probe.lastTickAt) || 0,
-        visibilityState: probe.visibilityState || document.visibilityState
+        visibilityState: probe.visibilityState || document.visibilityState,
+        online: probe.online !== false,
+        networkChangedAt: Number(probe.networkChangedAt) || 0,
+        networkEvent: probe.networkEvent || 'unknown',
+        webSocketOpen: !!probe.webSocketOpen,
+        webSocketOpenCount: Number(probe.webSocketOpenCount) || 0,
+        core: probe.core || null,
+        telemetry: probe.telemetry ? {
+          sessionId: probe.telemetry.sessionId || null,
+          scanCount: Number(probe.telemetry.scanCount) || 0,
+          lastScanAt: Number(probe.telemetry.lastScanAt) || 0,
+          lastScan: probe.telemetry.lastScan || null,
+          perAssetLastScan: probe.telemetry.perAssetLastScan || {},
+          signalCount: Number(probe.telemetry.signalSequence) || 0,
+          tradeCount: Number(probe.telemetry.tradeSequence) || 0
+        } : null
       } : null,
-      webSocketOpen: openSocket,
+      online: probe ? probe.online !== false : navigator.onLine !== false,
+      webSocketOpen: openSocket || !!(probe && probe.webSocketOpen),
       webSocketCount: sockets.length,
       accountMode: badge ? (badge.textContent || '').trim() : 'Ожидание определения',
       botPanelPresent: !!document.getElementById('pos-panel'),
@@ -317,7 +653,9 @@ async function getStatus() {
       lastLoadError,
       page: page
     },
-    backgroundTestRunning: backgroundTestRunning
+    backgroundTestRunning: backgroundTestRunning,
+    health: lastHealthSummary,
+    statsDirectory: statsDirectory
   };
 }
 
@@ -326,6 +664,7 @@ async function publishStatus() {
   statusBusy = true;
   try {
     const status = await getStatus();
+    lastPageSnapshot = status.site && status.site.page ? status.site.page : null;
     if (dashboardWindow && !dashboardWindow.isDestroyed()) {
       dashboardWindow.webContents.send('app:status', status);
     }
@@ -371,6 +710,24 @@ ipcMain.handle('app:open-account', async (_event, accountMode) => {
     void publishStatus();
     return { ok: false, reason: String(error) };
   }
+});
+
+ipcMain.handle('app:open-stats-folder', async () => {
+  if (!statsDirectory) return { ok: false, error: 'Каталог статистики ещё не создан.' };
+  fs.mkdirSync(statsDirectory, { recursive: true });
+  const error = await shell.openPath(statsDirectory);
+  return error ? { ok: false, error } : { ok: true, path: statsDirectory };
+});
+
+ipcMain.handle('app:restart', () => {
+  const core = lastPageSnapshot && lastPageSnapshot.probe && lastPageSnapshot.probe.core;
+  if (core && core.autoTrade) {
+    return { ok: false, reason: 'Сначала останови автоторговлю. Перезапуск во время торговли запрещён защитой.' };
+  }
+  writeLog('Запрошен перезапуск Electron. Сначала будет сохранён постоянный профиль.');
+  app.relaunch();
+  app.quit();
+  return { ok: true };
 });
 
 ipcMain.handle('app:hide-site', () => {
@@ -459,9 +816,12 @@ ipcMain.handle('app:background-test', async () => {
   }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', event => {
+  if (shutdownStarted) return;
+  event.preventDefault();
+  shutdownStarted = true;
   appQuitting = true;
-  if (statusTimer) clearInterval(statusTimer);
+  void gracefulShutdown();
 });
 
 app.on('window-all-closed', () => {
