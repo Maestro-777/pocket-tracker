@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('ptApp', {
   hideSite: () => ipcRenderer.invoke('app:hide-site'),
   reloadSite: () => ipcRenderer.invoke('app:reload-site'),
   runBackgroundTest: () => ipcRenderer.invoke('app:background-test'),
+  openStatsFolder: () => ipcRenderer.invoke('app:open-stats-folder'),
+  restartApp: () => ipcRenderer.invoke('app:restart'),
   onStatus: callback => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('app:status', listener);
