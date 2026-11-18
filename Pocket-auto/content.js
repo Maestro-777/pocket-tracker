@@ -102,8 +102,8 @@
         { id: 'MACD',      name: 'MACD',          desc: 'MACD / Signal',       en_desc: 'MACD / Signal line',     icon: '🌊' },
         { id: 'STOCH',     name: 'Stochastic',    desc: 'K%/D% зоны',         en_desc: 'K%/D% zones',            icon: '⚡' },
         { id: 'CCI',       name: 'CCI',           desc: 'Канал ±100',          en_desc: 'Channel ±100',           icon: '🎯' },
-        { id: 'TREND',     name: 'Trend',         desc: 'Следование тренду',   en_desc: 'Trend following',        icon: '🚀' },
-        { id: 'PSAR',      name: 'Parabolic SAR', desc: 'Разворот тренда',     en_desc: 'Trend reversal',         icon: '🔄' },
+        { id: 'TREND',     name: 'Trend',         desc: 'Направление цены за период', en_desc: 'Price direction over lookback', icon: '🚀' },
+        { id: 'PSAR',      name: 'Parabolic SAR', desc: 'Положение SAR относительно цены', en_desc: 'SAR position relative to price', icon: '🔄' },
         { id: 'SENTIMENT', name: 'Sentiment',     desc: 'Настроение рынка',    en_desc: 'Market sentiment',       icon: '🧠' },
     ];
 
@@ -196,7 +196,7 @@
                 EMA: { fast: 2, slow: 8 },
                 MACD: { fast: 5, slow: 11, signal: 4 },
                 TREND: { period: 3 },
-                PSAR: { fastEma: 2, slowEma: 6 }
+                PSAR: { step: 0.02, maxStep: 0.2 }
             }
         },
         // ── 15s ──
@@ -240,7 +240,7 @@
             selectedStrategies: ['EMA', 'TREND', 'PSAR'], filterMode: 'ALL', expiration: 15,
             confirmMode: 'trend',
             moneyManagement: 'fixed', riskTpMode: 'percent', riskTpValue: 6, riskTlMode: 'percent', riskTlValue: 5,
-            indConfig: { EMA: { fast: 3, slow: 10 }, TREND: { period: 3 }, PSAR: { fastEma: 3, slowEma: 8 } }
+            indConfig: { EMA: { fast: 3, slow: 10 }, TREND: { period: 3 }, PSAR: { step: 0.02, maxStep: 0.2 } }
         },
         {
             id: 's15_multi', tag: 'ANY', tone: 'any',
@@ -346,7 +346,7 @@
             selectedStrategies: ['PSAR', 'EMA', 'RSI'], filterMode: 'CONTEXT', expiration: 60,
             confirmMode: 'reversion',
             moneyManagement: 'fixed', riskTpMode: 'percent', riskTpValue: 8, riskTlMode: 'percent', riskTlValue: 6,
-            indConfig: { PSAR: { fastEma: 3, slowEma: 10 }, EMA: { fast: 5, slow: 18 }, RSI: { period: 10, oversold: 32, overbought: 68 } }
+            indConfig: { PSAR: { step: 0.02, maxStep: 0.2 }, EMA: { fast: 5, slow: 18 }, RSI: { period: 10, oversold: 32, overbought: 68 } }
         },
         {
             id: 's60_maxconf', tag: 'Max', tone: 'safe',
@@ -476,8 +476,8 @@
         TREND: [{ key: 'period', label: 'Период', en_label: 'Period', min: 2, max: 50,  step: 1, def: 5  }],
         SENTIMENT: [{ key: 'threshold', label: 'Порог %', en_label: 'Threshold %', min: 51, max: 90, step: 1, def: 60 }],
         PSAR:  [
-            { key: 'fastEma', label: 'Быстрая EMA', en_label: 'Fast EMA', min: 2, max: 20, step: 1, def: 3  },
-            { key: 'slowEma', label: 'Медл. EMA',   en_label: 'Slow EMA', min: 3, max: 50, step: 1, def: 10 },
+            { key: 'step',    label: 'Шаг',       en_label: 'Step',       min: 0.01, max: 0.10, step: 0.01, def: 0.02 },
+            { key: 'maxStep', label: 'Макс. шаг', en_label: 'Max step',   min: 0.05, max: 0.50, step: 0.01, def: 0.20 },
         ],
     };
 
@@ -1161,6 +1161,17 @@
         <button type="button" class="pos-fm-btn pos-cm-btn" data-mode="off" data-i18n="cm_off">Выкл</button>
       </div>
       <div class="pos-preset-hint" data-i18n="cm_hint">Тренд - вход по продолжению. Разворот - на истощении. Авто - по стилю фильтров.</div>
+      <div class="pos-frow" style="margin-top:10px">
+        <div class="pos-fg full">
+          <label for="pos-analysis-timeframe">Таймфрейм анализа (независимо от экспирации)</label>
+          <select id="pos-analysis-timeframe">
+            <option value="5">S5 · 5 секунд</option>
+            <option value="15" selected>S15 · 15 секунд</option>
+            <option value="30">S30 · 30 секунд</option>
+            <option value="60">M1 · 1 минута</option>
+          </select>
+        </div>
+      </div>
       <label class="pos-toggle-row" for="pos-htf-filter" style="margin-top:10px">
         <span data-i18n="htf_filter">Фильтр по старшему таймфрейму</span>
         <span class="pos-switch pos-switch-sm">
@@ -1193,6 +1204,23 @@
     <div class="qbs" id="pos-ind-params-section" style="display:none">
       <div class="qbs-ttl" data-i18n="sec_ind_params">⚙️ Параметры индикаторов</div>
       <div id="pos-ind-params-grid"></div>
+    </div>
+    <div class="qbs" id="pos-strategy-lab">
+      <div class="qbs-ttl">🧪 Лаборатория стратегий · 20 вариантов</div>
+      <div class="pos-preset-hint">Сравнивает EMA, MACD и Trend на исторических OTC OHLC-свечах. Первые 70% истории — подбор, последние 30% — независимая проверка. Результаты теста не включают комиссию/проскальзывание и не гарантируют будущую доходность.</div>
+      <div class="pos-frow" style="margin-top:10px">
+        <div class="pos-fg">
+          <label for="pos-lab-payout">Выплата в тесте (%)</label>
+          <input type="number" id="pos-lab-payout" value="92" min="50" max="100" step="1">
+        </div>
+        <div class="pos-fg">
+          <label>Разделение истории</label>
+          <input type="text" value="70% / 30%" disabled>
+        </div>
+      </div>
+      <button type="button" id="pos-run-strategy-lab" class="pos-btn-main start" style="margin-top:10px">🧪 Протестировать 20 стратегий</button>
+      <div id="pos-strategy-lab-status" class="pos-preset-hint" style="margin-top:10px" aria-live="polite">Выбери экспирацию и таймфрейм анализа, затем запусти тест на текущей OTC-паре.</div>
+      <div id="pos-strategy-lab-results" style="margin-top:10px"></div>
     </div>
     <div class="qbs">
       <div class="qbs-ttl" data-i18n="sec_mm">💰 Мани-менеджмент</div>
@@ -1242,6 +1270,7 @@
         buildPresetGrid();
         buildMMSelect();
         bindButtons();
+        bindStrategyLabControls();
         loadSettings();
         initDebugTrigger();
         // activation gate
@@ -1274,6 +1303,111 @@
             btn.textContent = minimized ? '🔼' : '🔽';
             btn.title = minimized ? t('min_expand') : t('min_collapse');
         });
+    }
+
+    function bindStrategyLabControls() {
+        var button = document.getElementById('pos-run-strategy-lab');
+        if (!button || button._posBound) return;
+        button._posBound = true;
+        button.addEventListener('click', function() {
+            var asset = (document.getElementById('pos-cur-asset') || {}).textContent || '';
+            var candleSec = parseInt((document.getElementById('pos-analysis-timeframe') || {}).value || '15', 10);
+            var expiration = normalizeExpiration((document.getElementById('pos-expiration') || {}).value);
+            var payout = parseFloat((document.getElementById('pos-lab-payout') || {}).value || '92');
+            var status = document.getElementById('pos-strategy-lab-status');
+            var results = document.getElementById('pos-strategy-lab-results');
+            if (status) status.textContent = 'Отправляю запрос на тест исторических свечей…';
+            if (results) results.textContent = '';
+            sendCoreCmd({
+                cmd: 'RUN_STRATEGY_LAB',
+                config: { asset: String(asset).trim(), candleSec: candleSec, expiration: expiration, payout: payout }
+            });
+        });
+    }
+
+    function renderStrategyLabResult(result) {
+        var status = document.getElementById('pos-strategy-lab-status');
+        var results = document.getElementById('pos-strategy-lab-results');
+        if (!status || !results || !result) return;
+        if (result.status === 'loading') {
+            status.textContent = result.message || 'Загружаю историю…';
+            results.textContent = '';
+            return;
+        }
+        if (result.status !== 'done') {
+            status.textContent = result.message || 'Тест не выполнен.';
+            results.textContent = '';
+            return;
+        }
+        var fmtDate = function(ts) {
+            try { return new Date(ts).toLocaleString(); } catch (_) { return String(ts); }
+        };
+        var fmtMetric = function(m) {
+            if (!m || !m.decided) return '—';
+            var ev = m.expectancy == null ? '—' : ((m.expectancy >= 0 ? '+' : '') + m.expectancy.toFixed(3));
+            return m.winRate.toFixed(1) + '% · n=' + m.decided + ' · EV ' + ev;
+        };
+        status.textContent = result.asset + ' · ' + result.candleCount + ' OHLC-свечей · S' +
+            result.candleSec + ' · экспирация ' + result.expirationSec + 'с · выплата ' +
+            result.payout + '% · история ' + fmtDate(result.fromTs) + ' — ' + fmtDate(result.toTs) +
+            '. Безубыточность: ' + result.breakEvenWinRate.toFixed(2) +
+            '%. Ранжирование только по TRAIN; OOS не участвует в сортировке.';
+        results.textContent = '';
+        var note = document.createElement('div');
+        note.className = 'pos-preset-hint';
+        note.style.marginBottom = '8px';
+        note.textContent = 'Вход моделируется по open следующей свечи, выход — по close через ' +
+            result.expiryBars + ' интервала(ов). Для серьёзного вывода нужно минимум 50 OOS-сделок.';
+        results.appendChild(note);
+
+        var wrap = document.createElement('div');
+        wrap.style.overflowX = 'auto';
+        var table = document.createElement('table');
+        table.style.cssText = 'width:100%;min-width:760px;border-collapse:collapse;font-size:11px;text-align:left;';
+        var thead = document.createElement('thead');
+        var headRow = document.createElement('tr');
+        ['TRAIN rank', 'Стратегия', 'Параметры', 'TRAIN · WR / n / EV', 'OOS · WR / n / EV', 'OOS 95% lower'].forEach(function(label) {
+            var th = document.createElement('th');
+            th.textContent = label;
+            th.style.cssText = 'padding:7px 5px;border-bottom:1px solid rgba(128,128,128,.35);white-space:nowrap;';
+            headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        var tbody = document.createElement('tbody');
+        result.strategies.forEach(function(item) {
+            var tr = document.createElement('tr');
+            if (item.trainRank === 1) tr.style.background = 'rgba(32,160,90,.10)';
+            var p = item.params;
+            var paramText = 'EMA ' + p.emaFast + '/' + p.emaSlow + ' · MACD ' +
+                p.macdFast + '/' + p.macdSlow + '/' + p.macdSignal + ' · Trend ' + p.trendPeriod;
+            var lower = item.test.wilsonLower95 == null ? '—' : item.test.wilsonLower95.toFixed(1) + '%';
+            if (item.test.decided < 50) lower += ' · мало сделок';
+            [
+                item.trainRank == null ? '—' : String(item.trainRank),
+                item.name + ' [' + item.filters + ']',
+                paramText,
+                fmtMetric(item.train),
+                fmtMetric(item.test),
+                lower
+            ].forEach(function(value) {
+                var td = document.createElement('td');
+                td.textContent = value;
+                td.style.cssText = 'padding:7px 5px;border-bottom:1px solid rgba(128,128,128,.18);vertical-align:top;';
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+        results.appendChild(wrap);
+
+        var foot = document.createElement('div');
+        foot.className = 'pos-preset-hint';
+        foot.style.marginTop = '8px';
+        foot.textContent = 'DRAW не входят в win rate; EV учитывает выплату. Нижняя граница 95% — интервал Уилсона, не гарантия. OOS выборка не используется для выбора лидера.';
+        results.appendChild(foot);
     }
 
     function sendCoreCmd(detail) {
@@ -1313,7 +1447,8 @@
                 indicators: selectedStrategies.slice(),
                 indicator: selectedStrategies[0] || 'RSI',
                 indConfig: Object.keys(cfgInd).length ? cfgInd : indConfig,
-                expiration: normalizeExpiration(document.getElementById('pos-expiration') && document.getElementById('pos-expiration').value)
+                expiration: normalizeExpiration(document.getElementById('pos-expiration') && document.getElementById('pos-expiration').value),
+                analysisTimeframeSeconds: parseInt(document.getElementById('pos-analysis-timeframe')?.value || '15', 10)
             }
         });
         try { appendLog(on ? '📉 Синк индикаторов PO включён' : '📉 Синк индикаторов PO выключен'); } catch (_) {}
@@ -2121,6 +2256,7 @@
             labSequence:     document.getElementById('pos-lab-seq').value || '1,2,3',
             startBalance:    parseFloat(document.getElementById('pos-boost-balance').value) || 1000,
             expiration:      normalizeExpiration(document.getElementById('pos-expiration').value),
+            analysisTimeframeSeconds: parseInt(document.getElementById('pos-analysis-timeframe')?.value || '15', 10),
             autoTrade:       !!document.getElementById('pos-auto-trade')?.checked,
             htfFilter:       !!document.getElementById('pos-htf-filter')?.checked,
             chartOverlay:    !!document.getElementById('pos-chart-ind-sync')?.checked,
@@ -2793,6 +2929,7 @@
             labSequence: document.getElementById('pos-lab-seq').value || '1,2,3',
             startBalance: parseFloat(document.getElementById('pos-boost-balance').value) || 1000,
             expiration: normalizeExpiration(document.getElementById('pos-expiration').value),
+            analysisTimeframeSeconds: parseInt(document.getElementById('pos-analysis-timeframe')?.value || '15', 10),
             autoTrade: !!document.getElementById('pos-auto-trade')?.checked,
             htfFilter: !!document.getElementById('pos-htf-filter')?.checked,
             indConfig: JSON.parse(JSON.stringify(indConfig))
@@ -2856,6 +2993,7 @@
             signalExpirationSec = normalizeExpiration(data.expiration);
             activePresetExpTab = snapPresetExpTab(data.expiration);
         }
+        if (data.analysisTimeframeSeconds != null) sv('pos-analysis-timeframe', data.analysisTimeframeSeconds);
         if (!opts.keepAutoTrade) {
             var autoImp = document.getElementById('pos-auto-trade');
             if (autoImp && data.autoTrade != null) {
@@ -2914,6 +3052,7 @@
             labSequence: (document.getElementById('pos-lab-seq') || {}).value || '1,2,3',
             startBalance: parseFloat((document.getElementById('pos-boost-balance') || {}).value) || 1000,
             expiration: normalizeExpiration((document.getElementById('pos-expiration') || {}).value),
+            analysisTimeframeSeconds: parseInt((document.getElementById('pos-analysis-timeframe') || {}).value || '15', 10),
             htfFilter: !!(document.getElementById('pos-htf-filter') || {}).checked,
             indConfig: JSON.parse(JSON.stringify(indConfig)),
             autoTrade: !!(document.getElementById('pos-auto-trade') || {}).checked
@@ -2935,6 +3074,7 @@
                 dalembertUnit: cfg.dalembertUnit,
                 labSequence: cfg.labSequence,
                 expiration: cfg.expiration,
+                analysisTimeframeSeconds: cfg.analysisTimeframeSeconds,
                 htfFilter: cfg.htfFilter,
                 indConfig: cfg.indConfig
             });
@@ -3106,6 +3246,7 @@
             }
             sv('pos-max-steps',      data.maxSteps);
             sv('pos-expiration',     normalizeExpiration(data.expiration));
+            sv('pos-analysis-timeframe', data.analysisTimeframeSeconds != null ? data.analysisTimeframeSeconds : 15);
             sv('pos-min-profit', data.minProfit != null ? data.minProfit : 92);
             sv('pos-max-concurrent', data.maxConcurrentTrades != null ? data.maxConcurrentTrades : 4);
             var multiPairEl = document.getElementById('pos-multi-pair');
@@ -3150,6 +3291,15 @@
                 reverseRange.addEventListener('input', function() {
                     var output = document.getElementById('pos-reverse-wins-value');
                     if (output) output.textContent = reverseRange.value;
+                });
+            }
+            var analysisTfEl = document.getElementById('pos-analysis-timeframe');
+            if (analysisTfEl && !analysisTfEl._posBound) {
+                analysisTfEl._posBound = true;
+                analysisTfEl.addEventListener('change', function() {
+                    var patch = { analysisTimeframeSeconds: parseInt(analysisTfEl.value, 10) || 15 };
+                    saveSettings(patch);
+                    if (window._posRunning) patchRunningConfig(patch);
                 });
             }
             var autoEl = document.getElementById('pos-auto-trade');
@@ -3495,6 +3645,8 @@
                 } else if (mt.result === 'DRAW') {
                     appendLog('➖ [' + (mt.asset || '?') + '] Возврат ставки');
                 }
+            } else if (msgType === 'POROBOT_STRATEGY_LAB_RESULT') {
+                renderStrategyLabResult(e.data.result);
             } else if (msgType === 'POROBOT_SCAN') {
                 updateLiveScan(e.data.scan);
             } else if (msgType === 'POROBOT_ASSET') {
@@ -3536,7 +3688,7 @@
     } else {
         window.addEventListener('message', function(e) {
             var msgType = e.data && e.data.type;
-            if (msgType === 'POROBOT_LOG' || msgType === 'POROBOT_STATS' || msgType === 'POROBOT_TRADE' || msgType === 'POROBOT_SIGNAL' || msgType === 'POROBOT_TRADE_RESULT' || msgType === 'POROBOT_MULTI_SIGNAL' || msgType === 'POROBOT_MULTI_TRADE_OPEN' || msgType === 'POROBOT_MULTI_TRADE_RESULT' || msgType === 'POROBOT_ASSET' || msgType === 'POROBOT_SCAN' || msgType === 'POROBOT_BALANCE' || msgType === 'POROBOT_AUTO_STOP') {
+            if (msgType === 'POROBOT_LOG' || msgType === 'POROBOT_STATS' || msgType === 'POROBOT_TRADE' || msgType === 'POROBOT_SIGNAL' || msgType === 'POROBOT_TRADE_RESULT' || msgType === 'POROBOT_MULTI_SIGNAL' || msgType === 'POROBOT_MULTI_TRADE_OPEN' || msgType === 'POROBOT_MULTI_TRADE_RESULT' || msgType === 'POROBOT_STRATEGY_LAB_RESULT' || msgType === 'POROBOT_ASSET' || msgType === 'POROBOT_SCAN' || msgType === 'POROBOT_BALANCE' || msgType === 'POROBOT_AUTO_STOP') {
                 try { window.top.postMessage(e.data, '*'); } catch(_) {}
             }
         });
