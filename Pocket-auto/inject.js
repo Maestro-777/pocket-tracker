@@ -3589,6 +3589,106 @@
             };
         }
 
+        runStrategyLab(options) {
+            const runId = (this._strategyLabRunId || 0) + 1;
+            this._strategyLabRunId = runId;
+            this._runStrategyLabAttempt(options || {}, runId, 0);
+        }
+
+        _runStrategyLabAttempt(options, runId, attempt) {
+            if (runId !== this._strategyLabRunId) return;
+            const postResult = (result) => this._post('POROBOT_STRATEGY_LAB_RESULT', { result: result });
+
+            try { this._syncAssetFromDOM(); } catch (_) {}
+            const rawAsset = options.asset || this._domAsset || readCurrentAssetFromDOM();
+            const asset = normalizeAssetName(rawAsset || '');
+            const candleSec = Math.floor(Number(options.candleSec) || 0);
+            const expiration = Math.floor(Number(options.expiration) || 0);
+            const payout = Number(options.payout);
+
+            if (!asset || asset === 'UNKNOWN') {
+                postResult({ status: 'error', message: 'Не удалось определить текущую валютную пару на графике.' });
+                return;
+            }
+            if (!/_OTC$/i.test(asset)) {
+                postResult({ status: 'error', asset: asset, message: 'Текущий актив не распознан как OTC. Переключи график на OTC-пару и повтори тест.' });
+                return;
+            }
+            if (!candleSec || !expiration || expiration < candleSec || expiration % candleSec !== 0) {
+                postResult({ status: 'error', asset: asset, message: 'Для выбранной экспирации таймфрейм должен делить её без остатка. Для 60 секунд выбери S15.' });
+                return;
+            }
+            if (!Number.isFinite(payout) || payout < 50 || payout > 100) {
+                postResult({ status: 'error', asset: asset, message: 'Укажи выплату от 50 до 100 процентов.' });
+                return;
+            }
+
+            const candleMs = candleSec * 1000;
+            const stored = getRealCandles(this, asset, candleMs) || [];
+            const nowBucket = Math.floor(Date.now() / candleMs) * candleMs;
+            const closed = stored.filter(function(c) {
+                return c && Number(c.ts) < nowBucket;
+            });
+
+            if (closed.length < 120) {
+                if (attempt === 0) {
+                    const requested = requestAssetHistory(asset, candleSec);
+                    postResult({
+                        status: 'loading',
+                        asset: asset,
+                        candleSec: candleSec,
+                        availableCandles: closed.length,
+                        message: requested
+                            ? 'Запросил настоящие исторические OHLC-свечи Pocket Option. Загружаю историю…'
+                            : 'Ожидаю WebSocket Pocket Option, чтобы запросить исторические OHLC-свечи…'
+                    });
+                }
+                if (attempt < 5) {
+                    const self = this;
+                    setTimeout(function() {
+                        self._runStrategyLabAttempt(options, runId, attempt + 1);
+                    }, 1400);
+                    return;
+                }
+                postResult({
+                    status: 'error',
+                    asset: asset,
+                    candleSec: candleSec,
+                    availableCandles: closed.length,
+                    message: 'Не удалось получить минимум 120 настоящих OHLC-свечей S' + candleSec +
+                        '. Открой график OTC, дождись потока котировок и повтори тест.'
+                });
+                return;
+            }
+
+            const lab = window.__POS_STRATEGY_LAB__;
+            if (!lab || typeof lab.run !== 'function') {
+                postResult({ status: 'error', asset: asset, message: 'Strategy Lab не загружен. Перезагрузи расширение на chrome://extensions и обнови Pocket Option.' });
+                return;
+            }
+
+            const result = lab.run(closed, {
+                candleSec: candleSec,
+                expiration: expiration,
+                payout: payout
+            }, CoreIndicators);
+            result.asset = asset;
+            result.dataSource = 'Pocket Option historical OHLC';
+            result.closedCandles = closed.length;
+            result.testedAt = Date.now();
+            postResult(result);
+
+            if (result.status === 'done') {
+                const best = result.strategies.find(function(item) { return item.trainRank === 1; });
+                this.log('🧪 Strategy Lab: ' + asset + ' · ' + result.strategies.length +
+                    ' стратегий · S' + candleSec + ' / ' + expiration + 'с · обучающая выборка ' +
+                    result.trainCandles + ' свечей · OOS ' + result.testCandles + ' свечей' +
+                    (best ? ' · лидер TRAIN: ' + best.name : ''));
+            } else {
+                this.log('⚠️ Strategy Lab: ' + (result.message || 'тест не выполнен'));
+            }
+        }
+
         _getPricesForAsset(asset) {
             if (!asset) return [];
             const direct = this._prices[asset];
@@ -4639,6 +4739,7 @@
         if (!d || !d.cmd) return;
         try {
             if (d.cmd === 'START') window.__poCore.start(d.config);
+            if (d.cmd === 'RUN_STRATEGY_LAB') window.__poCore.runStrategyLab(d.config || {});
             if (d.cmd === 'STOP') window.__poCore.stop();
             if (d.cmd === 'SET_OVERLAY') {
                 const on = !!d.enabled;
