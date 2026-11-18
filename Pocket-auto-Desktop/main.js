@@ -182,6 +182,24 @@ async function readPageScanSnapshot() {
   }
 }
 
+function getTransportHealth(page) {
+  const probe = page && page.probe ? page.probe : {};
+  const core = probe.core || {};
+  const socketOpen = !!(page && page.webSocketOpen) ||
+    !!probe.webSocketOpen ||
+    Number(probe.webSocketOpenCount || 0) > 0;
+  const quoteAgeMs = core.quoteAgeMs == null ? null : Number(core.quoteAgeMs);
+  const quoteFresh = quoteAgeMs != null && Number.isFinite(quoteAgeMs) && quoteAgeMs <= 30000;
+  const engineNeedsLiveQuotes = !!core.running && !!core.asset;
+  return {
+    ok: engineNeedsLiveQuotes ? (socketOpen && quoteFresh) : (socketOpen || quoteFresh),
+    socketOpen,
+    quoteFresh,
+    quoteAgeMs,
+    engineNeedsLiveQuotes
+  };
+}
+
 function buildHealthSummary(status, reason, elapsedMs, tickDelta, scanDelta) {
   const site = status.site || {};
   const page = site.page || {};
@@ -190,10 +208,9 @@ function buildHealthSummary(status, reason, elapsedMs, tickDelta, scanDelta) {
   const telemetry = probe.telemetry || {};
   const now = Date.now();
   const timerAgeMs = probe.lastTickAt ? now - probe.lastTickAt : null;
-  const quoteAgeMs = core.quoteAgeMs == null ? null : core.quoteAgeMs;
-  const transportOk = !!page.webSocketOpen ||
-    !!probe.webSocketOpen ||
-    (quoteAgeMs != null && quoteAgeMs <= 30000);
+  const transport = getTransportHealth(page);
+  const quoteAgeMs = transport.quoteAgeMs;
+  const transportOk = transport.ok;
   const timerOk = !!probe.lastTickAt && timerAgeMs <= 3500 &&
     (tickDelta == null || elapsedMs < 10000 || tickDelta >= Math.floor(elapsedMs / 1000 * 0.70));
   const scanExpected = core.running && elapsedMs >= 10000
@@ -229,7 +246,8 @@ function buildHealthSummary(status, reason, elapsedMs, tickDelta, scanDelta) {
     timerAgeMs,
     tickDelta,
     online: probe.online !== false,
-    webSocketOpen: transportOk,
+    webSocketOpen: transport.socketOpen,
+    quoteFresh: transport.quoteFresh,
     webSocketOpenCount: probe.webSocketOpenCount || page.webSocketCount || 0,
     engineLoaded: !!core.loaded,
     engineRunning: !!core.running,
@@ -335,9 +353,7 @@ function monitorConnectionRecovery() {
     return;
   }
 
-  const transportOk = !!page.webSocketOpen ||
-    !!probe.webSocketOpen ||
-    (core.quoteAgeMs != null && core.quoteAgeMs <= 30000);
+  const transportOk = getTransportHealth(page).ok;
   if (transportOk) {
     if (!transportHealthySince) transportHealthySince = now;
     if (now - transportHealthySince >= 120000) {
@@ -760,12 +776,13 @@ ipcMain.handle('app:open-stats-folder', async () => {
   return error ? { ok: false, error } : { ok: true, path: statsDirectory };
 });
 
-ipcMain.handle('app:restart', () => {
-  const core = lastPageSnapshot && lastPageSnapshot.probe && lastPageSnapshot.probe.core;
-  if (core && core.autoTrade) {
-    return { ok: false, reason: 'Сначала останови автоторговлю. Перезапуск во время торговли запрещён защитой.' };
+ipcMain.handle('app:restart', async () => {
+  const page = await readPageProbe();
+  const core = page && page.probe ? page.probe.core : null;
+  if (core && (core.autoTrade || core.tradeBusy)) {
+    return { ok: false, reason: 'Сначала останови автоторговлю и дождись завершения активной сделки. Перезапуск сейчас заблокирован.' };
   }
-  writeLog('Запрошен перезапуск Electron. Сначала будет сохранён постоянный профиль.');
+  writeLog('Запрошен перезапуск Electron. Анализатор будет остановлен, постоянный профиль сохранён.');
   app.relaunch();
   app.quit();
   return { ok: true };
