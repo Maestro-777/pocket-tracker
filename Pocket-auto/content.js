@@ -102,8 +102,8 @@
         { id: 'MACD',      name: 'MACD',          desc: 'MACD / Signal',       en_desc: 'MACD / Signal line',     icon: '🌊' },
         { id: 'STOCH',     name: 'Stochastic',    desc: 'K%/D% зоны',         en_desc: 'K%/D% zones',            icon: '⚡' },
         { id: 'CCI',       name: 'CCI',           desc: 'Канал ±100',          en_desc: 'Channel ±100',           icon: '🎯' },
-        { id: 'TREND',     name: 'Trend',         desc: 'Следование тренду',   en_desc: 'Trend following',        icon: '🚀' },
-        { id: 'PSAR',      name: 'Parabolic SAR', desc: 'Разворот тренда',     en_desc: 'Trend reversal',         icon: '🔄' },
+        { id: 'TREND',     name: 'Trend',         desc: 'Направление цены за период', en_desc: 'Price direction over lookback', icon: '🚀' },
+        { id: 'PSAR',      name: 'Parabolic SAR', desc: 'Положение SAR относительно цены', en_desc: 'SAR position relative to price', icon: '🔄' },
         { id: 'SENTIMENT', name: 'Sentiment',     desc: 'Настроение рынка',    en_desc: 'Market sentiment',       icon: '🧠' },
     ];
 
@@ -196,7 +196,7 @@
                 EMA: { fast: 2, slow: 8 },
                 MACD: { fast: 5, slow: 11, signal: 4 },
                 TREND: { period: 3 },
-                PSAR: { fastEma: 2, slowEma: 6 }
+                PSAR: { step: 0.02, maxStep: 0.2 }
             }
         },
         // ── 15s ──
@@ -240,7 +240,7 @@
             selectedStrategies: ['EMA', 'TREND', 'PSAR'], filterMode: 'ALL', expiration: 15,
             confirmMode: 'trend',
             moneyManagement: 'fixed', riskTpMode: 'percent', riskTpValue: 6, riskTlMode: 'percent', riskTlValue: 5,
-            indConfig: { EMA: { fast: 3, slow: 10 }, TREND: { period: 3 }, PSAR: { fastEma: 3, slowEma: 8 } }
+            indConfig: { EMA: { fast: 3, slow: 10 }, TREND: { period: 3 }, PSAR: { step: 0.02, maxStep: 0.2 } }
         },
         {
             id: 's15_multi', tag: 'ANY', tone: 'any',
@@ -346,7 +346,7 @@
             selectedStrategies: ['PSAR', 'EMA', 'RSI'], filterMode: 'CONTEXT', expiration: 60,
             confirmMode: 'reversion',
             moneyManagement: 'fixed', riskTpMode: 'percent', riskTpValue: 8, riskTlMode: 'percent', riskTlValue: 6,
-            indConfig: { PSAR: { fastEma: 3, slowEma: 10 }, EMA: { fast: 5, slow: 18 }, RSI: { period: 10, oversold: 32, overbought: 68 } }
+            indConfig: { PSAR: { step: 0.02, maxStep: 0.2 }, EMA: { fast: 5, slow: 18 }, RSI: { period: 10, oversold: 32, overbought: 68 } }
         },
         {
             id: 's60_maxconf', tag: 'Max', tone: 'safe',
@@ -476,8 +476,8 @@
         TREND: [{ key: 'period', label: 'Период', en_label: 'Period', min: 2, max: 50,  step: 1, def: 5  }],
         SENTIMENT: [{ key: 'threshold', label: 'Порог %', en_label: 'Threshold %', min: 51, max: 90, step: 1, def: 60 }],
         PSAR:  [
-            { key: 'fastEma', label: 'Быстрая EMA', en_label: 'Fast EMA', min: 2, max: 20, step: 1, def: 3  },
-            { key: 'slowEma', label: 'Медл. EMA',   en_label: 'Slow EMA', min: 3, max: 50, step: 1, def: 10 },
+            { key: 'step',    label: 'Шаг',       en_label: 'Step',       min: 0.01, max: 0.10, step: 0.01, def: 0.02 },
+            { key: 'maxStep', label: 'Макс. шаг', en_label: 'Max step',   min: 0.05, max: 0.50, step: 0.01, def: 0.20 },
         ],
     };
 
