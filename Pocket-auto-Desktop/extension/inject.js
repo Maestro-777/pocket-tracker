@@ -3984,8 +3984,51 @@
             const htf = ctx && ctx.htf ? {
                 ready: !!ctx.htf.ready,
                 direction: ctx.htf.direction || 'NEUTRAL',
-                seconds: ctx.htf.sec || null
+                seconds: ctx.htf.sec || null,
+                candleCount: ctx.htf.candleCount || 0,
+                minimumCandles: ctx.htf.minRequired || 12
             } : null;
+            const triggerCount = indicators.filter(id => indicatorStyle(id) === 'reversion').length;
+            const confirmMode = sig && sig.confirmMode
+                ? sig.confirmMode
+                : (sig && sig.direction && sig.direction !== 'NEUTRAL'
+                    ? resolveConfirmMode(config, (sig.indicators || [])
+                        .filter(item => item.signal && item.signal !== 'NEUTRAL')
+                        .map(item => item.id))
+                    : getConfirmMode(config));
+            const ultra = profile.exp <= 5;
+            const confirmationRules = {
+                effectiveMode: confirmMode,
+                volatilityVetoMinPct: parseFloat(config.minVolatilityPct) > 0
+                    ? parseFloat(config.minVolatilityPct)
+                    : null,
+                trend: {
+                    minimumBodyRatio: ultra ? 0.28 : 0.20,
+                    emaFast: profile.emaFast,
+                    emaSlow: profile.emaSlow,
+                    rsiPeriod: profile.rsiPeriod,
+                    maxRsiForUp: ultra ? 68 : 72,
+                    minRsiForDown: ultra ? 32 : 28
+                },
+                reversion: {
+                    minClosedCandles: 4,
+                    maxCandleRangeAtrMultiple: 2.2,
+                    decelerationFactor: 1.15,
+                    minRejectionWickRatio: 0.25,
+                    minimumEvidenceScore: 2,
+                    meanPeriod: Math.min(profile.bbPeriod || 20, (ctx && ctx.candles && ctx.candles.length) || 0),
+                    minimumStretchAtr: parseFloat(profile.minStretch) || 0.5
+                },
+                htf: config.htfFilter ? {
+                    enabled: true,
+                    seconds: htf ? htf.seconds : null,
+                    minimumCandles: 12,
+                    emaFast: 9,
+                    emaSlow: 21,
+                    minimumRelativeSpread: 0.0003,
+                    blocksOppositeDirection: true
+                } : { enabled: false }
+            };
 
             return {
                 timestamp: Date.now(),
@@ -3995,6 +4038,11 @@
                     filterMode: String(config.filterMode || 'ALL').toUpperCase(),
                     confirmMode: getConfirmMode(config),
                     triggerPolicy: config.triggerPolicy || 'auto',
+                    resolvedTriggerPolicy: getTriggerPolicy(config, triggerCount),
+                    triggerCount,
+                    minVolatilityPct: parseFloat(config.minVolatilityPct) > 0
+                        ? parseFloat(config.minVolatilityPct)
+                        : null,
                     expirationSeconds: parseInt(config.expiration, 10) || 60,
                     analysisTimeframeSeconds: this._analysisTimeframeSeconds(),
                     htfFilter: !!config.htfFilter,
@@ -4009,6 +4057,7 @@
                 },
                 effectiveIndicatorParams: params,
                 indicatorValuesAtSignal: includeValues ? indicatorValues : null,
+                confirmationRules,
                 profile: {
                     expirationSeconds: profile.exp,
                     candleSeconds: profile.candleSec,
