@@ -13,6 +13,7 @@ const electronExe = typeof electronModule === 'string'
 let restartCount = 0;
 let child = null;
 let stopping = false;
+let restartQueued = false;
 
 function launch() {
   if (stopping) return;
@@ -45,8 +46,9 @@ function launch() {
 }
 
 function scheduleRestart(code) {
-  if (stopping) return;
+  if (stopping || restartQueued) return;
 
+  restartQueued = true;
   restartCount += 1;
   if (restartCount > MAX_RESTARTS) {
     console.error('[watchdog] Restart limit reached. Last exit code:', code);
@@ -57,7 +59,10 @@ function scheduleRestart(code) {
   const delay = Math.min(30000, BASE_DELAY_MS * Math.pow(2, restartCount - 1));
   console.error('[watchdog] Restart ' + restartCount + '/' + MAX_RESTARTS +
     ' in ' + Math.round(delay / 1000) + ' seconds...');
-  setTimeout(launch, delay);
+  setTimeout(() => {
+    restartQueued = false;
+    launch();
+  }, delay);
 }
 
 function stop(signal) {
