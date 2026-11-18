@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:">
+  <title>Pocket Tracker Desktop</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <div class="brand">
+        <div class="logo">PT</div>
+        <div>
+          <h1>Pocket Tracker</h1>
+          <p>Desktop · проверка фоновой работы</p>
+        </div>
+      </div>
+      <span id="appVersion" class="version">v0.1.0</span>
+    </header>
+
+    <section class="notice">
+      <strong>Тестовая сборка</strong>
+      <p>На этом этапе проверяем подключение Pocket Option и выполнение JavaScript при скрытом окне. Автоматическая торговля сама не запускается.</p>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Подключение</h2>
+        <span id="overallState" class="pill neutral">Проверка...</span>
+      </div>
+      <div class="metrics">
+        <article class="metric">
+          <span class="metric-label">Расширение</span>
+          <strong id="extensionState">Ожидание</strong>
+          <small id="extensionInfo">Загрузка локальной копии</small>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Pocket Option</span>
+          <strong id="siteState">Ожидание</strong>
+          <small id="siteInfo">Торговая страница</small>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Торговое ядро</span>
+          <strong id="engineState">Ожидание</strong>
+          <small id="engineInfo">inject.js</small>
+        </article>
+        <article class="metric">
+          <span class="metric-label">WebSocket</span>
+          <strong id="socketState">Проверка</strong>
+          <small id="socketInfo">Соединение сайта</small>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Счёт</span>
+          <strong id="accountState">Не определён</strong>
+          <small>Автоопределение DEMO / REAL</small>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Фоновый таймер</span>
+          <strong id="timerState">Ожидание</strong>
+          <small id="timerInfo">Контрольный скрипт · 1 сек</small>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Управление окном сайта</h2>
+        <span id="visibilityState" class="muted">Не проверено</span>
+      </div>
+      <div class="actions">
+        <button id="showSite" class="button secondary">Показать Pocket Option</button>
+        <button id="hideSite" class="button secondary">Скрыть окно сайта</button>
+        <button id="reloadSite" class="button secondary">Перезагрузить сайт</button>
+      </div>
+      <p class="hint">Закрытие окна Pocket Option кнопкой X скрывает его, но не закрывает торговую сессию. Полное завершение сессии происходит при выходе из приложения.</p>
+    </section>
+
+    <section class="section test-section">
+      <div class="section-head">
+        <h2>Проверка фонового режима</h2>
+        <span class="muted">30 секунд</span>
+      </div>
+      <p>Приложение скроет окно Pocket Option и проверит, продолжает ли контрольный JavaScript-таймер выполняться без видимого окна.</p>
+      <button id="runTest" class="button primary">Запустить тест 30 секунд</button>
+      <div id="testResult" class="test-result neutral">Тест ещё не запускался</div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Журнал</h2>
+        <span class="muted">Локальные события приложения</span>
+      </div>
+      <pre id="log" class="log">Запуск приложения...</pre>
+    </section>
+
+    <footer>
+      Фоновый режим не защищает от выключения компьютера, сна Windows, потери интернета или выхода из аккаунта. До отдельной проверки используйте только DEMO.
+    </footer>
+  </main>
+  <script src="dashboard.js"></script>
+</body>
+</html>
