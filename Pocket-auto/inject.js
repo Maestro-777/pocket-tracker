@@ -3590,7 +3590,14 @@
         }
 
         runStrategyLab(options) {
-            if (!frameHasTradeUI() || !claimPrimaryEngine()) return;
+            if (!frameHasTradeUI()) return;
+            // Do not steal the primary frame from an already-running bot in another frame.
+            try {
+                const existing = window.top.__poEngineClaim;
+                if (existing && existing.win && existing.win !== window &&
+                    existing.win.__poCore && existing.win.__poCore.isRunning) return;
+            } catch (_) {}
+            if (!claimPrimaryEngine()) return;
             const runId = (this._strategyLabRunId || 0) + 1;
             this._strategyLabRunId = runId;
             this._runStrategyLabAttempt(options || {}, runId, 0);
