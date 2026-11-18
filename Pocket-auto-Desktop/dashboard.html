@@ -22,7 +22,7 @@
 
     <section class="notice">
       <strong>Тестовая сборка</strong>
-      <p>На этом этапе проверяем подключение Pocket Option и выполнение JavaScript при скрытом окне. Автоматическая торговля сама не запускается.</p>
+      <p>Тестовая сборка: подключение, фоновая работа и автоматическая диагностика. Проверки не запускают торговлю.</p>
     </section>
 
     <section class="section">
@@ -95,6 +95,53 @@
 
     <section class="section">
       <div class="section-head">
+        <h2>Автоматическая диагностика и статистика</h2>
+        <span id="autoHealthState" class="pill neutral">Ожидание проверки</span>
+      </div>
+      <p class="hint">Проверки устойчивости и состояния торгового ядра выполняются автоматически каждые 5 минут. Они не открывают сделки и не включают автоторговлю.</p>
+      <div class="metrics health-metrics">
+        <article class="metric">
+          <span class="metric-label">Последняя проверка</span>
+          <strong id="healthTime">Ожидание</strong>
+          <small id="healthTimer">Фоновый таймер ещё не проверен</small>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Соединение</span>
+          <strong id="healthSocket">Ожидание</strong>
+          <small id="healthQuoteAge">Свежесть котировок неизвестна</small>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Торговое ядро</span>
+          <strong id="healthEngine">Не обнаружено</strong>
+          <small id="healthAsset">Текущий актив не определён</small>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Сканирование</span>
+          <strong id="healthScans">0</strong>
+          <small id="healthScanDelta">Сканов за интервал: —</small>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Сигналы / результаты</span>
+          <strong id="healthSignals">0 / 0</strong>
+          <small>События, сохранённые в статистику</small>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Профиль авторизации</span>
+          <strong id="profileState">Постоянный</strong>
+          <small>Хранится между перезапусками приложения</small>
+        </article>
+      </div>
+      <div id="healthWarnings" class="health-warnings">Первая автоматическая проверка ещё не выполнена.</div>
+      <p id="statsPath" class="hint">Папка статистики будет показана после запуска.</p>
+      <div class="actions">
+        <button id="openStatsFolder" class="button secondary">Открыть папку статистики</button>
+        <button id="restartApp" class="button secondary">Перезапустить Electron</button>
+      </div>
+      <p class="hint">Сигналы, сделки, параметры индикаторов, профили экспирации и проверки сохраняются в JSONL-файлы в пользовательской папке приложения.</p>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
         <h2>Журнал</h2>
         <span class="muted">Локальные события приложения</span>
       </div>
@@ -102,7 +149,7 @@
     </section>
 
     <footer>
-      Фоновый режим не защищает от выключения компьютера, сна Windows, потери интернета или выхода из аккаунта. До отдельной проверки используйте только DEMO.
+      Фоновый режим не защищает от выключения компьютера или сна Windows. Автоматическое восстановление не перезагружает страницу, пока торговое ядро или автоторговля активны. Проверяйте результаты сначала на DEMO.
     </footer>
   </main>
   <script src="dashboard.js"></script>
