@@ -400,14 +400,17 @@ async function gracefulShutdown() {
   writeLog('Начато корректное завершение. Останавливаю анализатор и сохраняю профиль Chromium.');
   try {
     if (siteWindow && !siteWindow.isDestroyed()) {
-      await siteWindow.webContents.executeJavaScript(`(() => {
-        const core = window.__poCore;
-        if (core && typeof core.stop === 'function') {
-          core.stop();
-          return 'QuotexCore stopped';
-        }
-        return 'QuotexCore not running';
-      })()`, true);
+      await Promise.race([
+        siteWindow.webContents.executeJavaScript(`(() => {
+          const core = window.__poCore;
+          if (core && typeof core.stop === 'function') {
+            core.stop();
+            return 'QuotexCore stopped';
+          }
+          return 'QuotexCore not running';
+        })()`, true),
+        sleep(4000)
+      ]);
     }
   } catch (error) {
     writeLog('Не удалось отправить команду остановки ядру: ' + String(error));
@@ -415,7 +418,7 @@ async function gracefulShutdown() {
 
   try {
     if (poSession && typeof poSession.flushStorageData === 'function') {
-      await poSession.flushStorageData();
+      await Promise.race([poSession.flushStorageData(), sleep(4000)]);
     }
     writeLog('Профиль Chromium сохранён: ' +
       (poSession && typeof poSession.getStoragePath === 'function'
@@ -426,7 +429,7 @@ async function gracefulShutdown() {
   }
 
   try {
-    await flushPageTelemetry();
+    await Promise.race([flushPageTelemetry(), sleep(3000)]);
   } catch (_) {}
   await sleep(200);
   app.exit(0);
