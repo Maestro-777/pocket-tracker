@@ -19,10 +19,12 @@ function launch() {
   if (stopping) return;
 
   console.log('[watchdog] Starting Pocket Tracker Desktop...');
+  const startedAt = Date.now();
   child = spawn(electronExe, ['.'], {
     cwd: __dirname,
     stdio: 'inherit',
-    windowsHide: false
+    windowsHide: false,
+    env: { ...process.env, PT_WATCHDOG: '1' }
   });
 
   child.once('error', error => {
@@ -33,6 +35,10 @@ function launch() {
   child.once('exit', (code, signal) => {
     child = null;
     if (stopping) return;
+
+    if (Date.now() - startedAt >= 10 * 60 * 1000) {
+      restartCount = 0;
+    }
 
     if (code === 0) {
       console.log('[watchdog] App closed normally. Watchdog stopped.');
