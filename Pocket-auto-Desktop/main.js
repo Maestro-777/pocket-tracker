@@ -81,6 +81,16 @@ async function boot() {
   createDashboardWindow();
 
   const poSession = session.fromPartition(PARTITION);
+  // Use Windows system proxy settings explicitly, matching the OS-level route
+  // used by desktop browsers where possible. Never bypass TLS validation.
+  try {
+    await poSession.setProxy({ mode: 'system' });
+    const proxyRoute = await poSession.resolveProxy(START_URL);
+    writeLog('Системный прокси для Pocket Option: ' + proxyRoute);
+  } catch (error) {
+    writeLog('Не удалось определить системный прокси: ' + String(error));
+  }
+
   // Use a regular Chromium UA rather than exposing Electron in the HTTP User-Agent.
   poSession.setUserAgent(CHROME_USER_AGENT, 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7');
   writeLog('Chromium: ' + process.versions.chrome + '; User-Agent Electron скрыт.');
