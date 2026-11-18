@@ -23,6 +23,9 @@ let statusBusy = false;
 let backgroundTestRunning = false;
 let logFile = null;
 
+// Set before app readiness so Chromium receives the background scheduling switch.
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -65,10 +68,6 @@ async function boot() {
   const logDir = path.join(app.getPath('userData'), 'logs');
   fs.mkdirSync(logDir, { recursive: true });
   logFile = path.join(logDir, 'desktop.log');
-
-  // Keep Chromium timers and page visibility active while the trading
-  // BrowserWindow is hidden/minimized. This does not prevent Windows sleep.
-  app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
   createDashboardWindow();
 
