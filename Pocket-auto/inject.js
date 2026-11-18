@@ -3590,6 +3590,7 @@
         }
 
         runStrategyLab(options) {
+            if (!isPrimarySignalFrame()) return;
             const runId = (this._strategyLabRunId || 0) + 1;
             this._strategyLabRunId = runId;
             this._runStrategyLabAttempt(options || {}, runId, 0);
