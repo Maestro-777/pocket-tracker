@@ -418,7 +418,7 @@ async function gracefulShutdown() {
 
   try {
     if (poSession && typeof poSession.flushStorageData === 'function') {
-      await Promise.race([poSession.flushStorageData(), sleep(4000)]);
+      poSession.flushStorageData();
     }
     writeLog('Профиль Chromium сохранён: ' +
       (poSession && typeof poSession.getStoragePath === 'function'
