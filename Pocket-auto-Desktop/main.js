@@ -199,13 +199,15 @@ function createSiteWindow(poSession) {
   });
 
   siteWindow.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
-    lastLoadError = {
-      code,
-      description,
-      url,
-      isMainFrame: !!isMainFrame,
-      at: new Date().toISOString()
-    };
+    if (isMainFrame && code !== -3) {
+      lastLoadError = {
+        code,
+        description,
+        url,
+        isMainFrame: true,
+        at: new Date().toISOString()
+      };
+    }
     writeLog('Ошибка загрузки сайта (' + code + ', ' +
       (isMainFrame ? 'главный фрейм' : 'вложенный фрейм') + '): ' + description + ' — ' + url);
     void publishStatus();
