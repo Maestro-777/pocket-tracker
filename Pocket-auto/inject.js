@@ -1193,7 +1193,7 @@
         if (!core || !rows || !rows.length) return 0;
         rememberRawAsset(assetRaw);
         const asset = normalizeAssetName(assetRaw);
-        const periodSec = parseInt(periodHint, 10) || 0;
+        const periodSec = parsePeriodSeconds(periodHint) || parseInt(periodHint, 10) || 0;
         const layout = periodSec ? detectOhlcLayout(rows) : null;
         let count = 0;
         let ohlcCount = 0;
@@ -3590,15 +3590,16 @@
         }
 
         runStrategyLab(options) {
-            if (!isPrimarySignalFrame()) return;
+            if (!frameHasTradeUI() || !claimPrimaryEngine()) return;
             const runId = (this._strategyLabRunId || 0) + 1;
             this._strategyLabRunId = runId;
             this._runStrategyLabAttempt(options || {}, runId, 0);
         }
 
         _runStrategyLabAttempt(options, runId, attempt) {
-            if (runId !== this._strategyLabRunId) return;
+            if (runId !== this._strategyLabRunId || !isPrimarySignalFrame()) return;
             const postResult = (result) => this._post('POROBOT_STRATEGY_LAB_RESULT', { result: result });
+            const finish = () => { if (!this.isRunning) releasePrimaryEngine(); };
 
             try { this._syncAssetFromDOM(); } catch (_) {}
             const rawAsset = options.asset || this._domAsset || readCurrentAssetFromDOM();
@@ -3609,18 +3610,22 @@
 
             if (!asset || asset === 'UNKNOWN') {
                 postResult({ status: 'error', message: 'Не удалось определить текущую валютную пару на графике.' });
+                finish();
                 return;
             }
             if (!/_OTC$/i.test(asset)) {
                 postResult({ status: 'error', asset: asset, message: 'Текущий актив не распознан как OTC. Переключи график на OTC-пару и повтори тест.' });
+                finish();
                 return;
             }
             if (!candleSec || !expiration || expiration < candleSec || expiration % candleSec !== 0) {
                 postResult({ status: 'error', asset: asset, message: 'Для выбранной экспирации таймфрейм должен делить её без остатка. Для 60 секунд выбери S15.' });
+                finish();
                 return;
             }
             if (!Number.isFinite(payout) || payout < 50 || payout > 100) {
                 postResult({ status: 'error', asset: asset, message: 'Укажи выплату от 50 до 100 процентов.' });
+                finish();
                 return;
             }
 
@@ -3659,6 +3664,7 @@
                     message: 'Не удалось получить минимум 120 настоящих OHLC-свечей S' + candleSec +
                         '. Открой график OTC, дождись потока котировок и повтори тест.'
                 });
+                finish();
                 return;
             }
 
@@ -3678,6 +3684,7 @@
             result.closedCandles = closed.length;
             result.testedAt = Date.now();
             postResult(result);
+            finish();
 
             if (result.status === 'done') {
                 const best = result.strategies.find(function(item) { return item.trainRank === 1; });
