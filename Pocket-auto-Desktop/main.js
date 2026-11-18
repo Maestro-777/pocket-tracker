@@ -50,6 +50,7 @@ let lastHealthAt = 0;
 let previousHealthProbe = null;
 let healthCheckBusy = false;
 let shutdownStarted = false;
+let watchdogRestartRequested = false;
 let socketMissingSince = 0;
 let transportHealthySince = 0;
 let lastRecoveryAt = 0;
@@ -432,7 +433,7 @@ async function gracefulShutdown() {
     await Promise.race([flushPageTelemetry(), sleep(3000)]);
   } catch (_) {}
   await sleep(200);
-  app.exit(0);
+  app.exit(watchdogRestartRequested ? 75 : 0);
 }
 
 async function boot() {
@@ -786,7 +787,11 @@ ipcMain.handle('app:restart', async () => {
     return { ok: false, reason: 'Сначала останови автоторговлю и дождись завершения активной сделки. Перезапуск сейчас заблокирован.' };
   }
   writeLog('Запрошен перезапуск Electron. Анализатор будет остановлен, постоянный профиль сохранён.');
-  app.relaunch();
+  if (process.env.PT_WATCHDOG === '1') {
+    watchdogRestartRequested = true;
+  } else {
+    app.relaunch();
+  }
   app.quit();
   return { ok: true };
 });
