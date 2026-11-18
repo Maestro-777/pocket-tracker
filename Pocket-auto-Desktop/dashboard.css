@@ -75,3 +75,18 @@ footer { color: #75879c; font-size: 10px; line-height: 1.55; padding: 2px 3px 12
   .app { padding: 16px; }
   .metrics { grid-template-columns: 1fr; }
 }
+
+.health-warnings {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-radius: 9px;
+  background: #202b39;
+  color: #b9c7d7;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.health-warnings.good { background: #123b2d; color: #84e9b9; }
+.health-warnings.warning { background: #40351d; color: #f3d28a; }
+.health-warnings.bad { background: #49242a; color: #ffacb5; }
+.pill.warning { background: #40351d; color: #f3d28a; }
