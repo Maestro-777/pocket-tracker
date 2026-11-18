@@ -1466,7 +1466,7 @@
     }
 
     function buildLiveScanStub() {
-        var exp = normalizeExpiration(document.getElementById('pos-expiration') && document.getElementById('pos-expiration').value);
+        var candleSec = parseInt((document.getElementById('pos-analysis-timeframe') || {}).value || '15', 10);
         return {
             filterMode: filterMode,
             indicators: selectedStrategies.map(function(id) { return { id: id, signal: 'NEUTRAL' }; }),
@@ -1475,8 +1475,8 @@
             totalCount: selectedStrategies.length,
             priceCount: 0,
             tickCount: 0,
-            minRequired: exp <= 15 ? 12 : exp <= 60 ? 18 : 22,
-            candleSec: exp,
+            minRequired: candleSec <= 15 ? 12 : candleSec <= 60 ? 18 : 22,
+            candleSec: candleSec,
             ready: false,
             preview: !window._posRunning
         };
