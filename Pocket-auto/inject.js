@@ -3601,8 +3601,10 @@
             const postResult = (result) => this._post('POROBOT_STRATEGY_LAB_RESULT', { result: result });
             const finish = () => { if (!this.isRunning) releasePrimaryEngine(); };
 
-            try { this._syncAssetFromDOM(); } catch (_) {}
-            const rawAsset = options.asset || this._domAsset || readCurrentAssetFromDOM();
+            // Do not call _syncAssetFromDOM here: while the bot is stopped it can
+            // trigger a history request using the old/default timeframe before the
+            // lab requests its explicitly selected candle period.
+            const rawAsset = options.asset || readCurrentAssetFromDOM() || this._domAsset;
             const asset = normalizeAssetName(rawAsset || '');
             const candleSec = Math.floor(Number(options.candleSec) || 0);
             const expiration = Math.floor(Number(options.expiration) || 0);
