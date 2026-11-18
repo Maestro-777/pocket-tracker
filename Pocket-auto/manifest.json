@@ -33,6 +33,7 @@
         "https://*.pocketoption.com/*"
       ],
       "js": [
+        "strategy-lab.js",
         "inject.js"
       ],
       "run_at": "document_start",
