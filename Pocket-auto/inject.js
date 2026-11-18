@@ -1266,93 +1266,277 @@
         return count;
     }
     class CoreIndicators {
-        static sma(p, n) { if (!p||p.length<n) return null; return p.slice(-n).reduce((a,b)=>a+b,0)/n; }
+        static sma(p, n) {
+            n = Math.floor(Number(n));
+            if (!Array.isArray(p) || !Number.isFinite(n) || n < 1 || p.length < n) return null;
+            const values = p.slice(-n).map(Number);
+            if (!values.every(Number.isFinite)) return null;
+            return values.reduce((a, b) => a + b, 0) / n;
+        }
+
+        // EMA series is aligned to the input: entries before the seed period are null.
+        // This lets MACD build its signal line from the complete MACD history in O(n).
+        static emaSeries(p, n) {
+            n = Math.floor(Number(n));
+            if (!Array.isArray(p) || !Number.isFinite(n) || n < 1 || p.length < n) return null;
+            const out = new Array(p.length).fill(null);
+            let seed = 0;
+            for (let i = 0; i < n; i++) {
+                const value = Number(p[i]);
+                if (!Number.isFinite(value)) return null;
+                seed += value;
+            }
+            let ema = seed / n;
+            out[n - 1] = ema;
+            const k = 2 / (n + 1);
+            for (let i = n; i < p.length; i++) {
+                const value = Number(p[i]);
+                if (!Number.isFinite(value)) return null;
+                ema = value * k + ema * (1 - k);
+                out[i] = ema;
+            }
+            return out;
+        }
+
         static ema(p, n) {
-            if (!p||p.length<n) return null;
-            const k=2/(n+1); let e=p.slice(0,n).reduce((a,b)=>a+b,0)/n;
-            for (let i=n;i<p.length;i++) e=p[i]*k+e*(1-k); return e;
+            const values = CoreIndicators.emaSeries(p, n);
+            return values ? values[values.length - 1] : null;
         }
-        static rsi(p, n=14) {
-            if (!p||p.length<=n) return null;
-            let g=0,l=0;
-            for (let i=p.length-n;i<p.length;i++) { const d=p[i]-p[i-1]; if(d>=0) g+=d; else l-=d; }
-            const ag=g/n, al=l/n; if(al===0) return 100;
-            return 100-(100/(1+ag/al));
+
+        // Wilder RSI: seed with the first n price changes, then use Wilder's RMA.
+        static rsi(p, n = 14) {
+            n = Math.floor(Number(n));
+            if (!Array.isArray(p) || !Number.isFinite(n) || n < 1 || p.length <= n) return null;
+
+            let avgGain = 0;
+            let avgLoss = 0;
+            for (let i = 1; i <= n; i++) {
+                const change = Number(p[i]) - Number(p[i - 1]);
+                if (!Number.isFinite(change)) return null;
+                if (change > 0) avgGain += change;
+                else if (change < 0) avgLoss -= change;
+            }
+            avgGain /= n;
+            avgLoss /= n;
+
+            for (let i = n + 1; i < p.length; i++) {
+                const change = Number(p[i]) - Number(p[i - 1]);
+                if (!Number.isFinite(change)) return null;
+                const gain = change > 0 ? change : 0;
+                const loss = change < 0 ? -change : 0;
+                avgGain = ((avgGain * (n - 1)) + gain) / n;
+                avgLoss = ((avgLoss * (n - 1)) + loss) / n;
+            }
+
+            if (avgGain === 0 && avgLoss === 0) return 50;
+            if (avgLoss === 0) return 100;
+            if (avgGain === 0) return 0;
+            const rs = avgGain / avgLoss;
+            return 100 - (100 / (1 + rs));
         }
-        static bb(p, n=20, m=2) {
-            if (!p||p.length<n) return null;
-            const sl=p.slice(-n), mid=sl.reduce((a,b)=>a+b,0)/n;
-            const std=Math.sqrt(sl.reduce((a,b)=>a+(b-mid)**2,0)/n);
-            return { upper:mid+m*std, mid, lower:mid-m*std };
+
+        static bb(p, n = 20, m = 2) {
+            n = Math.floor(Number(n));
+            m = Number(m);
+            if (!Array.isArray(p) || !Number.isFinite(n) || n < 1 || !Number.isFinite(m) || p.length < n) return null;
+            const sl = p.slice(-n).map(Number);
+            if (!sl.every(Number.isFinite)) return null;
+            const mid = sl.reduce((a, b) => a + b, 0) / n;
+            const std = Math.sqrt(sl.reduce((a, b) => a + (b - mid) ** 2, 0) / n);
+            return { upper: mid + m * std, mid, lower: mid - m * std };
         }
-        static macd(p, f=12, s=26, sig=9) {
-            if (!p||p.length<s+sig) return null;
-            const ef=CoreIndicators.ema(p,f), es=CoreIndicators.ema(p,s);
-            if (!ef||!es) return null;
-            const ml=ef-es;
-            const mv=[]; for(let i=s;i<p.length;i++){const a=CoreIndicators.ema(p.slice(0,i+1),f),b=CoreIndicators.ema(p.slice(0,i+1),s);if(a&&b)mv.push(a-b);}
-            if(mv.length<sig) return null;
-            const sl2=mv.slice(-sig).reduce((a,b)=>a+b,0)/sig;
-            return { macd:ml, signal:sl2, hist:ml-sl2 };
+
+        // MACD signal is an EMA of the MACD line, not an SMA of the last signal periods.
+        static macd(p, f = 12, s = 26, sig = 9) {
+            f = Math.floor(Number(f));
+            s = Math.floor(Number(s));
+            sig = Math.floor(Number(sig));
+            if (!Array.isArray(p) || !Number.isFinite(f) || !Number.isFinite(s) ||
+                !Number.isFinite(sig) || f < 1 || s <= f || sig < 1 ||
+                p.length < s + sig - 1) return null;
+
+            const fast = CoreIndicators.emaSeries(p, f);
+            const slow = CoreIndicators.emaSeries(p, s);
+            if (!fast || !slow) return null;
+
+            const macdValues = [];
+            for (let i = s - 1; i < p.length; i++) {
+                if (fast[i] == null || slow[i] == null) return null;
+                macdValues.push(fast[i] - slow[i]);
+            }
+            const signalValues = CoreIndicators.emaSeries(macdValues, sig);
+            if (!signalValues || signalValues[signalValues.length - 1] == null) return null;
+
+            const macd = macdValues[macdValues.length - 1];
+            const signal = signalValues[signalValues.length - 1];
+            return { macd, signal, hist: macd - signal };
         }
-        static stoch(p, k=14, d=3) {
-            if (!p||p.length<k+d) return null;
-            const kv=[]; for(let i=p.length-d;i<p.length;i++){const sl=p.slice(i-k+1,i+1);const hi=Math.max(...sl),lo=Math.min(...sl);kv.push(hi===lo?50:((p[i]-lo)/(hi-lo))*100);}
-            return { k:kv[kv.length-1], d:kv.reduce((a,b)=>a+b,0)/kv.length };
+
+        static stoch(p, k = 14, d = 3) {
+            k = Math.floor(Number(k));
+            d = Math.floor(Number(d));
+            if (!Array.isArray(p) || k < 1 || d < 1 || p.length < k + d - 1) return null;
+            const kv = [];
+            for (let i = p.length - d; i < p.length; i++) {
+                const sl = p.slice(i - k + 1, i + 1).map(Number);
+                if (!sl.every(Number.isFinite)) return null;
+                const hi = Math.max(...sl), lo = Math.min(...sl);
+                kv.push(hi === lo ? 50 : ((Number(p[i]) - lo) / (hi - lo)) * 100);
+            }
+            return { k: kv[kv.length - 1], d: kv.reduce((a, b) => a + b, 0) / kv.length };
         }
-        // Классический стохастик считается по экстремумам свечей, а не по закрытиям
-        static stochHL(candles, k=14, d=3) {
-            if (!candles || candles.length < k + d) return null;
+
+        // Classic stochastic uses candle highs/lows, not close prices alone.
+        static stochHL(candles, k = 14, d = 3) {
+            k = Math.floor(Number(k));
+            d = Math.floor(Number(d));
+            if (!Array.isArray(candles) || k < 1 || d < 1 || candles.length < k + d - 1) return null;
             const kv = [];
             for (let i = candles.length - d; i < candles.length; i++) {
                 let hi = -Infinity, lo = Infinity;
                 for (let j = i - k + 1; j <= i; j++) {
-                    if (candles[j].high > hi) hi = candles[j].high;
-                    if (candles[j].low < lo) lo = candles[j].low;
+                    const high = Number(candles[j].high);
+                    const low = Number(candles[j].low);
+                    if (!Number.isFinite(high) || !Number.isFinite(low)) return null;
+                    if (high > hi) hi = high;
+                    if (low < lo) lo = low;
                 }
-                const c = candles[i].close;
-                kv.push(hi === lo ? 50 : ((c - lo) / (hi - lo)) * 100);
+                const close = Number(candles[i].close);
+                if (!Number.isFinite(close)) return null;
+                kv.push(hi === lo ? 50 : ((close - lo) / (hi - lo)) * 100);
             }
             return { k: kv[kv.length - 1], d: kv.reduce((a, b) => a + b, 0) / kv.length };
         }
-        static cci(p, n=20) {
-            if (!p||p.length<n) return null;
-            const sl=p.slice(-n), mean=sl.reduce((a,b)=>a+b,0)/n;
-            const mad=sl.reduce((a,b)=>a+Math.abs(b-mean),0)/n;
-            return mad===0?0:(p[p.length-1]-mean)/(0.015*mad);
+
+        static cci(p, n = 20) {
+            n = Math.floor(Number(n));
+            if (!Array.isArray(p) || n < 1 || p.length < n) return null;
+            const sl = p.slice(-n).map(Number);
+            if (!sl.every(Number.isFinite)) return null;
+            const mean = sl.reduce((a, b) => a + b, 0) / n;
+            const mad = sl.reduce((a, b) => a + Math.abs(b - mean), 0) / n;
+            return mad === 0 ? 0 : (sl[sl.length - 1] - mean) / (0.015 * mad);
         }
-        // CCI по типичной цене (H+L+C)/3 - каноничный вариант
-        static cciTP(candles, n=20) {
-            if (!candles || candles.length < n) return null;
+
+        // Canonical CCI by typical price: (H + L + C) / 3.
+        static cciTP(candles, n = 20) {
+            n = Math.floor(Number(n));
+            if (!Array.isArray(candles) || n < 1 || candles.length < n) return null;
             const tp = [];
             for (let i = candles.length - n; i < candles.length; i++) {
-                tp.push((candles[i].high + candles[i].low + candles[i].close) / 3);
+                const value = (Number(candles[i].high) + Number(candles[i].low) + Number(candles[i].close)) / 3;
+                if (!Number.isFinite(value)) return null;
+                tp.push(value);
             }
             const mean = tp.reduce((a, b) => a + b, 0) / n;
             const mad = tp.reduce((a, b) => a + Math.abs(b - mean), 0) / n;
             return mad === 0 ? 0 : (tp[tp.length - 1] - mean) / (0.015 * mad);
         }
-        static atr(candles, n=14) {
-            if (!candles || candles.length < n + 1) return null;
-            let sum = 0;
-            for (let i = candles.length - n; i < candles.length; i++) {
-                const prevClose = candles[i - 1].close;
-                const tr = Math.max(
-                    candles[i].high - candles[i].low,
-                    Math.abs(candles[i].high - prevClose),
-                    Math.abs(candles[i].low - prevClose)
-                );
-                sum += tr;
+
+        // Wilder ATR (RMA of true range).
+        static atr(candles, n = 14) {
+            n = Math.floor(Number(n));
+            if (!Array.isArray(candles) || n < 1 || candles.length < n + 1) return null;
+            const trueRange = (i) => {
+                const high = Number(candles[i].high);
+                const low = Number(candles[i].low);
+                const prevClose = Number(candles[i - 1].close);
+                if (![high, low, prevClose].every(Number.isFinite)) return null;
+                return Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+            };
+
+            let atr = 0;
+            for (let i = 1; i <= n; i++) {
+                const tr = trueRange(i);
+                if (tr == null) return null;
+                atr += tr;
             }
-            return sum / n;
+            atr /= n;
+            for (let i = n + 1; i < candles.length; i++) {
+                const tr = trueRange(i);
+                if (tr == null) return null;
+                atr = ((atr * (n - 1)) + tr) / n;
+            }
+            return atr;
         }
-        static trend(p, n=5) {
-            if (!p||p.length<n) return 'NEUTRAL';
-            const cur=p[p.length-1], old=p[p.length-n];
-            return cur>old?'UP':cur<old?'DOWN':'NEUTRAL';
+
+        // Momentum direction over exactly n completed candle-to-candle intervals.
+        static trend(p, n = 5) {
+            n = Math.floor(Number(n));
+            if (!Array.isArray(p) || !Number.isFinite(n) || n < 1 || p.length < n + 1) return 'NEUTRAL';
+            const cur = Number(p[p.length - 1]);
+            const old = Number(p[p.length - n - 1]);
+            if (!Number.isFinite(cur) || !Number.isFinite(old)) return 'NEUTRAL';
+            return cur > old ? 'UP' : cur < old ? 'DOWN' : 'NEUTRAL';
+        }
+
+        // Parabolic SAR using candle highs/lows and the standard acceleration factor.
+        static psar(candles, step = 0.02, maxStep = 0.2) {
+            step = Number(step);
+            maxStep = Number(maxStep);
+            if (!Array.isArray(candles) || candles.length < 3 ||
+                !Number.isFinite(step) || !Number.isFinite(maxStep) ||
+                step <= 0 || maxStep <= 0) return null;
+            maxStep = Math.max(step, maxStep);
+
+            const first = candles[0], second = candles[1];
+            const firstClose = Number(first.close), secondClose = Number(second.close);
+            if (!Number.isFinite(firstClose) || !Number.isFinite(secondClose)) return null;
+
+            let bullish = secondClose >= firstClose;
+            let sar = bullish
+                ? Math.min(Number(first.low), Number(second.low))
+                : Math.max(Number(first.high), Number(second.high));
+            let extreme = bullish
+                ? Math.max(Number(first.high), Number(second.high))
+                : Math.min(Number(first.low), Number(second.low));
+            let af = step;
+
+            if (![sar, extreme].every(Number.isFinite)) return null;
+            for (let i = 2; i < candles.length; i++) {
+                const candle = candles[i];
+                const prev1 = candles[i - 1];
+                const prev2 = candles[i - 2];
+                const high = Number(candle.high), low = Number(candle.low);
+                const prevLow1 = Number(prev1.low), prevLow2 = Number(prev2.low);
+                const prevHigh1 = Number(prev1.high), prevHigh2 = Number(prev2.high);
+                if (![high, low, prevLow1, prevLow2, prevHigh1, prevHigh2].every(Number.isFinite)) return null;
+
+                let nextSar = sar + af * (extreme - sar);
+                if (bullish) {
+                    nextSar = Math.min(nextSar, prevLow1, prevLow2);
+                    if (low < nextSar) {
+                        bullish = false;
+                        sar = extreme;
+                        extreme = low;
+                        af = step;
+                    } else {
+                        sar = nextSar;
+                        if (high > extreme) {
+                            extreme = high;
+                            af = Math.min(maxStep, af + step);
+                        }
+                    }
+                } else {
+                    nextSar = Math.max(nextSar, prevHigh1, prevHigh2);
+                    if (high > nextSar) {
+                        bullish = true;
+                        sar = extreme;
+                        extreme = high;
+                        af = step;
+                    } else {
+                        sar = nextSar;
+                        if (low < extreme) {
+                            extreme = low;
+                            af = Math.min(maxStep, af + step);
+                        }
+                    }
+                }
+            }
+
+            return { value: sar, direction: bullish ? 'UP' : 'DOWN', bullish };
         }
     }
-
     // ── Native chart indicators (встроенные линии PO = идеальное совпадение) ──
     function sleepMs(ms) {
         return new Promise(function(resolve) { setTimeout(resolve, ms); });
@@ -2137,8 +2321,16 @@
         return pct < minPct ? 'рынок стоит (ATR ' + pct.toFixed(4) + '% < ' + minPct + '%)' : null;
     }
 
+    function getConfiguredIndicatorParam(config, indicator, key, fallback) {
+        const raw = config && config.indConfig && config.indConfig[String(indicator).toUpperCase()]
+            ? config.indConfig[String(indicator).toUpperCase()][key]
+            : null;
+        const value = parseFloat(raw);
+        return Number.isFinite(value) ? value : fallback;
+    }
+
     // Подтверждение продолжения: движение идёт в сторону сигнала и не выдохлось
-    function confirmTrendEntry(direction, candles, profile) {
+    function confirmTrendEntry(direction, candles, profile, config) {
         const last = candles[candles.length - 1];
         const prev = candles[candles.length - 2];
         const parts = candleParts(last);
@@ -2156,14 +2348,17 @@
         }
 
         const closes = candleCloses(candles);
-        const ef = CoreIndicators.ema(closes, profile.emaFast);
-        const es = CoreIndicators.ema(closes, profile.emaSlow);
+        const emaFast = getConfiguredIndicatorParam(config, 'EMA', 'fast', profile.emaFast);
+        const emaSlow = getConfiguredIndicatorParam(config, 'EMA', 'slow', profile.emaSlow);
+        const ef = CoreIndicators.ema(closes, emaFast);
+        const es = CoreIndicators.ema(closes, emaSlow);
         if (ef != null && es != null) {
             if (direction === 'UP' && ef < es) return 'EMA против направления';
             if (direction === 'DOWN' && ef > es) return 'EMA против направления';
         }
 
-        const r = CoreIndicators.rsi(closes, profile.rsiPeriod);
+        const rsiPeriod = getConfiguredIndicatorParam(config, 'RSI', 'period', profile.rsiPeriod);
+        const r = CoreIndicators.rsi(closes, rsiPeriod);
         if (r != null) {
             if (direction === 'UP' && r > (ultra ? 68 : 72)) return 'RSI уже перекуплен';
             if (direction === 'DOWN' && r < (ultra ? 32 : 28)) return 'RSI уже перепродан';
@@ -2173,7 +2368,7 @@
 
     // Подтверждение разворота: цена растянута, движение затухает, есть отбой.
     // Совпадение с трендом здесь НЕ требуется - иначе возвратные сигналы не живут.
-    function confirmReversionEntry(direction, candles, profile) {
+    function confirmReversionEntry(direction, candles, profile, config) {
         const n = candles.length;
         if (n < 4) return 'мало свечей для разворота';
         const last = candles[n - 1];
@@ -2197,7 +2392,8 @@
         if (score < 2) return 'нет признаков разворота';
 
         const closes = candleCloses(candles);
-        const meanPeriod = Math.min(profile.bbPeriod || 20, n);
+        const configuredMeanPeriod = getConfiguredIndicatorParam(config, 'BB', 'period', profile.bbPeriod || 20);
+        const meanPeriod = Math.min(Math.max(2, Math.floor(configuredMeanPeriod)), n);
         const mean = CoreIndicators.sma(closes, meanPeriod);
         if (mean != null && atr > 0) {
             const price = closes[closes.length - 1];
@@ -2220,8 +2416,8 @@
         if (volReason) return { ok: false, reason: volReason, mode: mode };
 
         const reason = mode === 'reversion'
-            ? confirmReversionEntry(direction, candles, profile)
-            : confirmTrendEntry(direction, candles, profile);
+            ? confirmReversionEntry(direction, candles, profile, config)
+            : confirmTrendEntry(direction, candles, profile, config);
         return { ok: !reason, reason: reason, mode: mode };
     }
 
@@ -3342,7 +3538,7 @@
                     case 'STOCH': n = p('STOCH', 'kPeriod', 14, profile.stochK) + p('STOCH', 'dPeriod', 3, profile.stochD) + 1; break;
                     case 'CCI':   n = p('CCI', 'period', 20, profile.cciPeriod) + 1; break;
                     case 'TREND': n = p('TREND', 'period', 5, profile.trendPeriod) + 1; break;
-                    case 'PSAR':  n = Math.max(p('PSAR', 'slowEma', 10, profile.emaSlow), profile.rsiPeriod) + 2; break;
+                    case 'PSAR':  n = 3; break;
                     case 'SENTIMENT': n = 0; break;
                     default: n = profile.minCandles;
                 }
@@ -3350,7 +3546,9 @@
             }
             // Подтверждение входа опирается на EMA и RSI - им тоже нужен запас
             if (getConfirmMode(this.config) !== 'off') {
-                need = Math.max(need, Math.max(profile.emaSlow, profile.rsiPeriod) + 3);
+                const confirmEmaSlow = p('EMA', 'slow', profile.emaSlow, profile.emaSlow);
+                const confirmRsiPeriod = p('RSI', 'period', profile.rsiPeriod, profile.rsiPeriod);
+                need = Math.max(need, Math.max(confirmEmaSlow, confirmRsiPeriod) + 3);
             }
             return Math.max(6, need);
         }
@@ -3669,11 +3867,12 @@
                 }
                 case 'TREND': return CoreIndicators.trend(prices, this._getParam('TREND','period',5, profile.trendPeriod));
                 case 'PSAR': {
-                    const ef=CoreIndicators.ema(prices, this._getParam('PSAR','fastEma',3, profile.emaFast));
-                    const es=CoreIndicators.ema(prices, this._getParam('PSAR','slowEma',10, profile.emaSlow));
-                    const r=CoreIndicators.rsi(prices, profile.rsiPeriod);
-                    if(!ef||!es||!r) return 'NEUTRAL';
-                    return (ef>es&&r<65)?'UP':(ef<es&&r>35)?'DOWN':'NEUTRAL';
+                    const sar = CoreIndicators.psar(
+                        candles,
+                        this._getParam('PSAR', 'step', 0.02),
+                        this._getParam('PSAR', 'maxStep', 0.2)
+                    );
+                    return sar ? sar.direction : 'NEUTRAL';
                 }
                 default: return 'NEUTRAL';
             }
