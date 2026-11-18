@@ -126,10 +126,12 @@
     }
 
     const tickTimes = core._priceTickTs || {};
-    const tickEntries = Object.keys(tickTimes).map(asset => ({
-      asset,
-      timestamp: Number(tickTimes[asset]) || 0
-    })).filter(item => item.timestamp > 0);
+    const tickEntries = Object.keys(tickTimes).map(asset => {
+      let timestamp = Number(tickTimes[asset]) || 0;
+      // Some market feeds use Unix seconds while the core may also store milliseconds.
+      if (timestamp > 0 && timestamp < 1000000000000) timestamp *= 1000;
+      return { asset, timestamp };
+    }).filter(item => item.timestamp > 0);
     tickEntries.sort((a, b) => b.timestamp - a.timestamp);
     const lastQuote = tickEntries[0] || null;
     const activeAssets = tickEntries
