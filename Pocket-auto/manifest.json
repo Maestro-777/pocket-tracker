@@ -1,0 +1,82 @@
+{
+  "manifest_version": 3,
+  "name": "Pocket Tracker",
+  "version": "4.0.0",
+  "description": "Pocket Option assistant with account-mode detection, signals and auto trading.",
+  "action": {
+    "default_title": "Pocket Tracker",
+    "default_icon": {
+      "32": "icons/icon32.png",
+      "64": "icons/icon64.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage",
+    "tabs",
+    "windows",
+    "scripting",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://pocketoption.com/*",
+    "https://*.pocketoption.com/*",
+    "https://pocketoption-signal.online/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://pocketoption.com/*",
+        "https://*.pocketoption.com/*"
+      ],
+      "js": [
+        "inject.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://pocketoption.com/*",
+        "https://*.pocketoption.com/*"
+      ],
+      "css": [
+        "css/bot-ui.css"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://pocketoption.com/*",
+        "https://*.pocketoption.com/*"
+      ],
+      "js": [
+        "account-mode.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "inject.js",
+        "panel/panel.html",
+        "panel/panel.js",
+        "panel/panel.css"
+      ],
+      "matches": [
+        "https://pocketoption.com/*",
+        "https://*.pocketoption.com/*"
+      ]
+    }
+  ]
+}
