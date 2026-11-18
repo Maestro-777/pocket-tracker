@@ -3671,14 +3671,22 @@
             const lab = window.__POS_STRATEGY_LAB__;
             if (!lab || typeof lab.run !== 'function') {
                 postResult({ status: 'error', asset: asset, message: 'Strategy Lab не загружен. Перезагрузи расширение на chrome://extensions и обнови Pocket Option.' });
+                finish();
                 return;
             }
 
-            const result = lab.run(closed, {
-                candleSec: candleSec,
-                expiration: expiration,
-                payout: payout
-            }, CoreIndicators);
+            let result;
+            try {
+                result = lab.run(closed, {
+                    candleSec: candleSec,
+                    expiration: expiration,
+                    payout: payout
+                }, CoreIndicators);
+            } catch (err) {
+                postResult({ status: 'error', asset: asset, message: 'Ошибка тестирования: ' + String(err) });
+                finish();
+                return;
+            }
             result.asset = asset;
             result.dataSource = 'Pocket Option historical OHLC';
             result.closedCandles = closed.length;
