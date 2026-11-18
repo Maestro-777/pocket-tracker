@@ -3536,7 +3536,7 @@
     } else {
         window.addEventListener('message', function(e) {
             var msgType = e.data && e.data.type;
-            if (msgType === 'POROBOT_LOG' || msgType === 'POROBOT_STATS' || msgType === 'POROBOT_TRADE' || msgType === 'POROBOT_SIGNAL' || msgType === 'POROBOT_TRADE_RESULT' || msgType === 'POROBOT_MULTI_SIGNAL' || msgType === 'POROBOT_MULTI_TRADE_OPEN' || msgType === 'POROBOT_MULTI_TRADE_RESULT' || msgType === 'POROBOT_ASSET' || msgType === 'POROBOT_SCAN' || msgType === 'POROBOT_BALANCE' || msgType === 'POROBOT_AUTO_STOP') {
+            if (msgType === 'POROBOT_LOG' || msgType === 'POROBOT_STATS' || msgType === 'POROBOT_TRADE' || msgType === 'POROBOT_SIGNAL' || msgType === 'POROBOT_TRADE_RESULT' || msgType === 'POROBOT_MULTI_SIGNAL' || msgType === 'POROBOT_MULTI_TRADE_OPEN' || msgType === 'POROBOT_MULTI_TRADE_RESULT' || msgType === 'POROBOT_ASSET' || msgType === 'POROBOT_SCAN' || msgType === 'POROBOT_DIAG_SCAN' || msgType === 'POROBOT_BALANCE' || msgType === 'POROBOT_AUTO_STOP') {
                 try { window.top.postMessage(e.data, '*'); } catch(_) {}
             }
         });
