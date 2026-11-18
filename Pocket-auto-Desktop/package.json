@@ -5,7 +5,8 @@
   "description": "Pocket Tracker desktop shell and background execution test",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "watch": "node watchdog.js"
   },
   "devDependencies": {
     "electron": "45.3.4"
