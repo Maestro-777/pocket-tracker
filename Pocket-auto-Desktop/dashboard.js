@@ -32,7 +32,12 @@ function renderStatus(status) {
   const site = status.site || {};
   const page = site.page || {};
   setText('siteState', !site.alive ? 'Остановлен' : site.loading ? 'Загрузка' : 'Открыт');
-  setText('siteInfo', site.alive ? (site.visible ? 'Окно видно' : 'Окно скрыто') : 'Окно отсутствует');
+  setText('siteInfo', site.alive ? ((site.selectedAccount || 'DEMO') + ' · ' +
+    (site.visible ? 'окно видно' : 'окно скрыто')) : 'Окно отсутствует');
+  const loadError = site.lastLoadError;
+  setText('siteLoadInfo', loadError
+    ? 'Ошибка загрузки: ' + loadError.code + ' · ' + loadError.description + ' · ' + loadError.url
+    : 'Текущий адрес: ' + ((page && page.url) || 'ожидание загрузки'));
   setText('engineState', page.engineLoaded ? 'Обнаружено' : 'Ожидание');
   setText('engineInfo', page.extensionInjected ? 'Скрипт расширения запущен' : 'Инъекция ещё не подтверждена');
   setText('socketState', page.webSocketOpen ? 'Подключён' : 'Ожидание');
@@ -83,6 +88,20 @@ async function refreshStatus() {
   }
 }
 
+byId('openDemo').addEventListener('click', async () => {
+  setText('siteLoadInfo', 'Открываю DEMO-счёт...');
+  const result = await window.ptApp.openAccount('DEMO');
+  if (!result.ok) setText('siteLoadInfo', 'Не удалось открыть DEMO: ' + result.reason);
+});
+byId('openReal').addEventListener('click', async () => {
+  const confirmed = window.confirm(
+    'Открыть реальный счёт Pocket Option? Убедись, что не запускаешь торговлю случайно.'
+  );
+  if (!confirmed) return;
+  setText('siteLoadInfo', 'Открываю REAL-счёт...');
+  const result = await window.ptApp.openAccount('REAL');
+  if (!result.ok) setText('siteLoadInfo', 'Не удалось открыть REAL: ' + result.reason);
+});
 byId('showSite').addEventListener('click', () => window.ptApp.showSite());
 byId('hideSite').addEventListener('click', () => window.ptApp.hideSite());
 byId('reloadSite').addEventListener('click', async () => {
