@@ -112,6 +112,13 @@
             const direction = directionFor(features[i], candidate);
             if (!direction) continue;
 
+            // Reject windows with missing historical bars: otherwise rolling indicators
+            // would silently treat non-adjacent candles as adjacent observations.
+            if (!contiguous(candles, i - warmup, i + expiryBars, candleMs)) {
+                skippedGaps++;
+                continue;
+            }
+
             // One candidate can fire once per candle; same-side cooldown mirrors the live core.
             const signalAt = Number(candles[i].ts) + candleMs;
             if (signalAt - lastSignalAt[direction] < expirationMs) {
@@ -121,10 +128,6 @@
 
             // Signal is known only after candle i closes. Entry is approximated at next open.
             // Exit is the close completing the requested number of full candle intervals.
-            if (!contiguous(candles, i, i + expiryBars, candleMs)) {
-                skippedGaps++;
-                continue;
-            }
             const entryPrice = Number(candles[i + 1].open);
             const exitPrice = Number(candles[i + expiryBars].close);
             if (!Number.isFinite(entryPrice) || !Number.isFinite(exitPrice) || entryPrice <= 0 || exitPrice <= 0) continue;
