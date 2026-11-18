@@ -651,6 +651,9 @@ async function getStatus() {
       backgroundThrottling: siteAlive ? siteWindow.webContents.getBackgroundThrottling() : null,
       selectedAccount,
       lastLoadError,
+      profilePath: poSession && typeof poSession.getStoragePath === 'function'
+        ? poSession.getStoragePath()
+        : PARTITION,
       page: page
     },
     backgroundTestRunning: backgroundTestRunning,
