@@ -401,7 +401,7 @@ app.on('activate', showMain);
 app.on('second-instance', showMain);
 const lock = app.requestSingleInstanceLock();
 if (!lock) app.quit();
-else app.whenReady().then(() => {
+else app.whenReady().then(async () => {
   app.setAppUserModelId('com.maestro777.pocketoptionbackground');
   loadSettings(); createMainWindow(); createTray();
   moduleManager = new ModuleManager({ directory: path.join(__dirname, 'modules'), context: { app, log }, log });
