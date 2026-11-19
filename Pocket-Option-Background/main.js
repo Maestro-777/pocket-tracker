@@ -222,8 +222,13 @@ ipcMain.handle('app:reload-site', async () => {
 ipcMain.handle('app:toggle-widget', () => { toggleWidget(); return { ok: true }; });
 ipcMain.handle('app:settings:get', () => settings);
 ipcMain.handle('app:settings:save', (_event, next) => {
-  const allowed = ['showMiniWidget', 'monitorIntervalMinutes', 'reconnectAttemptsBeforeReload', 'reconnectDelaySeconds', 'maxReloadsPer10Minutes', 'autoCheckUpdates'];
-  for (const key of allowed) if (Object.prototype.hasOwnProperty.call(next || {}, key)) settings[key] = next[key];
+  if (!next || typeof next !== 'object') return settings;
+  if (typeof next.showMiniWidget === 'boolean') settings.showMiniWidget = next.showMiniWidget;
+  if (typeof next.autoCheckUpdates === 'boolean') settings.autoCheckUpdates = next.autoCheckUpdates;
+  if (Number.isFinite(Number(next.monitorIntervalMinutes))) settings.monitorIntervalMinutes = Math.max(5, Math.min(30, Number(next.monitorIntervalMinutes)));
+  if (Number.isFinite(Number(next.reconnectAttemptsBeforeReload))) settings.reconnectAttemptsBeforeReload = Math.max(1, Math.min(10, Number(next.reconnectAttemptsBeforeReload)));
+  if (Number.isFinite(Number(next.reconnectDelaySeconds))) settings.reconnectDelaySeconds = Math.max(5, Math.min(300, Number(next.reconnectDelaySeconds)));
+  if (Number.isFinite(Number(next.maxReloadsPer10Minutes))) settings.maxReloadsPer10Minutes = Math.max(1, Math.min(5, Number(next.maxReloadsPer10Minutes)));
   saveSettings();
   if (healthTimer) clearInterval(healthTimer);
   if (fullCheckTimer) clearInterval(fullCheckTimer);
@@ -271,14 +276,19 @@ async function waitForAccountMode(mode, timeoutMs) {
   }
   return false;
 }
+function isTrustedPocketOptionSender(event) {
+  if (!siteWindow || event.sender !== siteWindow.webContents) return false;
+  try { const host = new URL(siteWindow.webContents.getURL()).hostname; return host === 'pocketoption.com' || host.endsWith('.pocketoption.com'); }
+  catch (_) { return false; }
+}
 ipcMain.on('site:balance', (event, payload) => {
-  if (!siteWindow || event.sender !== siteWindow.webContents) return;
+  if (!isTrustedPocketOptionSender(event)) return;
   if (!payload || !['demo', 'real'].includes(payload.accountType) || !Number.isFinite(payload.balance) || payload.balance < 0) return;
   if (payload.ts && payload.ts < (lastBalance?.ts || 0)) return;
   lastBalance = { accountType: payload.accountType, balance: payload.balance, currency: String(payload.currency || ''), ts: Number(payload.ts) || Date.now() };
   lastSiteSignalAt = Date.now(); selectedAccount = payload.accountType.toUpperCase(); publishStatus();
 });
-ipcMain.on('site:log', (event, payload) => { if (!siteWindow || event.sender !== siteWindow.webContents) return; log(payload?.level === 'error' ? 'error' : 'info', 'Pocket Option: ' + String(payload?.message || '')); });
+ipcMain.on('site:log', (event, payload) => { if (!isTrustedPocketOptionSender(event)) return; log(payload?.level === 'error' ? 'error' : 'info', 'Pocket Option: ' + String(payload?.message || '')); });
 ipcMain.handle('app:run-check', () => runFullCheck('manual'));
 ipcMain.handle('app:logs:read', () => {
   try { return fs.readFileSync(logFile(), 'utf8').split(/\r?\n/).filter(Boolean).slice(-1000).map(line => { try { return JSON.parse(line); } catch (_) { return { message: line }; } }); }
