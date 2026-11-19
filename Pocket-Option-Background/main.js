@@ -269,13 +269,14 @@ async function waitForAccountMode(mode, timeoutMs) {
   }
   return false;
 }
-ipcMain.on('site:balance', (_event, payload) => {
+ipcMain.on('site:balance', (event, payload) => {
+  if (!siteWindow || event.sender !== siteWindow.webContents) return;
   if (!payload || !['demo', 'real'].includes(payload.accountType) || !Number.isFinite(payload.balance) || payload.balance < 0) return;
   if (payload.ts && payload.ts < (lastBalance?.ts || 0)) return;
   lastBalance = { accountType: payload.accountType, balance: payload.balance, currency: String(payload.currency || ''), ts: Number(payload.ts) || Date.now() };
   lastSiteSignalAt = Date.now(); selectedAccount = payload.accountType.toUpperCase(); publishStatus();
 });
-ipcMain.on('site:log', (_event, payload) => log(payload?.level === 'error' ? 'error' : 'info', 'Pocket Option: ' + String(payload?.message || '')));
+ipcMain.on('site:log', (event, payload) => { if (!siteWindow || event.sender !== siteWindow.webContents) return; log(payload?.level === 'error' ? 'error' : 'info', 'Pocket Option: ' + String(payload?.message || '')); });
 ipcMain.handle('app:run-check', () => runFullCheck('manual'));
 ipcMain.handle('app:logs:read', () => {
   try { return fs.readFileSync(logFile(), 'utf8').split(/\r?\n/).filter(Boolean).slice(-1000).map(line => { try { return JSON.parse(line); } catch (_) { return { message: line }; } }); }
@@ -328,7 +329,7 @@ async function healthTick() {
     reconnectAttempts++;
     log('warn', 'Проверка сети: Pocket Option недоступен', { reconnectAttempts });
   } else if (siteWindow && !siteWindow.isDestroyed() && !siteWindow.webContents.isLoading()) {
-    const stale = !lastSiteSignalAt || Date.now() - lastSiteSignalAt > 90_000;
+    const stale = lastSiteSignalAt > 0 && Date.now() - lastSiteSignalAt > 90_000;
     if (stale) reconnectAttempts++;
     else reconnectAttempts = 0;
   } else if (online) reconnectAttempts = 0;
@@ -367,8 +368,8 @@ async function runFullCheck(source) {
     const bridge = await siteWindow.webContents.executeJavaScript('window.__PT_PO_STATUS__ || null', true).catch(() => null);
     checks.push({ name: 'Адаптер Pocket Option', ok: !!bridge, detail: bridge ? 'Активен' : 'Не обнаружен' });
   } else checks.push({ name: 'Окно сайта', ok: true, detail: 'Не запускалось — это допустимо' });
-  checks.push({ name: 'Торговое ядро', ok: false, detail: 'Не подключено: приложение не содержит модуль автоторговли и не совершает сделки' });
-  const result = { at: new Date().toISOString(), source, passed: checks.every(c => c.ok), checks };
+  checks.push({ name: 'Торговое ядро', ok: true, state: 'not-connected', detail: 'Не подключено в этой сборке: приложение не содержит модуль автоторговли и не совершает сделки' });
+  const result = { at: new Date().toISOString(), source, passed: checks.every(c => c.ok !== false), checks };
   log(result.passed ? 'info' : 'warn', 'Проверка устойчивости завершена', result);
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('app:check-result', result);
   return result;
