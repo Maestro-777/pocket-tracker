@@ -8,6 +8,7 @@ function render(s) {
   $('widget-connection').textContent = s.site.running ? (s.account.stale ? 'Нет свежих данных' : 'Подключено') : 'Сайт не запущен';
   $('widget-dot').className = s.site.running && !s.account.stale ? 'online' : '';
 }
+$('widget-mode').addEventListener('click', async () => { const s = await api.getStatus(); const target = s.account.type === 'real' ? 'DEMO' : 'REAL'; await api.switchAccount(target); });
 $('widget-hide').addEventListener('click', () => api.toggleWidget());
 $('widget-site').addEventListener('click', () => api.showSite());
 api.getStatus().then(render); api.onStatus(render);
