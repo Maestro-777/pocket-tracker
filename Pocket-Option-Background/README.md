@@ -33,6 +33,7 @@
 ```powershell
 cd Pocket-Option-Background
 npm install
+npm run check
 npm start
 ```
 
