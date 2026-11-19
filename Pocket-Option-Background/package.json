@@ -1,0 +1,20 @@
+{
+  "name": "pocket-option-background",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone Pocket Option background desktop controller",
+  "main": "main.js",
+  "scripts": { "start": "electron .", "dist": "electron-builder --win nsis", "pack": "electron-builder --dir --win" },
+  "devDependencies": { "electron": "45.3.4", "electron-builder": "^26.0.12" },
+  "dependencies": { "archiver": "^7.0.1", "electron-updater": "^6.6.2" },
+  "build": {
+    "appId": "com.maestro777.pocketoptionbackground",
+    "productName": "Pocket Option Background",
+    "asar": true,
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "site-preload.js", "site-bridge.js", "renderer/**/*", "package.json"],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "artifactName": "Pocket-Option-Background-Setup-${version}.${ext}" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true },
+    "publish": [{ "provider": "github", "owner": "Maestro-777", "repo": "pocket-tracker" }]
+  }
+}
