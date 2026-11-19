@@ -6,6 +6,7 @@ const os = require('node:os');
 const { app, BrowserWindow, Tray, Menu, ipcMain, session, nativeImage, shell, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const archiver = require('archiver');
+const ModuleManager = require('./modules/manager');
 
 const APP_NAME = 'Pocket Option Background';
 const ACCOUNT_URLS = {
@@ -33,6 +34,7 @@ let reconnectAttempts = 0;
 let reloadHistory = [];
 let selectedAccount = 'DEMO';
 let updateState = { status: 'idle', version: null, progress: 0, message: 'Проверка не выполнялась' };
+let moduleManager = null;
 let settings = {
   showMiniWidget: false,
   monitorIntervalMinutes: 5,
@@ -368,6 +370,10 @@ async function runFullCheck(source) {
     const bridge = await siteWindow.webContents.executeJavaScript('window.__PT_PO_STATUS__ || null', true).catch(() => null);
     checks.push({ name: 'Адаптер Pocket Option', ok: !!bridge, detail: bridge ? 'Активен' : 'Не обнаружен' });
   } else checks.push({ name: 'Окно сайта', ok: true, detail: 'Не запускалось — это допустимо' });
+  if (moduleManager) {
+    const moduleChecks = await moduleManager.healthChecks();
+    for (const item of moduleChecks) checks.push(item);
+  }
   checks.push({ name: 'Торговое ядро', ok: true, state: 'not-connected', detail: 'Не подключено в этой сборке: приложение не содержит модуль автоторговли и не совершает сделки' });
   const result = { at: new Date().toISOString(), source, passed: checks.every(c => c.ok !== false), checks };
   log(result.passed ? 'info' : 'warn', 'Проверка устойчивости завершена', result);
@@ -377,6 +383,7 @@ async function runFullCheck(source) {
 
 app.on('before-quit', () => {
   quitting = true; clearInterval(healthTimer); clearInterval(fullCheckTimer);
+  if (moduleManager) moduleManager.stopAll().catch(error => log('error', 'Ошибка остановки модулей', String(error)));
   log('info', 'Приложение завершает работу');
 });
 app.on('window-all-closed', () => { /* системный трей удерживает приложение открытым */ });
@@ -387,6 +394,8 @@ if (!lock) app.quit();
 else app.whenReady().then(() => {
   app.setAppUserModelId('com.maestro777.pocketoptionbackground');
   loadSettings(); createMainWindow(); createTray();
+  moduleManager = new ModuleManager({ directory: path.join(__dirname, 'modules'), context: { app, log }, log });
+  await moduleManager.loadAll();
   if (settings.showMiniWidget) createMiniWindow().show();
   healthTimer = setInterval(() => healthTick().catch(error => log('error', 'Health tick failed', String(error))), HEALTH_INTERVAL);
   fullCheckTimer = setInterval(() => runFullCheck('scheduled').catch(error => log('error', 'Full check failed', String(error))), Math.max(5, Number(settings.monitorIntervalMinutes) || 5) * 60_000);
