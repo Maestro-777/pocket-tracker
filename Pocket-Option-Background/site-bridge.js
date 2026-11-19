@@ -58,6 +58,7 @@
     return null;
   };
   let last = '';
+  let lastSentAt = 0;
   const tick = () => {
     const info = active();
     const state = {
@@ -67,8 +68,8 @@
     };
     window.__PT_PO_STATUS__ = state;
     const key = JSON.stringify([state.accountType, state.balance, state.authenticated]);
-    if (key !== last && state.accountType && state.balance != null) {
-      last = key;
+    if (state.accountType && state.balance != null && (key !== last || Date.now() - lastSentAt >= 5000)) {
+      last = key; lastSentAt = Date.now();
       window.postMessage({ type: 'PT_PO_BALANCE', ...state }, location.origin);
     }
   };
