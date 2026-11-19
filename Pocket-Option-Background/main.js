@@ -238,7 +238,7 @@ ipcMain.handle('app:account:switch', async (_event, target) => {
   if (!['DEMO', 'REAL'].includes(mode)) return { ok: false, reason: 'Неизвестный режим счёта' };
   if (!siteWindow || siteWindow.isDestroyed()) return { ok: false, reason: 'Сначала запусти Pocket Option' };
   if (mode === 'REAL') {
-    const answer = await dialog.showMessageBox(mainWindow, {
+    const answer = await dialog.showMessageBox({
       type: 'warning', buttons: ['Отмена', 'Перейти на REAL'], defaultId: 0, cancelId: 0,
       title: 'Подтверждение реального счёта',
       message: 'Переключить Pocket Option на REAL?',
@@ -321,7 +321,7 @@ async function checkNetwork() {
   lastNetworkCheckAt = Date.now();
   try {
     const response = await fetch('https://pocketoption.com/', { signal: AbortSignal.timeout(8000), redirect: 'manual' });
-    lastNetworkOk = response.status < 500 || response.status === 503;
+    lastNetworkOk = response.status < 500;
   } catch (_) { lastNetworkOk = false; }
   return lastNetworkOk;
 }
@@ -400,5 +400,6 @@ else app.whenReady().then(() => {
   healthTimer = setInterval(() => healthTick().catch(error => log('error', 'Health tick failed', String(error))), HEALTH_INTERVAL);
   fullCheckTimer = setInterval(() => runFullCheck('scheduled').catch(error => log('error', 'Full check failed', String(error))), Math.max(5, Number(settings.monitorIntervalMinutes) || 5) * 60_000);
   log('info', 'Приложение запущено; Pocket Option не открывается автоматически');
+  runFullCheck('startup').catch(error => log('error', 'Startup check failed', String(error)));
   if (settings.autoCheckUpdates) autoUpdater.checkForUpdates().catch(error => log('warn', 'Автопроверка обновлений недоступна', String(error)));
 }).catch(error => { console.error(error); app.quit(); });
