@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pocket Option Background</title><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">PO</div><div><b>Pocket Option</b><small>BACKGROUND CONTROL</small></div></div>
+    <nav id="nav">
+      <button class="nav-item active" data-page="home"><span>⌂</span>Главная</button>
+      <button class="nav-item" data-page="monitor"><span>◉</span>Мониторинг</button>
+      <button class="nav-item" data-page="logs"><span>≋</span>Журналы</button>
+      <button class="nav-item" data-page="settings"><span>⚙</span>Настройки</button>
+      <button class="nav-item" data-page="updates"><span>↻</span>Обновления</button>
+    </nav>
+    <div class="sidebar-bottom"><div class="connection"><i id="side-dot"></i><span id="side-status">Сайт не запущен</span></div><small>Версия <span id="app-version">0.1.0</span></small></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div><p class="eyebrow">DESKTOP CONTROL CENTER</p><h1 id="page-title">Главная</h1></div><div class="top-actions"><span class="pill" id="network-pill">Сеть: проверка</span><button class="icon-btn" id="refresh-btn" title="Обновить статус">↻</button></div></header>
+    <section class="page active" id="page-home">
+      <div class="hero-card"><div><span class="eyebrow">POCKET OPTION SESSION</span><h2 id="site-title">Сайт не запущен</h2><p id="site-subtitle">Запусти Pocket Option, чтобы подключить постоянную сессию.</p></div><div class="hero-actions"><button class="btn primary" id="launch-site">Запустить Pocket Option</button><button class="btn secondary" id="reload-site" disabled>Перезагрузить</button></div></div>
+      <div class="stats-grid">
+        <article class="stat-card"><span class="stat-label">АКТИВНЫЙ СЧЁТ</span><div class="stat-value" id="account-mode">DEMO</div><small id="account-hint">Ожидание данных сайта</small></article>
+        <article class="stat-card balance-card"><span class="stat-label">ТЕКУЩИЙ БАЛАНС</span><div class="stat-value" id="balance-value">—</div><small id="balance-updated">Нет подтверждённых данных</small></article>
+        <article class="stat-card"><span class="stat-label">РАБОТА ПРИЛОЖЕНИЯ</span><div class="stat-value" id="uptime-value">00:00:00</div><small>Время с запуска</small></article>
+        <article class="stat-card"><span class="stat-label">МИНИ-ВИДЖЕТ</span><div class="stat-value" id="widget-state">Выключен</div><small>Не закрепляется поверх окон</small></article>
+      </div>
+      <div class="content-grid">
+        <article class="panel-card"><div class="panel-head"><div><h3>Управление счётом</h3><p>Переключение подтверждается фактическим состоянием сайта</p></div><span class="status-dot" id="site-dot"></span></div>
+          <div class="account-switch"><button id="demo-btn" class="mode-btn active">DEMO</button><button id="real-btn" class="mode-btn">REAL</button></div>
+          <p class="muted" id="switch-note">Сначала запусти Pocket Option. Переход на REAL требует подтверждения.</p>
+          <div class="button-row"><button class="btn secondary" id="show-site" disabled>Показать сайт</button><button class="btn ghost" id="hide-site" disabled>Скрыть сайт</button></div>
+        </article>
+        <article class="panel-card"><div class="panel-head"><div><h3>Состояние подключения</h3><p>Данные обновляются по сигналу адаптера сайта</p></div><span class="pill" id="connection-pill">Нет данных</span></div>
+          <div class="health-line"><span>Интернет</span><b id="internet-state">Проверка…</b></div>
+          <div class="health-line"><span>Pocket Option</span><b id="po-state">Не запущен</b></div>
+          <div class="health-line"><span>Последний баланс</span><b id="balance-age">—</b></div>
+          <div class="health-line"><span>Автовосстановление</span><b class="good">Включено</b></div>
+        </article>
+      </div>
+      <article class="panel-card recent"><div class="panel-head"><div><h3>Последние события</h3><p>Системный журнал</p></div><button class="text-btn" data-goto="logs">Все события →</button></div><div id="recent-logs" class="log-list"><div class="empty">Событий пока нет</div></div></article>
+    </section>
+    <section class="page" id="page-monitor">
+      <div class="page-intro"><h2>Мониторинг устойчивости</h2><p>Полная проверка выполняется автоматически каждые 5 минут. Проверка сети и восстановления — чаще.</p><button class="btn primary" id="run-check">Запустить проверку сейчас</button></div>
+      <div id="check-summary" class="check-summary">Ожидание первой проверки</div><div id="check-list" class="check-list"></div>
+    </section>
+    <section class="page" id="page-logs">
+      <div class="page-intro row-between"><div><h2>Журнал событий</h2><p>Ошибки, соединение, переключение счёта и проверки</p></div><button class="btn secondary" id="export-logs">Экспортировать ZIP</button></div>
+      <div class="log-toolbar"><input id="log-filter" placeholder="Поиск по журналу…"><select id="log-level"><option value="all">Все события</option><option value="error">Ошибки</option><option value="warn">Предупреждения</option><option value="info">Информация</option></select></div>
+      <div id="all-logs" class="all-logs"><div class="empty">Загрузка журнала…</div></div>
+    </section>
+    <section class="page" id="page-settings">
+      <div class="page-intro"><h2>Настройки приложения</h2><p>Параметры сохраняются локально на этом компьютере.</p></div>
+      <div class="settings-card">
+        <label class="setting"><span><b>Показывать мини-виджет после запуска</b><small>Обычное окно, не поверх других окон</small></span><input type="checkbox" id="setting-widget"></label>
+        <label class="setting"><span><b>Интервал полной проверки</b><small>Минуты между диагностическими проверками</small></span><input type="number" min="5" max="30" id="setting-interval"></label>
+        <label class="setting"><span><b>Попыток до перезагрузки страницы</b><small>Сколько неудачных проверок ждать</small></span><input type="number" min="1" max="10" id="setting-attempts"></label>
+        <label class="setting"><span><b>Задержка перед перезагрузкой</b><small>Секунды после восстановления сети</small></span><input type="number" min="5" max="300" id="setting-delay"></label>
+        <label class="setting"><span><b>Максимум перезагрузок за 10 минут</b><small>Защита от бесконечного цикла</small></span><input type="number" min="1" max="5" id="setting-max-reloads"></label>
+        <label class="setting"><span><b>Автоматически проверять обновления</b><small>При запуске приложения</small></span><input type="checkbox" id="setting-updates"></label>
+        <div class="form-actions"><button class="btn primary" id="save-settings">Сохранить настройки</button><span id="settings-feedback" class="muted"></span></div>
+      </div>
+    </section>
+    <section class="page" id="page-updates">
+      <div class="page-intro"><h2>Обновления</h2><p>Обновления приложения публикуются через GitHub Releases. Сайт Pocket Option обновляется независимо.</p></div>
+      <div class="panel-card update-card"><div class="update-icon">↻</div><div class="update-info"><h3 id="update-title">Версия <span id="update-version">0.1.0</span></h3><p id="update-message">Проверь наличие новой версии.</p><div class="progress"><i id="update-progress"></i></div></div><div class="update-actions"><button class="btn secondary" id="check-updates">Проверить</button><button class="btn primary" id="download-update" disabled>Скачать</button><button class="btn primary" id="install-update" disabled>Установить и перезапустить</button></div></div>
+    </section>
+    <footer>POCKET OPTION BACKGROUND <span>Локальная сессия · Без автозапуска Windows</span></footer>
+  </main>
+</div>
+<div id="toast" class="toast"></div><script src="app.js"></script>
+</body></html>
