@@ -108,7 +108,7 @@ function refreshTrayMenu() {
     { type: 'separator' },
     { label: 'Статус: ' + (lastNetworkOk === false ? 'нет интернета' : siteOpen ? 'сайт запущен' : 'сайт не запущен'), enabled: false },
     { label: 'Проверить состояние сейчас', click: () => runFullCheck('manual') },
-    { label: 'Перезапустить приложение', click: () => { app.relaunch(); app.exit(0); } },
+    { label: 'Перезапустить приложение', click: () => { app.relaunch(); app.quit(); } },
     { type: 'separator' },
     { label: 'Выход', click: () => { quitting = true; app.quit(); } }
   ]));
