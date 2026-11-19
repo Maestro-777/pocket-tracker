@@ -90,7 +90,7 @@ function renderCheck(result) {
   $('check-summary').textContent = (result.passed ? 'Проверка пройдена' : 'Есть замечания') + ' · ' + new Date(result.at).toLocaleString('ru-RU');
   $('check-list').innerHTML = result.checks.map(check =>
     '<div class="check-row"><div><b>' + escapeHtml(check.name) + '</b><br><small>' + escapeHtml(check.detail) +
-    '</small></div><b class="' + (check.ok ? 'pass' : 'fail') + '">' + (check.ok ? 'OK' : 'ПРОБЛЕМА') + '</b></div>'
+    '</small></div><b class="' + (check.state === 'not-connected' ? '' : check.ok ? 'pass' : 'fail') + '">' + (check.state === 'not-connected' ? 'НЕ ПОДКЛЮЧЕНО' : check.ok ? 'OK' : 'ПРОБЛЕМА') + '</b></div>'
   ).join('');
 }
 
