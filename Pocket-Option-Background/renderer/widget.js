@@ -10,5 +10,5 @@ function render(s) {
 }
 $('widget-mode').addEventListener('click', async () => { const s = await api.getStatus(); const target = s.account.type === 'real' ? 'DEMO' : 'REAL'; await api.switchAccount(target); });
 $('widget-hide').addEventListener('click', () => api.toggleWidget());
-$('widget-site').addEventListener('click', () => api.showSite());
+$('widget-site').addEventListener('click', async () => { const s = await api.getStatus(); if (s.site.running) await api.showSite(); else await api.launchSite(); });
 api.getStatus().then(render); api.onStatus(render);
