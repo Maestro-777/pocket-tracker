@@ -7,7 +7,8 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis",
-    "pack": "electron-builder --dir --win"
+    "pack": "electron-builder --dir --win",
+    "check": "node --check main.js && node --check preload.js && node --check site-preload.js && node --check site-bridge.js && node --check renderer/app.js && node --check renderer/widget.js && node --check modules/manager.js && node --check modules/example/index.js"
   },
   "devDependencies": {
     "electron": "45.3.4",
